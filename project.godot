@@ -33,6 +33,7 @@ LeaderboardAPI="*res://scripts/core/LeaderboardAPI.gd"
 ClanManager="*res://scripts/core/ClanManager.gd"
 NetworkManager="*res://scripts/net/NetworkManager.gd"
 LoadingScreen="*res://scripts/core/LoadingScreen.gd"
+WebTextCompat="*res://scripts/core/WebTextCompat.gd"
 
 [display]
 

@@ -20,13 +20,14 @@
   - 房主权威服务器，ENet UDP（端口 `24500`）；
   - 入场同步、倒计时、双端结算、表情、回放。
 - **回放**：单机与联机对局均可在设置中开启录制。
-- **多端**：Windows EXE、Android APK、Web（无多线程，适配 GitHub Pages）。
+- **新手训练营**：奖杯为 0 的新玩家自动进入；其他玩家可从主菜单底部「新手教程」进入；完成/跳过会记录，不会反复自动跳转。
+- **多端**：Windows EXE、Android APK、Web（无多线程，适配 GitHub Pages；Web 端 emoji 自动替换为中文标签，避免方框乱码）。
 
 ## 下载
 
 | 平台 | 文件 |
 |---|---|
-| Windows | `ClashRoyale-Net9.exe`（Releases） |
+| Windows | `ClashRoyale-Net10.exe`（Releases） |
 | Android | `ClashRoyale-Net.apk`（Releases） |
 | Web | [GitHub Pages](https://3844775306-code.github.io/ClashRoyale/) / `ClashRoyale-Web.zip` |
 
@@ -45,7 +46,7 @@
 godot --headless --path . --export-release "Web" "build/web/index.html"
 
 # Windows
-godot --headless --path . --export-release "Windows Desktop" "ClashRoyale-Net9.exe"
+godot --headless --path . --export-release "Windows Desktop" "ClashRoyale-Net10.exe"
 ```
 
 Android 导出后再用 `apksigner` 签名；签名文件不随仓库提供。

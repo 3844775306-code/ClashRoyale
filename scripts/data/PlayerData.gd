@@ -49,6 +49,7 @@ var wildcards: Dictionary = {}
 var tower_choice: int = 1   # 1=公主塔, 2=王子塔
 var last_card_request: float = 0.0
 var record_replays: bool = true
+var tutorial_done: bool = false
 func _ready():
 	
 	load_data()
@@ -537,6 +538,7 @@ func load_data():
 		tower_choice = int(config.get_value("player", "tower_choice", 1))
 		last_card_request = float(config.get_value("player", "last_card_request", 0.0))
 		record_replays = bool(config.get_value("player", "record_replays", true))
+		tutorial_done = bool(config.get_value("player", "tutorial_done", false))
 		experience = config.get_value("player", "experience", 0)
 		trophies = config.get_value("player", "trophies", 0)
 		highest_trophies = config.get_value("player", "highest_trophies", trophies)
@@ -597,6 +599,7 @@ func save_data():
 	config.set_value("player", "tower_choice", tower_choice)
 	config.set_value("player", "last_card_request", last_card_request)
 	config.set_value("player", "record_replays", record_replays)
+	config.set_value("player", "tutorial_done", tutorial_done)
 	config.set_value("player", "donations_used", donations_used)
 	config.set_value("player", "custom_deck", custom_deck)
 	config.set_value("player", "custom_decks", custom_decks)

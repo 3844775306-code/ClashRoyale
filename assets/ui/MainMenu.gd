@@ -34,6 +34,8 @@ func _ready():
 	_build_ui()
 	_build_notifier()
 	_play_intro()
+	if PlayerData.trophies <= 0 and not PlayerData.tutorial_done:
+		call_deferred("_auto_tutorial")
 	# 开场动画「王冠登场」：可轻触跳过；开启时不抢先播 BGM，等标题出现再进音乐
 	if OS.has_environment("CR_SKIP_INTRO"):
 		_start_bgm()
@@ -567,6 +569,8 @@ func _build_bottom_row() -> void:
 	row.alignment = BoxContainer.ALIGNMENT_CENTER
 	row.add_theme_constant_override("separation", 26)
 	_ui_root.add_child(row)
+	row.add_child(_text_action("star", "新手教程", _on_tutorial_pressed))
+	row.add_child(_dot_sep())
 	row.add_child(_text_action("quit", "退出", _on_quit_pressed))
 
 func _dot_sep() -> Control:
@@ -658,6 +662,12 @@ func _sheen_texture() -> Texture2D:
 # ============================================================
 # 信号处理
 # ============================================================
+func _auto_tutorial():
+	LoadingScreen.change_scene("res://scenes/tutorial.tscn", "正在打开新手训练营…")
+
+func _on_tutorial_pressed():
+	LoadingScreen.change_scene("res://scenes/tutorial.tscn", "正在打开新手训练营…")
+
 func _on_start_pressed():
 	LoadingScreen.change_scene("res://scenes/battle.tscn", "正在进入战场…")
 

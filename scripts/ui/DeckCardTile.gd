@@ -159,6 +159,7 @@ func setup(cfg: CardData, tile_mode: String, compact: bool = false) -> void:
 	if font_res:
 		var fv := FontVariation.new()
 		fv.base_font = font_res
+	ThemeHelper.apply_emoji_fallback(fv)
 		fv.variation_embolden = 1.0
 		name_lbl.add_theme_font_override("font", fv)
 	name_lbl.add_theme_font_size_override("font_size", 16 if compact else 18)

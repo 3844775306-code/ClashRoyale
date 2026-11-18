@@ -99,6 +99,8 @@ func _ready():
 func _load_font():
 	if ResourceLoader.exists(DEFAULT_FONT_PATH):
 		_font = load(DEFAULT_FONT_PATH)
+func apply_emoji_fallback(f: Font) -> Font:
+	return f
 
 
 # ==================== 样式构建 ====================

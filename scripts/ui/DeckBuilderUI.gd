@@ -82,6 +82,7 @@ func _apply_text_theme() -> void:
 	if font_res:
 		var fv := FontVariation.new()
 		fv.base_font = font_res
+	ThemeHelper.apply_emoji_fallback(fv)
 		fv.variation_embolden = 0.72
 		th.default_font = fv
 	th.default_font_size = 16
