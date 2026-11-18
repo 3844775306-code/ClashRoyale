@@ -1,4 +1,5 @@
 extends Control
+const AVATAR_ICON = preload("res://scripts/ui/AvatarIcon.gd")
 
 var _status: Label
 var _room_status: Label
@@ -215,6 +216,16 @@ func _make_seat_card(s: Dictionary, team: int) -> Button:
 	var b := Button.new()
 	b.custom_minimum_size = Vector2(320, 112)
 	b.add_theme_font_size_override("font_size", 16)
+	var peer0 := int(s.get("peer", 0))
+	var av = AVATAR_ICON.new()
+	av.position = Vector2(12, 34)
+	av.size = Vector2(44, 44)
+	av.custom_minimum_size = Vector2(44, 44)
+	if peer0 == multiplayer.get_unique_id() or (NetworkManager.role == NetworkManager.Role.HOST and peer0 == 1):
+		av.setup_local()
+	else:
+		av.setup(String(s.get("name", "玩家")), int(s.get("avatar_seed", 0)), int(s.get("avatar_index", 0)))
+	b.add_child(av)
 	var team_col := Color(0.36, 0.66, 1.0) if team == 0 else Color(1.0, 0.45, 0.40)
 	var bg := Color(0.055, 0.09, 0.16, 0.98)
 	var sb := StyleBoxFlat.new()
@@ -240,13 +251,13 @@ func _make_seat_card(s: Dictionary, team: int) -> Button:
 		role_txt = "🤖 AI 托管"
 	else:
 		role_txt = "＋ 点击进驻"
-	b.text = "席位 %d    %s\n%s" % [int(s.idx) + 1, role_txt, String(s.name) if peer > 0 else ("点击此席位进驻" if peer == 0 and not bool(s.ai) else "空席位")]
+	b.text = "       席位 %d    %s\n       %s" % [int(s.idx) + 1, role_txt, String(s.name) if peer > 0 else ("点击此席位进驻" if peer == 0 and not bool(s.ai) else "空席位")]
 	if peer > 0:
-		b.text = "席位 %d    %s\n%s" % [int(s.idx) + 1, role_txt, String(s.name)]
+		b.text = "       席位 %d    %s\n       %s" % [int(s.idx) + 1, role_txt, String(s.name)]
 	elif bool(s.ai):
-		b.text = "席位 %d    🤖 AI 托管\n点击可进驻" % [int(s.idx) + 1]
+		b.text = "       席位 %d    AI 托管\n       点击可进驻" % [int(s.idx) + 1]
 	else:
-		b.text = "席位 %d    ＋ 空席位\n点击进驻" % [int(s.idx) + 1]
+		b.text = "       席位 %d    空席位\n       点击进驻" % [int(s.idx) + 1]
 	var mine := (peer == multiplayer.get_unique_id()) or (NetworkManager.role == NetworkManager.Role.HOST and peer == 1)
 	b.add_theme_color_override("font_color", Color(1.0, 0.86, 0.42) if mine else Color(0.82, 0.88, 0.98))
 	b.add_theme_color_override("font_hover_color", Color(1.0, 0.92, 0.55))

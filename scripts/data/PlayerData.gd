@@ -55,9 +55,13 @@ var tutorial_practice: bool = false
 var tutorial_chest_claimed: bool = false
 var starter_cards_v2: bool = false
 var chest_reveal_pending: bool = false
+var avatar_seed: int = 0
+var avatar_index: int = 0
+var avatar_custom_path: String = ""
 func _ready():
 	
 	load_data()
+	_ensure_avatar()
 	_ensure_starter_cards()
 	for i in range(130):
 		ai_levels[i] = get_ai_card_level()
@@ -548,6 +552,9 @@ func load_data():
 		tutorial_chest_claimed = bool(config.get_value("player", "tutorial_chest_claimed", false))
 		starter_cards_v2 = bool(config.get_value("player", "starter_cards_v2", false))
 		chest_reveal_pending = bool(config.get_value("player", "chest_reveal_pending", false))
+		avatar_seed = int(config.get_value("player", "avatar_seed", 0))
+		avatar_index = int(config.get_value("player", "avatar_index", 0))
+		avatar_custom_path = String(config.get_value("player", "avatar_custom_path", ""))
 		experience = config.get_value("player", "experience", 0)
 		trophies = config.get_value("player", "trophies", 0)
 		highest_trophies = config.get_value("player", "highest_trophies", trophies)
@@ -612,6 +619,9 @@ func save_data():
 	config.set_value("player", "tutorial_chest_claimed", tutorial_chest_claimed)
 	config.set_value("player", "starter_cards_v2", starter_cards_v2)
 	config.set_value("player", "chest_reveal_pending", chest_reveal_pending)
+	config.set_value("player", "avatar_seed", avatar_seed)
+	config.set_value("player", "avatar_index", avatar_index)
+	config.set_value("player", "avatar_custom_path", avatar_custom_path)
 	config.set_value("player", "donations_used", donations_used)
 	config.set_value("player", "custom_deck", custom_deck)
 	config.set_value("player", "custom_decks", custom_decks)
@@ -651,6 +661,42 @@ func _ensure_starter_cards() -> void:
 		active_deck_index = 0
 		use_custom_deck = true
 	starter_cards_v2 = true
+	save_data()
+
+func _ensure_avatar() -> void:
+	if avatar_seed == 0:
+		avatar_seed = int(Time.get_unix_time_from_system() * 1000.0) ^ randi()
+		avatar_index = randi() % 12
+		save_data()
+
+func get_avatar_texture() -> Texture2D:
+	if avatar_custom_path == "":
+		return null
+	var path := ProjectSettings.globalize_path(avatar_custom_path)
+	if not FileAccess.file_exists(path):
+		return null
+	var img := Image.load_from_file(path)
+	if img == null:
+		return null
+	return ImageTexture.create_from_image(img)
+
+func set_custom_avatar(source_path: String) -> bool:
+	var img := Image.load_from_file(source_path)
+	if img == null:
+		return false
+	img.resize(128, 128, Image.INTERPOLATE_LANCZOS)
+	var dst := "user://avatar_custom.png"
+	var err := img.save_png(ProjectSettings.globalize_path(dst))
+	if err != OK:
+		return false
+	avatar_custom_path = dst
+	save_data()
+	return true
+
+func randomize_avatar() -> void:
+	avatar_custom_path = ""
+	avatar_seed = int(randi())
+	avatar_index = randi() % 12
 	save_data()
 
 func get_ai_allowed_cards() -> Array:

@@ -4,6 +4,8 @@ extends Control
 
 var music_pct: Label
 var sfx_pct: Label
+var avatar_preview
+var _avatar_dialog: FileDialog
 
 
 func _ready():
@@ -26,8 +28,8 @@ func _build_ui():
 	panel.anchor_bottom = 0.5
 	panel.offset_left = -260
 	panel.offset_right = 260
-	panel.offset_top = -330
-	panel.offset_bottom = 330
+	panel.offset_top = -400
+	panel.offset_bottom = 400
 	add_child(panel)
 
 	var vbox := VBoxContainer.new()
@@ -73,6 +75,24 @@ func _build_ui():
 	difficulty.item_selected.connect(_on_difficulty_changed)
 	vbox.add_child(difficulty)
 
+	# ---- 头像 ----
+	var avatar_row := HBoxContainer.new()
+	avatar_row.add_theme_constant_override("separation", 14)
+	vbox.add_child(avatar_row)
+	avatar_preview = preload("res://scripts/ui/AvatarIcon.gd").new()
+	avatar_preview.custom_minimum_size = Vector2(78, 78)
+	avatar_preview.size = Vector2(78, 78)
+	avatar_row.add_child(avatar_preview)
+	var av_col := VBoxContainer.new()
+	av_col.add_theme_constant_override("separation", 6)
+	avatar_row.add_child(av_col)
+	av_col.add_child(_row_label("头像"))
+	var av_btns := HBoxContainer.new()
+	av_btns.add_theme_constant_override("separation", 8)
+	av_col.add_child(av_btns)
+	av_btns.add_child(UiComponents.make_secondary_button("上传图片", _choose_avatar, Vector2(136, 40)))
+	av_btns.add_child(UiComponents.make_secondary_button("随机头像", _random_avatar, Vector2(136, 40)))
+
 	# ---- 对局录像（用于 AI 训练）----
 	var rec_check := CheckBox.new()
 	rec_check.text = "🎞 本地录制对局（AI 训练与回放）"
@@ -92,6 +112,77 @@ func _build_ui():
 	set_meta("difficulty", difficulty)
 	set_meta("record_check", rec_check)
 
+
+func _choose_avatar():
+	if OS.has_feature("web"):
+		_choose_avatar_web()
+		return
+	_avatar_dialog = FileDialog.new()
+	_avatar_dialog.title = "选择头像图片"
+	_avatar_dialog.access = FileDialog.ACCESS_FILESYSTEM
+	_avatar_dialog.file_mode = FileDialog.FILE_MODE_OPEN_FILE
+	_avatar_dialog.filters = PackedStringArray(["*.png, *.jpg, *.jpeg, *.webp ; 图片"])
+	_avatar_dialog.use_native_dialog = true
+	_avatar_dialog.file_selected.connect(_on_avatar_file)
+	add_child(_avatar_dialog)
+	_avatar_dialog.popup_centered(Vector2i(700, 500))
+
+func _choose_avatar_web():
+	var cb = JavaScriptBridge.create_callback(_on_web_avatar)
+	JavaScriptBridge.get_interface("window").set("_crAvatarCb", cb)
+	JavaScriptBridge.eval("""
+		(function(){
+			var old = document.getElementById('cr-avatar-input');
+			if (old) old.remove();
+			var input = document.createElement('input');
+			input.type = 'file';
+			input.accept = 'image/*';
+			input.id = 'cr-avatar-input';
+			input.style.display = 'none';
+			input.onchange = function(e){
+				var f = e.target.files[0];
+				if (!f) return;
+				var reader = new FileReader();
+				reader.onload = function(){ window._crAvatarCb(reader.result); input.remove(); };
+				reader.readAsDataURL(f);
+			};
+			document.body.appendChild(input);
+			input.click();
+		})();
+	""")
+
+func _on_web_avatar(args):
+	if args.is_empty():
+		return
+	var data := String(args[0])
+	var comma := data.find(",")
+	if comma < 0:
+		return
+	var raw := Marshalls.base64_to_raw(data.substr(comma + 1))
+	var img := Image.new()
+	if img.load_png_from_buffer(raw) != OK and img.load_jpg_from_buffer(raw) != OK:
+		return
+	img.resize(128, 128, Image.INTERPOLATE_LANCZOS)
+	img.save_png(ProjectSettings.globalize_path("user://avatar_custom.png"))
+	PlayerData.avatar_custom_path = "user://avatar_custom.png"
+	PlayerData.save_data()
+	_refresh_avatar()
+	UiComponents.refresh_topbar()
+
+func _on_avatar_file(path: String):
+	if PlayerData.set_custom_avatar(path):
+		_refresh_avatar()
+		UiComponents.refresh_topbar()
+
+func _random_avatar():
+	PlayerData.randomize_avatar()
+	_refresh_avatar()
+	UiComponents.refresh_topbar()
+
+func _refresh_avatar():
+	if avatar_preview:
+		avatar_preview.setup_local()
+		avatar_preview.queue_redraw()
 
 func _row_label(text: String) -> Label:
 	var lbl := Label.new()
@@ -128,6 +219,7 @@ func _spacer() -> Control:
 
 
 func _load_current_settings():
+	_refresh_avatar()
 	var music_slider: HSlider = get_meta("music_slider")
 	var sfx_slider: HSlider = get_meta("sfx_slider")
 	var difficulty: OptionButton = get_meta("difficulty")

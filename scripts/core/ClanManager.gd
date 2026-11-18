@@ -160,6 +160,8 @@ func create_clan(clan_name: String, description: String, min_trophies: int, is_o
 					"trophies": PlayerData.trophies,
 					"role": "leader",
 					"donations": 0,
+					"avatar_seed": PlayerData.avatar_seed,
+					"avatar_index": PlayerData.avatar_index,
 					"joined": Time.get_unix_time_from_system()
 				}
 			},
@@ -338,6 +340,8 @@ func join_clan(clan_id: String, callback: Callable):
 			"trophies": PlayerData.trophies,
 			"role": "member",
 			"donations": 0,
+			"avatar_seed": PlayerData.avatar_seed,
+			"avatar_index": PlayerData.avatar_index,
 			"joined": Time.get_unix_time_from_system()
 		}
 		_recalc_total(target_clan)
@@ -424,6 +428,8 @@ func approve_application(applicant_id: int, callback: Callable):
 			"trophies": int(target.get("trophies", 0)),
 			"role": "member",
 			"donations": 0,
+			"avatar_seed": int(target.get("avatar_seed", absi(hash(String(target.get("player_name","玩家")))))),
+			"avatar_index": int(target.get("avatar_index", 0)),
 			"joined": Time.get_unix_time_from_system()
 		}
 		apps.erase(target)
@@ -462,7 +468,9 @@ func send_chat_message(message: String, callback: Callable = Callable()):
 			"player_name": get_player_name(),
 			"message": message,
 			"timestamp": Time.get_unix_time_from_system(),
-			"type": "chat"
+			"type": "chat",
+			"avatar_seed": PlayerData.avatar_seed,
+			"avatar_index": PlayerData.avatar_index
 		})
 		if clan["chat"].size() > MAX_CHAT_MESSAGES:
 			clan["chat"].resize(MAX_CHAT_MESSAGES)
@@ -505,7 +513,10 @@ func request_card(card_id: int, amount: int, callback: Callable):
 			"timestamp": Time.get_unix_time_from_system(),
 			"type": "request",
 			"card_id": card_id,
-			"amount": amount
+			"card_name": cfg.card_name,
+			"amount": amount,
+			"avatar_seed": PlayerData.avatar_seed,
+			"avatar_index": PlayerData.avatar_index
 		})
 		if clan["chat"].size() > MAX_CHAT_MESSAGES:
 			clan["chat"].resize(MAX_CHAT_MESSAGES)

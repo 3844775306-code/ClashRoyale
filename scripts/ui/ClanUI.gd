@@ -1,6 +1,8 @@
 # scripts/ui/ClanUI.gd
 # 部落界面：分节导航（我的部落 / 搜索 / 创建）+ 空状态 + 横幅卡 + 成员/聊天 + 危险确认
 extends Control
+const AVATAR_ICON = preload("res://scripts/ui/AvatarIcon.gd")
+const REWARD_ICON = preload("res://scripts/ui/RewardIcon.gd")
 
 # 分节
 var tab_buttons: Array = []
@@ -214,7 +216,7 @@ func _build_clan_home():
 	member_list.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	member_scroll.add_child(member_list)
 
-	# ---- 聊天面板 ----
+	# ---- 聊天面板（现代聊天布局）----
 	var chat_panel := Panel.new()
 	ThemeHelper.apply_panel_style(chat_panel)
 	chat_panel.anchor_left = 0.0
@@ -222,62 +224,70 @@ func _build_clan_home():
 	chat_panel.offset_left = 16
 	chat_panel.offset_top = 440
 	chat_panel.offset_right = -16
-	chat_panel.offset_bottom = 700
+	chat_panel.offset_bottom = 780
 	clan_home_box.add_child(chat_panel)
 
 	var chat_title := Label.new()
 	chat_title.text = "部落聊天"
-	chat_title.add_theme_font_size_override("font_size", 16)
+	chat_title.add_theme_font_size_override("font_size", 17)
 	chat_title.add_theme_color_override("font_color", ThemeHelper.COLORS.gold)
-	chat_title.anchor_left = 0.0
-	chat_title.anchor_right = 1.0
-	chat_title.offset_left = 14
-	chat_title.offset_top = 10
-	chat_title.offset_right = -14
-	chat_title.offset_bottom = 36
+	chat_title.position = Vector2(16, 12)
+	chat_title.size = Vector2(200, 28)
 	chat_panel.add_child(chat_title)
+	var online := Label.new()
+	online.text = "和伙伴聊聊卡组与战术"
+	online.add_theme_font_size_override("font_size", 12)
+	online.add_theme_color_override("font_color", ThemeHelper.COLORS.text_muted)
+	online.position = Vector2(120, 16)
+	online.size = Vector2(420, 22)
+	chat_panel.add_child(online)
 
 	var chat_scroll := ScrollContainer.new()
 	chat_scroll.anchor_left = 0.0
 	chat_scroll.anchor_right = 1.0
-	chat_scroll.offset_left = 10
-	chat_scroll.offset_top = 42
-	chat_scroll.offset_right = -10
-	chat_scroll.offset_bottom = 168
+	chat_scroll.offset_left = 12
+	chat_scroll.offset_top = 52
+	chat_scroll.offset_right = -12
+	chat_scroll.offset_bottom = 248
+	chat_scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
 	chat_panel.add_child(chat_scroll)
 	chat_list = VBoxContainer.new()
 	chat_list.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	chat_list.add_theme_constant_override("separation", 6)
+	chat_list.add_theme_constant_override("separation", 8)
 	chat_scroll.add_child(chat_list)
+	set_meta("chat_scroll", chat_scroll)
 
+	var input_row := HBoxContainer.new()
+	input_row.anchor_left = 0.0
+	input_row.anchor_right = 1.0
+	input_row.offset_left = 12
+	input_row.offset_top = 258
+	input_row.offset_right = -12
+	input_row.offset_bottom = 306
+	input_row.add_theme_constant_override("separation", 8)
+	chat_panel.add_child(input_row)
+	var chat_av = AVATAR_ICON.new()
+	chat_av.custom_minimum_size = Vector2(38, 38)
+	chat_av.size = Vector2(38, 38)
+	chat_av.setup_local()
+	input_row.add_child(chat_av)
 	chat_input = LineEdit.new()
-	chat_input.placeholder_text = "输入消息..."
+	chat_input.placeholder_text = "发消息给部落…"
+	chat_input.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	chat_input.custom_minimum_size = Vector2(0, 42)
 	chat_input.text_submitted.connect(func(_t): _on_send_chat())
-	chat_input.anchor_left = 0.0
-	chat_input.anchor_right = 1.0
-	chat_input.offset_left = 10
-	chat_input.offset_top = 176
-	chat_input.offset_right = -10
-	chat_input.offset_bottom = 216
-	chat_panel.add_child(chat_input)
-
-	send_btn = UiComponents.make_primary_button("发送", _on_send_chat, Vector2(0, 40))
-	send_btn.anchor_left = 1.0
-	send_btn.anchor_right = 1.0
-	send_btn.offset_left = -130
-	send_btn.offset_top = 224
-	send_btn.offset_right = -10
-	send_btn.offset_bottom = 264
-	chat_panel.add_child(send_btn)
+	input_row.add_child(chat_input)
+	send_btn = UiComponents.make_primary_button("发送", _on_send_chat, Vector2(92, 42))
+	input_row.add_child(send_btn)
 
 	# ---- 底部操作行 ----
 	var bottom := HBoxContainer.new()
 	bottom.anchor_left = 0.0
 	bottom.anchor_right = 1.0
 	bottom.offset_left = 16
-	bottom.offset_top = 716
+	bottom.offset_top = 796
 	bottom.offset_right = -16
-	bottom.offset_bottom = 776
+	bottom.offset_bottom = 856
 	clan_home_box.add_child(bottom)
 	request_btn = UiComponents.make_primary_button("请求卡牌", _on_request_card, Vector2(180, 56))
 	bottom.add_child(request_btn)
@@ -480,13 +490,17 @@ func _refresh_members():
 		row.add_child(hbox)
 
 		var role: String = str(m.get("role", ""))
-		var emoji := Label.new()
-		emoji.text = _role_emoji(role)
-		emoji.custom_minimum_size = Vector2(34, 0)
-		emoji.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-		emoji.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-		emoji.add_theme_font_size_override("font_size", 18)
-		hbox.add_child(emoji)
+		var av = AVATAR_ICON.new()
+		av.custom_minimum_size = Vector2(40, 40)
+		av.size = Vector2(40, 40)
+		var an := String(m.get("player_name", "玩家"))
+		var aseed: int = int(m.get("avatar_seed", absi(hash(an))))
+		var aidx: int = int(m.get("avatar_index", aseed % 12))
+		if int(member_id) == ClanManager.get_player_id():
+			av.setup_local()
+		else:
+			av.setup(an, aseed, aidx)
+		hbox.add_child(av)
 
 		var id_lbl := Label.new()
 		id_lbl.text = str(m.get("player_name", "玩家 #%s" % member_id))
@@ -548,40 +562,109 @@ func _update_chat_display():
 		child.queue_free()
 	for msg in current_chat:
 		chat_list.add_child(_create_chat_node(msg))
+	var sc = get_meta("chat_scroll", null)
+	if sc:
+		await get_tree().process_frame
+		sc.scroll_vertical = int(sc.get_v_scroll_bar().max_value)
 
+func _format_chat_time(ts: float) -> String:
+	if ts <= 0.0:
+		return ""
+	var d := Time.get_datetime_dict_from_unix_time(int(ts))
+	return "%02d:%02d" % [int(d.hour), int(d.minute)]
 
 func _create_chat_node(msg: Dictionary) -> Control:
-	var hbox := HBoxContainer.new()
-	var sender := Label.new()
-	sender.text = msg.get("player_name", "")
-	sender.custom_minimum_size = Vector2(110, 0)
-	sender.add_theme_font_size_override("font_size", 12)
-	sender.add_theme_color_override("font_color", Color.SKY_BLUE)
-	hbox.add_child(sender)
+	var sender_name := String(msg.get("player_name", "玩家"))
+	var pid := int(msg.get("player_id", 0))
+	var is_me: bool = pid == ClanManager.get_player_id() or (pid == 0 and sender_name == PlayerData.player_name)
+	var row := HBoxContainer.new()
+	row.add_theme_constant_override("separation", 8)
+	row.alignment = BoxContainer.ALIGNMENT_END if is_me else BoxContainer.ALIGNMENT_BEGIN
+	row.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 
-	var content := Label.new()
-	content.text = msg.get("message", "")
-	content.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	content.add_theme_font_size_override("font_size", 12)
-	content.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	hbox.add_child(content)
+	var seed_value: int = int(msg.get("avatar_seed", absi(hash(sender_name))))
+	var avatar_index: int = int(msg.get("avatar_index", seed_value % 12))
+	var av = AVATAR_ICON.new()
+	av.custom_minimum_size = Vector2(34, 34)
+	av.size = Vector2(34, 34)
+	if is_me:
+		av.setup_local()
+	else:
+		av.setup(sender_name, seed_value, avatar_index)
+	if not is_me:
+		row.add_child(av)
 
-	if msg.get("type", "") == "request" and msg.get("player_id", 0) != ClanManager.get_player_id():
-		var card_id = msg.get("card_id", 0)
-		var amount = msg.get("amount", 0)
-		var can_donate: bool = (
-			PlayerData.get_card_quantity(card_id) >= amount
-			and (8 - PlayerData.donations_used) >= amount
-		)
-		var donate_btn := UiComponents.make_primary_button("捐赠", Callable(), Vector2(72, 34))
-		donate_btn.disabled = not can_donate
-		var target := int(msg.get("player_id", 0))
-		var cid := int(card_id)
-		var amt := int(amount)
-		donate_btn.pressed.connect(_donate_card.bind(target, cid, amt))
-		hbox.add_child(donate_btn)
+	var col := VBoxContainer.new()
+	col.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	col.add_theme_constant_override("separation", 2)
+	row.add_child(col)
 
-	return hbox
+	var meta := HBoxContainer.new()
+	meta.alignment = BoxContainer.ALIGNMENT_END if is_me else BoxContainer.ALIGNMENT_BEGIN
+	meta.add_theme_constant_override("separation", 8)
+	col.add_child(meta)
+	var name_lbl := Label.new()
+	name_lbl.text = "你" if is_me else sender_name
+	name_lbl.add_theme_font_size_override("font_size", 12)
+	name_lbl.add_theme_color_override("font_color", Color(0.58, 0.82, 1.0) if is_me else Color(0.78, 0.84, 0.94))
+	meta.add_child(name_lbl)
+	var time_lbl := Label.new()
+	time_lbl.text = _format_chat_time(float(msg.get("timestamp", 0.0)))
+	time_lbl.add_theme_font_size_override("font_size", 10)
+	time_lbl.add_theme_color_override("font_color", Color(0.52, 0.60, 0.72))
+	meta.add_child(time_lbl)
+
+	var bubble := Panel.new()
+	var bs := StyleBoxFlat.new()
+	bs.bg_color = Color(0.14, 0.30, 0.51, 0.96) if is_me else Color(0.075, 0.11, 0.19, 0.96)
+	bs.border_color = Color(0.96, 0.77, 0.36, 0.48) if is_me else Color(1, 1, 1, 0.10)
+	bs.set_border_width_all(1)
+	bs.set_corner_radius_all(14)
+	bs.content_margin_left = 12
+	bs.content_margin_right = 12
+	bs.content_margin_top = 8
+	bs.content_margin_bottom = 8
+	bubble.add_theme_stylebox_override("panel", bs)
+	bubble.size_flags_horizontal = Control.SIZE_SHRINK_END if is_me else Control.SIZE_SHRINK_BEGIN
+	col.add_child(bubble)
+
+	var body := HBoxContainer.new()
+	body.add_theme_constant_override("separation", 8)
+	bubble.add_child(body)
+	var msg_type := String(msg.get("type", "chat"))
+	if msg_type == "request":
+		var cid := int(msg.get("card_id", 0))
+		var cname := String(msg.get("card_name", "卡牌"))
+		var amt := int(msg.get("amount", 1))
+		var card_icon = REWARD_ICON.new()
+		card_icon.custom_minimum_size = Vector2(48, 62)
+		card_icon.setup("card", amt, cname, cid)
+		body.add_child(card_icon)
+		var req_text := Label.new()
+		req_text.text = "请求 %d 张\n%s" % [amt, cname]
+		req_text.add_theme_font_size_override("font_size", 13)
+		req_text.add_theme_color_override("font_color", Color(0.95, 0.94, 0.90))
+		req_text.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		req_text.custom_minimum_size = Vector2(140, 0)
+		body.add_child(req_text)
+		if pid != ClanManager.get_player_id():
+			var can_donate: bool = (PlayerData.get_card_quantity(cid) >= amt and (8 - PlayerData.donations_used) >= amt)
+			var donate_btn := UiComponents.make_primary_button("捐赠", Callable(), Vector2(72, 34))
+			donate_btn.disabled = not can_donate
+			donate_btn.pressed.connect(_donate_card.bind(pid, cid, amt))
+			body.add_child(donate_btn)
+	else:
+		var content := Label.new()
+		content.text = String(msg.get("message", ""))
+		content.add_theme_font_size_override("font_size", 13)
+		content.add_theme_color_override("font_color", Color(0.95, 0.94, 0.90))
+		content.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		content.custom_minimum_size = Vector2(220, 0)
+		body.add_child(content)
+
+	if is_me:
+		row.add_child(av)
+	return row
 
 
 func _on_send_chat():

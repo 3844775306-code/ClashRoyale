@@ -1,6 +1,7 @@
 # scripts/ui/LeaderboardUI.gd
 # 排行榜界面：前三名奖牌配色 + 当前玩家高亮 + 空/加载状态
 extends Control
+const AVATAR_ICON = preload("res://scripts/ui/AvatarIcon.gd")
 
 var leader_list: VBoxContainer
 
@@ -78,14 +79,26 @@ func _populate_list(entries: Array):
 		rank_lbl.add_theme_font_size_override("font_size", 22)
 		match rank:
 			1:
-				rank_lbl.text = "🥇"
+				rank_lbl.text = "1"
+				rank_lbl.add_theme_color_override("font_color", Color(1.0, 0.84, 0.30))
 			2:
-				rank_lbl.text = "🥈"
+				rank_lbl.text = "2"
+				rank_lbl.add_theme_color_override("font_color", Color(0.82, 0.86, 0.92))
 			3:
-				rank_lbl.text = "🥉"
+				rank_lbl.text = "3"
+				rank_lbl.add_theme_color_override("font_color", Color(0.86, 0.58, 0.30))
 			_:
 				rank_lbl.text = str(rank)
 		hbox.add_child(rank_lbl)
+		var av = AVATAR_ICON.new()
+		av.custom_minimum_size = Vector2(46, 46)
+		av.size = Vector2(46, 46)
+		if is_self:
+			av.setup_local()
+		else:
+			var hs: int = absi(hash(String(data.name)))
+			av.setup(String(data.name), hs, hs % 12)
+		hbox.add_child(av)
 
 		# 玩家名
 		var name_lbl := Label.new()
@@ -100,7 +113,7 @@ func _populate_list(entries: Array):
 
 		# 奖杯数
 		var score_lbl := Label.new()
-		score_lbl.text = "🏆 %d" % data.score
+		score_lbl.text = "%d 杯" % data.score
 		score_lbl.add_theme_font_size_override("font_size", 18)
 		score_lbl.add_theme_color_override("font_color", ThemeHelper.COLORS.gold)
 		score_lbl.vertical_alignment = VERTICAL_ALIGNMENT_CENTER

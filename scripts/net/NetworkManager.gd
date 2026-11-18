@@ -87,10 +87,10 @@ func start_host(port: int = DEFAULT_PORT, mode: String = "1v1", ai0: int = 0, ai
 	for cid in host_deck:
 		host_levels[str(int(cid))] = PlayerData.get_card_level(int(cid))
 	players.clear()
-	players[1] = {"name": PlayerData.player_name, "deck": host_deck, "levels": host_levels, "seated": true, "tower_choice": PlayerData.tower_choice}
+	players[1] = {"name": PlayerData.player_name, "deck": host_deck, "levels": host_levels, "seated": true, "tower_choice": PlayerData.tower_choice, "avatar_seed": PlayerData.avatar_seed, "avatar_index": PlayerData.avatar_index}
 	seats.clear()
-	seats.append({"team": 0, "idx": 0, "peer": 1, "name": PlayerData.player_name, "ai": false, "deck": host_deck, "levels": host_levels, "tower_choice": PlayerData.tower_choice})
-	seats.append({"team": 1, "idx": 0, "peer": 0, "name": "AI", "ai": true, "deck": PlayerData.get_ai_default_deck(), "levels": {}, "tower_choice": 1})
+	seats.append({"team": 0, "idx": 0, "peer": 1, "name": PlayerData.player_name, "ai": false, "deck": host_deck, "levels": host_levels, "tower_choice": PlayerData.tower_choice, "avatar_seed": PlayerData.avatar_seed, "avatar_index": PlayerData.avatar_index})
+	seats.append({"team": 1, "idx": 0, "peer": 0, "name": "AI", "ai": true, "deck": PlayerData.get_ai_default_deck(), "levels": {}, "tower_choice": 1, "avatar_seed": 0, "avatar_index": 0})
 	local_seat_team = 0
 	local_seat_idx = 0
 	local_slot = 0
@@ -124,7 +124,7 @@ func add_seat(team: int) -> bool:
 	if role != Role.HOST or seats_in_team(team).size() >= 2:
 		return false
 	var idx := seats_in_team(team).size()
-	seats.append({"team": team, "idx": idx, "peer": 0, "name": "AI", "ai": true, "deck": PlayerData.get_ai_default_deck(), "levels": {}, "tower_choice": 1})
+	seats.append({"team": team, "idx": idx, "peer": 0, "name": "AI", "ai": true, "deck": PlayerData.get_ai_default_deck(), "levels": {}, "tower_choice": 1, "avatar_seed": 0, "avatar_index": 0})
 	room_mode = mode_name()
 	_broadcast_seats()
 	seats_changed.emit()
@@ -134,7 +134,8 @@ func add_seat(team: int) -> bool:
 func _seat_public() -> Array:
 	var out: Array = []
 	for s in seats:
-		out.append({"team": int(s.team), "idx": int(s.idx), "peer": int(s.peer), "name": String(s.name), "ai": bool(s.ai), "deck": Array(s.get("deck", [])), "levels": Dictionary(s.get("levels", {})), "tower_choice": int(s.get("tower_choice", 1))})
+		out.append({"team": int(s.team), "idx": int(s.idx), "peer": int(s.peer), "name": String(s.name), "ai": bool(s.ai), "deck": Array(s.get("deck", [])), "levels": Dictionary(s.get("levels", {})), "tower_choice": int(s.get("tower_choice", 1)),
+			"avatar_seed": int(s.get("avatar_seed", 0)), "avatar_index": int(s.get("avatar_index", 0))})
 	return out
 
 func _broadcast_seats() -> void:
@@ -179,6 +180,8 @@ func request_claim_seat(team: int, idx: int) -> void:
 	target.name = String(players[pid].name)
 	target.ai = false
 	target.tower_choice = int(players[pid].get("tower_choice", 1))
+	target.avatar_seed = int(players[pid].get("avatar_seed", 0))
+	target.avatar_index = int(players[pid].get("avatar_index", 0))
 	_broadcast_seats()
 	seats_changed.emit()
 
@@ -247,7 +250,7 @@ func start_match() -> void:
 
 
 @rpc("any_peer", "call_remote", "reliable")
-func request_join(code: String, deck: Array, levels: Dictionary, pname: String, tower_choice: int = 1) -> void:
+func request_join(code: String, deck: Array, levels: Dictionary, pname: String, tower_choice: int = 1, avatar_seed: int = 0, avatar_index: int = 0) -> void:
 	if role != Role.HOST:
 		return
 	var pid := multiplayer.get_remote_sender_id()
@@ -258,7 +261,7 @@ func request_join(code: String, deck: Array, levels: Dictionary, pname: String, 
 		var d: Array = []
 		for cid in deck:
 			if d.size() < 8: d.append(int(cid))
-		players[pid] = {"name": pname, "deck": d, "levels": levels.duplicate(true), "seated": false, "tower_choice": tower_choice}
+		players[pid] = {"name": pname, "deck": d, "levels": levels.duplicate(true), "seated": false, "tower_choice": tower_choice, "avatar_seed": avatar_seed, "avatar_index": avatar_index}
 		if guest_peer_id == 0:
 			guest_peer_id = pid
 			guest_name = pname
@@ -427,7 +430,7 @@ func _on_connected_to_server():
 	for cid in deck:
 		levels[str(int(cid))] = PlayerData.get_card_level(int(cid))
 	print("NET guest connected, request join")
-	rpc_id(1, "request_join", _pending_code, deck, levels, PlayerData.player_name, PlayerData.tower_choice)
+	rpc_id(1, "request_join", _pending_code, deck, levels, PlayerData.player_name, PlayerData.tower_choice, PlayerData.avatar_seed, PlayerData.avatar_index)
 	lobby_status.emit("已连接，正在加入房间…")
 
 func _on_connection_failed():

@@ -10,6 +10,8 @@
 # 配合 ThemeHelper 使用：颜色与字体一律取 ThemeHelper 常量，不散落魔法数字。
 extends Node
 
+const AVATAR_ICON = preload("res://scripts/ui/AvatarIcon.gd")
+
 const HEADER_H := 72          # 统一顶部栏下方内容起始高度
 const TOPBAR_H := 64          # 统一顶部栏高度
 const SIDE_MARGIN := 24       # 左右留白
@@ -128,9 +130,13 @@ func make_header(owner: Control, title: String, back_action: Callable = Callable
 	avatar.position = Vector2(4, 7)
 	avatar.size = Vector2(34, 34)
 	chip.add_child(avatar)
-	var crown = _ui_icon("crown", 22.0, ThemeHelper.COLORS.gold)
-	crown.position = Vector2(6, 6)
-	avatar.add_child(crown)
+	var av = AVATAR_ICON.new()
+	av.position = Vector2(2, 2)
+	av.size = Vector2(30, 30)
+	av.custom_minimum_size = Vector2(30, 30)
+	av.add_to_group("topbar_avatar")
+	avatar.add_child(av)
+	av.setup_local()
 
 	var name_lbl := Label.new()
 	name_lbl.text = PlayerData.player_name
@@ -232,6 +238,9 @@ func refresh_topbar_name() -> void:
 func refresh_topbar() -> void:
 	refresh_topbar_name()
 	refresh_topbar_currency()
+	for n in get_tree().get_nodes_in_group("topbar_avatar"):
+		if n.has_method("setup_local"):
+			n.setup_local()
 
 
 func _open_name_dialog(host: Control) -> void:
