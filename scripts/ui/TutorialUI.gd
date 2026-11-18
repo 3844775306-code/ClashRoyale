@@ -8,7 +8,7 @@ const PARCHMENT := Color(0.94, 0.91, 0.82)
 const MUTED := Color(0.66, 0.73, 0.84)
 const BLUE := Color(0.32, 0.62, 1.0)
 const RED := Color(1.0, 0.42, 0.36)
-const PAGE_COUNT := 5
+const PAGE_COUNT := 6
 
 var _page := 0
 var _panel: Panel
@@ -88,10 +88,11 @@ func _render():
 	_skip_btn.visible = _page < PAGE_COUNT - 1
 	match _page:
 		0: _page_welcome()
-		1: _page_elixir()
-		2: _page_deploy()
-		3: _page_towers()
-		4: _page_finish()
+		1: _page_starter_cards()
+		2: _page_elixir()
+		3: _page_deploy()
+		4: _page_towers()
+		5: _page_finish()
 	call_deferred("_fit_panel")
 
 func _fit_panel():
@@ -175,6 +176,46 @@ func _page_welcome():
 		v.add_child(_label(item[1], 22, PARCHMENT))
 		v.add_child(_label(item[2], 13, MUTED))
 	_body.add_child(_label("完成训练营后，你会获得第一套基础卡组。", 15, Color(0.72, 0.84, 0.98)))
+
+func _page_starter_cards():
+	_heading("你的六张起始卡牌", "默认出战卡组就是这六张；先认识它们，再进战场练习。")
+	var grid := GridContainer.new()
+	grid.columns = 2
+	grid.add_theme_constant_override("h_separation", 12)
+	grid.add_theme_constant_override("v_separation", 10)
+	_body.add_child(grid)
+	var cards := [
+		["骑士", "3 圣水", "近战坦克，适合顶在前排。"],
+		["弓箭手", "3 圣水", "远程输出，可以攻击空中单位。"],
+		["亡灵", "3 圣水", "空中群体，适合围杀地面单位。"],
+		["巨人", "5 圣水", "只攻击建筑，用来吸引防御塔火力。"],
+		["火球", "4 圣水", "范围法术，清理成群的中低血量单位。"],
+		["万箭齐发", "3 圣水", "大范围低伤害法术，克制骷髅/哥布林人海。"],
+	]
+	for c in cards:
+		var p := Panel.new()
+		p.custom_minimum_size = Vector2(300, 116)
+		var sb := StyleBoxFlat.new()
+		sb.bg_color = Color(0.07, 0.10, 0.19, 0.92)
+		sb.border_color = Color(GOLD.r, GOLD.g, GOLD.b, 0.32)
+		sb.set_border_width_all(1)
+		sb.set_corner_radius_all(14)
+		p.add_theme_stylebox_override("panel", sb)
+		grid.add_child(p)
+		var v := VBoxContainer.new()
+		v.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+		v.offset_left = 14; v.offset_right = -14; v.offset_top = 10; v.offset_bottom = -10
+		v.add_theme_constant_override("separation", 2)
+		p.add_child(v)
+		var head := HBoxContainer.new()
+		v.add_child(head)
+		head.add_child(_label(c[0], 20, PARCHMENT))
+		var cost := _label(c[1], 14, Color(0.80, 0.66, 1.0))
+		cost.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		cost.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+		head.add_child(cost)
+		v.add_child(_label(c[2], 13, MUTED))
+	_body.add_child(_label("小提示：圣水会随时间恢复；先下低费卡，再用高费卡推进。", 14, Color(0.72, 0.84, 0.98)))
 
 func _page_elixir():
 	_heading("圣水是战斗的燃料", "卡牌左下角的数字就是费用；圣水会随时间恢复。")

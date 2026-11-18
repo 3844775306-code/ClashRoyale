@@ -4,6 +4,7 @@ extends Node
 const CARD_RARITY = preload("res://scripts/data/CardRarity.gd")
 
 const SAVE_PATH = "user://player_data.cfg"
+const STARTER_CARDS: Array = [44, 10, 4, 8, 9, 11]
 const SAVE_VERSION = 1               # 当前版本
 # 2026 官方国王塔升级条件：[目标塔等级, 需要达到该卡等级的张数, 卡牌最低等级]
 # 2026 官方 Trophy Road：32 个竞技场（名称、起始奖杯、国王塔等级门槛）
@@ -52,6 +53,7 @@ var record_replays: bool = true
 var tutorial_done: bool = false
 var tutorial_practice: bool = false
 var tutorial_chest_claimed: bool = false
+var starter_cards_v2: bool = false
 func _ready():
 	
 	load_data()
@@ -543,6 +545,7 @@ func load_data():
 		record_replays = bool(config.get_value("player", "record_replays", true))
 		tutorial_done = bool(config.get_value("player", "tutorial_done", false))
 		tutorial_chest_claimed = bool(config.get_value("player", "tutorial_chest_claimed", false))
+		starter_cards_v2 = bool(config.get_value("player", "starter_cards_v2", false))
 		experience = config.get_value("player", "experience", 0)
 		trophies = config.get_value("player", "trophies", 0)
 		highest_trophies = config.get_value("player", "highest_trophies", trophies)
@@ -605,6 +608,7 @@ func save_data():
 	config.set_value("player", "record_replays", record_replays)
 	config.set_value("player", "tutorial_done", tutorial_done)
 	config.set_value("player", "tutorial_chest_claimed", tutorial_chest_claimed)
+	config.set_value("player", "starter_cards_v2", starter_cards_v2)
 	config.set_value("player", "donations_used", donations_used)
 	config.set_value("player", "custom_deck", custom_deck)
 	config.set_value("player", "custom_decks", custom_decks)
@@ -615,23 +619,36 @@ func save_data():
 	config.save(SAVE_PATH)
 
 func _ensure_starter_cards() -> void:
-	# 不在皇室征程奖励里的卡牌，开局默认拥有（只补缺失的，不覆盖已有等级/数量）
+	# 新手固定六张：弓箭手、万箭齐发、骑士、亡灵、巨人、火球
+	var STARTER: Array = STARTER_CARDS
 	var road_cards: Dictionary = {}
 	for row in _load_trophy_road():
 		var cid: int = int(row.get("card_id", 0))
 		if cid > 3:
 			road_cards[cid] = true
-	var changed := false
-	for id_key in CARD_RARITY.RARITY_BY_ID.keys():
-		var cid2: int = int(id_key)
-		if cid2 <= 3 or road_cards.has(cid2):
-			continue
-		if get_card_quantity(cid2) <= 0 and not card_levels.has(cid2):
-			card_quantities[cid2] = 1
-			card_levels[cid2] = CARD_RARITY.start_level_by_id(cid2)
-			changed = true
-	if changed:
-		save_data()
+	# 第一次应用新手卡池：零奖杯账号清掉旧版“全非征程卡”自动赠送，避免卡组过满
+	if not starter_cards_v2 and trophies <= 0:
+		for id_key in CARD_RARITY.RARITY_BY_ID.keys():
+			var cid: int = int(id_key)
+			if cid <= 3 or STARTER.has(cid) or road_cards.has(cid):
+				continue
+			card_quantities.erase(cid)
+			card_levels.erase(cid)
+	for cid in STARTER:
+		if get_card_quantity(cid) <= 0 and not card_levels.has(cid):
+			card_quantities[cid] = 1
+			card_levels[cid] = CARD_RARITY.start_level_by_id(cid)
+	# 默认出战卡组固定为六张起始卡
+	if custom_decks.size() < 5:
+		while custom_decks.size() < 5:
+			custom_decks.append([])
+	if not starter_cards_v2 or custom_decks[0].is_empty():
+		custom_decks[0] = STARTER.duplicate()
+		custom_deck = STARTER.duplicate()
+		active_deck_index = 0
+		use_custom_deck = true
+	starter_cards_v2 = true
+	save_data()
 
 func is_card_owned(card_id: int) -> bool:
 	if card_id <= 3:

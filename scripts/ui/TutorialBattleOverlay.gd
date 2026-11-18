@@ -54,12 +54,12 @@ func _label(text: String, fs: int, col: Color) -> Label:
 
 func _refresh():
 	if _step == 0:
-		_title.text = "实战训练 1/2 · 部署第一张卡"
-		_body.text = "点击底部卡牌，再点击己方战场；也可以直接把卡牌拖到战场。绿色范围表示可放置。"
+		_title.text = "实战训练 1/2 · 先下骑士或弓箭手"
+		_body.text = "点击底部卡牌，再点击己方战场；也可以直接把卡牌拖到战场。绿色范围表示可放置。先用骑士顶前排，或用弓箭手后排输出。"
 		_btn.visible = false
 	elif _step == 1:
-		_title.text = "实战训练 2/2 · 观察圣水"
-		_body.text = "部署成功！卡牌费用已扣除，圣水会随时间恢复。继续部署第二张卡，熟悉费用节奏。"
+		_title.text = "实战训练 2/2 · 试试法术"
+		_body.text = "部署成功！卡牌费用已扣除，圣水会随时间恢复。再试试火球或万箭齐发，熟悉法术的范围和目标选择。"
 		_btn.visible = true
 		_btn.text = "完成训练"
 	else:

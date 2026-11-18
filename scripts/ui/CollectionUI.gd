@@ -3,6 +3,7 @@ extends Control
 const EMOTES = preload("res://scripts/data/EmoteCatalog.gd")
 const CARD_RARITY = preload("res://scripts/data/CardRarity.gd")
 const REWARD_ICON = preload("res://scripts/ui/RewardIcon.gd")
+const EMOTE_ICON = preload("res://scripts/ui/EmoteIcon.gd")
 
 func _ready():
 	_apply_text_theme()
@@ -84,12 +85,19 @@ func _emote_card(item: Dictionary) -> Panel:
 	v.alignment = BoxContainer.ALIGNMENT_CENTER
 	v.add_theme_constant_override("separation", 2)
 	p.add_child(v)
-	var glyph := Label.new()
-	glyph.text = String(item.glyph) if owned else "🔒"
-	glyph.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	glyph.add_theme_font_size_override("font_size", 64)
-	glyph.add_theme_color_override("font_color", accent if owned else Color(0.40, 0.44, 0.52))
-	v.add_child(glyph)
+	if owned:
+		var glyph = EMOTE_ICON.new()
+		glyph.emote_id = String(item.id)
+		glyph.custom_minimum_size = Vector2(120, 120)
+		glyph.size = Vector2(120, 120)
+		v.add_child(glyph)
+	else:
+		var lock := Label.new()
+		lock.text = "未解锁"
+		lock.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		lock.add_theme_font_size_override("font_size", 22)
+		lock.add_theme_color_override("font_color", Color(0.40, 0.44, 0.52))
+		v.add_child(lock)
 	var name := Label.new()
 	name.text = String(item.name) if owned else "未解锁"
 	name.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER

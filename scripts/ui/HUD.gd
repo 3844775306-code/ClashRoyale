@@ -387,11 +387,17 @@ func _on_emote_pressed():
 		return
 	for eid in emotes:
 		var b := Button.new()
-		b.text = "%s  %s" % [_emote_glyph(String(eid)), EmoteCatalog.name_of(String(eid))]
-		b.custom_minimum_size = Vector2(0, 64)
-		b.add_theme_font_size_override("font_size", 26)
-		ThemeHelper.apply_card_button_style(b)
 		var id: String = String(eid)
+		b.text = "       %s" % EmoteCatalog.name_of(id)
+		b.alignment = HORIZONTAL_ALIGNMENT_LEFT
+		b.custom_minimum_size = Vector2(0, 64)
+		b.add_theme_font_size_override("font_size", 24)
+		ThemeHelper.apply_card_button_style(b)
+		var badge = preload("res://scripts/ui/EmoteIcon.gd").new()
+		badge.emote_id = id
+		badge.position = Vector2(10, 8)
+		badge.size = Vector2(48, 48)
+		b.add_child(badge)
 		b.pressed.connect(func(): _send_emote(id))
 		emote_list.add_child(b)
 
@@ -406,20 +412,20 @@ func show_emote(id: String, team: int = Config.Team.PLAYER):
 	if team == Config.Team.PLAYER:
 		emote_panel.visible = false
 	var is_enemy: bool = team == Config.Team.ENEMY
-	var l := Label.new()
-	l.text = _emote_glyph(id)
-	l.add_theme_font_size_override("font_size", 84)
+	var l = preload("res://scripts/ui/EmoteIcon.gd").new()
+	l.emote_id = id
+	l.size = Vector2(120, 120)
 	var vp: Vector2 = get_viewport().get_visible_rect().size
-	l.position = Vector2(vp.x * 0.5 - 50, 310) if not is_enemy else Vector2(vp.x - 220, 230)
+	l.position = Vector2(vp.x * 0.5 - 60, 290) if not is_enemy else Vector2(vp.x - 230, 220)
 	l.z_index = 60
 	if is_enemy:
-		l.modulate = Color(1.0, 0.72, 0.72)
+		l.modulate = Color(1.0, 0.78, 0.78)
 	add_child(l)
 	var tag := Label.new()
 	tag.text = "对手" if is_enemy else "你"
 	tag.add_theme_font_size_override("font_size", 16)
 	tag.add_theme_color_override("font_color", Color(1.0, 0.55, 0.55) if is_enemy else Color(0.7, 0.9, 1.0))
-	tag.position = l.position + Vector2(30, 90)
+	tag.position = l.position + Vector2(35, 122)
 	tag.z_index = 60
 	add_child(tag)
 	var tw := create_tween()

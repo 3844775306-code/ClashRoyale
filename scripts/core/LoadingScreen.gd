@@ -50,10 +50,12 @@ func _ready():
 	v.add_theme_constant_override("separation", 14)
 	_panel.add_child(v)
 
-	var crown := Label.new()
-	crown.text = "👑"
-	crown.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	crown.add_theme_font_size_override("font_size", 78)
+	var crown := TextureRect.new()
+	crown.texture = load("res://icon.svg")
+	crown.custom_minimum_size = Vector2(0, 118)
+	crown.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	crown.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	crown.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	v.add_child(crown)
 	var title := Label.new()
 	title.text = "皇 室 战 争"
