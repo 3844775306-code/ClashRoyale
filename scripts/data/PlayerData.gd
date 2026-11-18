@@ -51,9 +51,11 @@ var last_card_request: float = 0.0
 var record_replays: bool = true
 var tutorial_done: bool = false
 var tutorial_practice: bool = false
+var tutorial_chest_claimed: bool = false
 func _ready():
 	
 	load_data()
+	_ensure_starter_cards()
 	for i in range(130):
 		ai_levels[i] = get_ai_card_level()
 	
@@ -540,6 +542,7 @@ func load_data():
 		last_card_request = float(config.get_value("player", "last_card_request", 0.0))
 		record_replays = bool(config.get_value("player", "record_replays", true))
 		tutorial_done = bool(config.get_value("player", "tutorial_done", false))
+		tutorial_chest_claimed = bool(config.get_value("player", "tutorial_chest_claimed", false))
 		experience = config.get_value("player", "experience", 0)
 		trophies = config.get_value("player", "trophies", 0)
 		highest_trophies = config.get_value("player", "highest_trophies", trophies)
@@ -601,6 +604,7 @@ func save_data():
 	config.set_value("player", "last_card_request", last_card_request)
 	config.set_value("player", "record_replays", record_replays)
 	config.set_value("player", "tutorial_done", tutorial_done)
+	config.set_value("player", "tutorial_chest_claimed", tutorial_chest_claimed)
 	config.set_value("player", "donations_used", donations_used)
 	config.set_value("player", "custom_deck", custom_deck)
 	config.set_value("player", "custom_decks", custom_decks)
@@ -609,6 +613,25 @@ func save_data():
 	config.set_value("player", "test_mode", test_mode)
 	config.set_value("player", "deck_sort_mode", deck_sort_mode)
 	config.save(SAVE_PATH)
+
+func _ensure_starter_cards() -> void:
+	# 不在皇室征程奖励里的卡牌，开局默认拥有（只补缺失的，不覆盖已有等级/数量）
+	var road_cards: Dictionary = {}
+	for row in _load_trophy_road():
+		var cid: int = int(row.get("card_id", 0))
+		if cid > 3:
+			road_cards[cid] = true
+	var changed := false
+	for id_key in CARD_RARITY.RARITY_BY_ID.keys():
+		var cid2: int = int(id_key)
+		if cid2 <= 3 or road_cards.has(cid2):
+			continue
+		if get_card_quantity(cid2) <= 0 and not card_levels.has(cid2):
+			card_quantities[cid2] = 1
+			card_levels[cid2] = CARD_RARITY.start_level_by_id(cid2)
+			changed = true
+	if changed:
+		save_data()
 
 func is_card_owned(card_id: int) -> bool:
 	if card_id <= 3:

@@ -38,7 +38,7 @@ func _ready():
 	_btn = UiComponents.make_primary_button("下一步", _next_step, Vector2(210, 48))
 	_btn.position = Vector2(478, 116)
 	_panel.add_child(_btn)
-	_skip = UiComponents.make_secondary_button("跳过训练", _finish, Vector2(150, 44))
+	_skip = UiComponents.make_secondary_button("跳过训练", _skip_training, Vector2(150, 44))
 	_skip.position = Vector2(20, 116)
 	_panel.add_child(_skip)
 	_refresh()
@@ -84,10 +84,24 @@ func _next_step():
 	else:
 		_finish()
 
-func _finish():
+func _skip_training():
 	if _done:
 		return
 	_done = true
 	PlayerData.tutorial_done = true
 	PlayerData.save_data()
+	get_tree().change_scene_to_file("res://scenes/menu.tscn")
+
+func _finish():
+	if _done:
+		return
+	_done = true
+	PlayerData.tutorial_done = true
+	if not PlayerData.tutorial_chest_claimed:
+		PlayerData.tutorial_chest_claimed = true
+		PlayerData.add_chest("silver")
+	PlayerData.save_data()
+	var notifier := get_tree().get_first_node_in_group("ui_notifier")
+	if notifier and "text" in notifier:
+		notifier.text = "新手训练完成：获得 1 个宝箱"
 	get_tree().change_scene_to_file("res://scenes/menu.tscn")

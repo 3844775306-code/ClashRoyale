@@ -94,7 +94,7 @@ func _create_ui_elements():
 
 	# 玩家皇冠（左）
 	crowns_player_label = Label.new()
-	crowns_player_label.text = "👑 你 0"
+	crowns_player_label.text = "你 0"
 	crowns_player_label.position = Vector2(18, 20)
 	crowns_player_label.size = Vector2(220, 44)
 	crowns_player_label.add_theme_font_size_override("font_size", 22)
@@ -107,7 +107,7 @@ func _create_ui_elements():
 
 	# 敌方皇冠（右）
 	crowns_enemy_label = Label.new()
-	crowns_enemy_label.text = "敌 0 👑"
+	crowns_enemy_label.text = "敌 0"
 	crowns_enemy_label.position = Vector2(screen_size.x - 320, 20)
 	crowns_enemy_label.size = Vector2(220, 44)
 	crowns_enemy_label.add_theme_font_size_override("font_size", 22)
@@ -193,7 +193,7 @@ func _create_ui_elements():
 	add_child(elixir_row)
 
 	elixir_icon = Label.new()
-	elixir_icon.text = "💧"
+	elixir_icon.text = "圣水"
 	elixir_icon.custom_minimum_size = Vector2(26, 26)
 	elixir_icon.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	elixir_icon.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
@@ -218,7 +218,7 @@ func _create_ui_elements():
 
 	# 双倍圣水徽标（平时隐藏；出现时整行自动重新居中）
 	double_elixir_label = Label.new()
-	double_elixir_label.text = "⚡ 双倍圣水"
+	double_elixir_label.text = "双倍圣水"
 	double_elixir_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 	double_elixir_label.add_theme_font_size_override("font_size", 19)
 	double_elixir_label.add_theme_color_override("font_color", ThemeHelper.COLORS.gold_bright)
@@ -268,7 +268,7 @@ func _create_ui_elements():
 	game_over_panel = game_over_screen
 	# ========== 暂停按钮（右上角） ==========
 	pause_button = Button.new()
-	pause_button.text = "⏸"
+	pause_button.text = "II"
 	pause_button.position = Vector2(screen_size.x - 56, 22)
 	pause_button.size = Vector2(40, 40)
 	pause_button.pressed.connect(_on_pause_pressed)
@@ -276,7 +276,7 @@ func _create_ui_elements():
 	add_child(pause_button)
 	# ========== 表情按钮 ==========
 	emote_button = Button.new()
-	emote_button.text = "😀"
+	emote_button.text = "表情"
 	emote_button.position = Vector2(screen_size.x - 104, 22)
 	emote_button.size = Vector2(40, 40)
 	ThemeHelper.apply_button_style(emote_button)
@@ -312,7 +312,7 @@ func _create_ui_elements():
 	pause_card.add_child(pvbox)
 
 	var pause_title := Label.new()
-	pause_title.text = "⏸ 已暂停"
+	pause_title.text = "已暂停"
 	pause_title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	pause_title.add_theme_font_size_override("font_size", 28)
 	pause_title.add_theme_color_override("font_color", ThemeHelper.COLORS.gold)
@@ -353,7 +353,7 @@ func _build_emote_panel(screen_size: Vector2):
 	v.add_theme_constant_override("separation", 10)
 	card.add_child(v)
 	var title := Label.new()
-	title.text = "😀 选择表情"
+	title.text = "选择表情"
 	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	title.add_theme_font_size_override("font_size", 26)
 	title.add_theme_color_override("font_color", Color(0.62, 0.90, 1.0))
@@ -523,8 +523,8 @@ func _process(_delta):
 		else:
 			elixir_bar.highlight_cost = 0
 	_update_timer()
-	crowns_player_label.text = "👑 你 %d" % battle.player_crowns
-	crowns_enemy_label.text = "敌 %d 👑" % battle.enemy_crowns
+	crowns_player_label.text = "你 %d" % battle.player_crowns
+	crowns_enemy_label.text = "敌 %d" % battle.enemy_crowns
 	double_elixir_label.visible = battle.elixir_rate >= 1.5
 	# 更新所有血条
 	_update_health_bars()
@@ -778,8 +778,8 @@ func _update_health_bars():
 # 皇冠动画（3D 塔位置 → 顶部皇冠计数）
 # ============================================================
 func update_crown_labels(pc: int, ec: int) -> void:
-	crowns_player_label.text = "👑 你 %d" % pc
-	crowns_enemy_label.text = "敌 %d 👑" % ec
+	crowns_player_label.text = "你 %d" % pc
+	crowns_enemy_label.text = "敌 %d" % ec
 
 func hide_card_tray() -> void:
 	if table_bg:

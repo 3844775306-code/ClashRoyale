@@ -49,6 +49,7 @@ func _ready():
 	_build_tabs()
 	_build_content()
 	_refresh_my_clan()
+	_load_all_clans()
 	toast_label = Label.new()
 	toast_label.position = Vector2(70, 1540)
 	toast_label.size = Vector2(660, 32)
@@ -310,11 +311,12 @@ func _build_search_tab():
 	var row := HBoxContainer.new()
 	row.add_theme_constant_override("separation", 10)
 	search_input = LineEdit.new()
-	search_input.placeholder_text = "输入部落名称"
+	search_input.placeholder_text = "输入关键词筛选已有部落"
 	search_input.custom_minimum_size = Vector2(0, 52)
 	search_input.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	search_input.text_submitted.connect(func(_t): _on_search_clans())
 	row.add_child(search_input)
-	search_btn = UiComponents.make_primary_button("搜索", _on_search_clans, Vector2(120, 52))
+	search_btn = UiComponents.make_primary_button("筛选", _on_search_clans, Vector2(120, 52))
 	row.add_child(search_btn)
 	form.add_child(row)
 
@@ -385,6 +387,16 @@ func _build_create_tab():
 
 # ==================== 分节切换 ====================
 
+func _load_all_clans():
+	if clan_list == null:
+		return
+	ClanManager.search_clans(func(ok, clans):
+		if ok:
+			_show_clan_list(clans)
+		else:
+			_toast("获取部落列表失败：%s" % str(clans))
+	, "")
+
 func _switch_tab(i: int):
 	current_tab = i
 	for b in tab_buttons.size():
@@ -392,6 +404,8 @@ func _switch_tab(i: int):
 	my_clan_panel.visible = i == 0
 	search_panel.visible = i == 1
 	create_panel.visible = i == 2
+	if i == 1 and clan_list.get_child_count() == 0:
+		_load_all_clans()
 
 
 func _style_tab(btn: Button, active: bool):

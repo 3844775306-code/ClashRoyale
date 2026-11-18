@@ -159,7 +159,7 @@ func populate(data: Dictionary) -> void:
 		lbl.visible = true
 		val.visible = true
 	# 奖励
-	_reward.text = "★ +%d 奖杯     +500 金币    黄金宝箱" % int(data.get("trophy", 0))
+	_reward.text = "+%d 奖杯     +500 金币    黄金宝箱" % int(data.get("trophy", 0))
 	_reward.position = Vector2(PANEL.position.x + 60, PANEL.position.y + 532)
 	_reward.size = Vector2(PANEL.size.x - 120, 32)
 	_reward.visible = true
