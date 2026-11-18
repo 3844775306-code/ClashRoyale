@@ -90,7 +90,7 @@ func start_host(port: int = DEFAULT_PORT, mode: String = "1v1", ai0: int = 0, ai
 	players[1] = {"name": PlayerData.player_name, "deck": host_deck, "levels": host_levels, "seated": true, "tower_choice": PlayerData.tower_choice}
 	seats.clear()
 	seats.append({"team": 0, "idx": 0, "peer": 1, "name": PlayerData.player_name, "ai": false, "deck": host_deck, "levels": host_levels, "tower_choice": PlayerData.tower_choice})
-	seats.append({"team": 1, "idx": 0, "peer": 0, "name": "AI", "ai": true, "deck": PlayerData.get_active_deck().duplicate(), "levels": {}, "tower_choice": 1})
+	seats.append({"team": 1, "idx": 0, "peer": 0, "name": "AI", "ai": true, "deck": PlayerData.get_ai_default_deck(), "levels": {}, "tower_choice": 1})
 	local_seat_team = 0
 	local_seat_idx = 0
 	local_slot = 0
@@ -124,7 +124,7 @@ func add_seat(team: int) -> bool:
 	if role != Role.HOST or seats_in_team(team).size() >= 2:
 		return false
 	var idx := seats_in_team(team).size()
-	seats.append({"team": team, "idx": idx, "peer": 0, "name": "AI", "ai": true, "deck": PlayerData.get_active_deck().duplicate(), "levels": {}, "tower_choice": 1})
+	seats.append({"team": team, "idx": idx, "peer": 0, "name": "AI", "ai": true, "deck": PlayerData.get_ai_default_deck(), "levels": {}, "tower_choice": 1})
 	room_mode = mode_name()
 	_broadcast_seats()
 	seats_changed.emit()

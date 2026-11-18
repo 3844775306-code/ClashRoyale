@@ -653,6 +653,27 @@ func _ensure_starter_cards() -> void:
 	starter_cards_v2 = true
 	save_data()
 
+func get_ai_allowed_cards() -> Array:
+	# 常规 AI 只允许：新手六卡 + 当前竞技场已解锁卡
+	var out: Array = [44, 10, 4, 8, 9, 11]
+	var arena: int = get_arena()
+	for id_key in CARD_RARITY.ARENA_UNLOCK.keys():
+		var cid: int = int(id_key)
+		if cid > 3 and int(CARD_RARITY.ARENA_UNLOCK[id_key]) <= arena and not out.has(cid):
+			out.append(cid)
+	return out
+
+func get_ai_default_deck() -> Array:
+	var pool: Array = get_ai_allowed_cards()
+	pool.shuffle()
+	var out: Array = []
+	for cid in pool:
+		if not out.has(cid):
+			out.append(cid)
+		if out.size() >= 8:
+			break
+	return out
+
 func is_card_owned(card_id: int) -> bool:
 	if card_id <= 3:
 		return true

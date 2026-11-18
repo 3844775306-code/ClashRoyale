@@ -1215,7 +1215,7 @@ func _update_tutorial_enemy(delta: float) -> void:
 	if _tutorial_ai_timer > 0.0:
 		return
 	_tutorial_ai_timer = 7.0
-	var pool: Array = [44, 39, 4, 8, 62]
+	var pool: Array = [44, 4, 8, 10]
 	var cid: int = int(pool[randi() % pool.size()])
 	var cfg = get_config(cid)
 	if cfg == null:

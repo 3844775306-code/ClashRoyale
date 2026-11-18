@@ -66,8 +66,8 @@ func _refresh():
 		_body.text = "敌方弓箭手正在输出。用火球或万箭齐发清掉它们；点击法术牌后选择敌方单位所在位置。"
 		_btn.visible = false
 	elif _step == 3:
-		_title.text = "实战训练 4/4 · 摧毁一座公主塔"
-		_body.text = "组合进攻并摧毁敌方一座公主塔。敌方 AI 会随机放几张牌，注意圣水与防守。"
+		_title.text = "实战训练 4/4 · 巨人拆公主塔"
+		_body.text = "用巨人攻击敌方公主塔：巨人只锁定建筑，会无视防守部队直接拆塔；让巨人顶塔，弓箭手/亡灵在后排输出。摧毁一座公主塔即完成训练。"
 		_btn.visible = false
 	else:
 		_title.text = "实战训练完成"

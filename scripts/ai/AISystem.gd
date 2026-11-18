@@ -81,8 +81,9 @@ func _ready():
 func _init_ai_deck():
 	ai_deck.clear()
 	var pool: Array = []
+	var allowed: Array = PlayerData.get_ai_allowed_cards()
 	for cfg in battle.configs:
-		if cfg.cost > 0 and cfg.card_id >= 4 and cfg.card_id != 123:
+		if cfg.cost > 0 and cfg.card_id >= 4 and cfg.card_id != 123 and allowed.has(cfg.card_id):
 			pool.append(cfg.card_id)
 	pool.shuffle()
 	var count := {}

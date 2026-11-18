@@ -280,26 +280,24 @@ func _arena_divider(idx: int, rows: Array) -> Control:
 	center.position = Vector2(0, 282)
 	center.size = Vector2(740, 126)
 	p.add_child(center)
-	var grid := GridContainer.new()
-	grid.columns = 4
-	grid.add_theme_constant_override("h_separation", 18)
-	grid.add_theme_constant_override("v_separation", 8)
+	var grid := HBoxContainer.new()
+	grid.add_theme_constant_override("separation", 10)
+	grid.alignment = BoxContainer.ALIGNMENT_CENTER
 	center.add_child(grid)
 	var ids: Array = PlayerData.get_cards_unlocked_at(idx)
+	var icon_size := Vector2(72, 94) if ids.size() >= 5 else Vector2(84, 108)
 	var shown := 0
 	for cid in ids:
-		if shown >= 3:
-			break
 		var nm: String = String(_card_names.get(int(cid), ""))
 		if nm == "":
 			continue
 		var ic = REWARD_ICON.new()
-		ic.custom_minimum_size = Vector2(84, 108)
+		ic.custom_minimum_size = icon_size
 		ic.setup("card", 1, nm, int(cid))
 		ic.mouse_filter = Control.MOUSE_FILTER_IGNORE
 		grid.add_child(ic)
 		shown += 1
-	var chest = _make_chest_preview(Vector2(84, 108), "silver")
+	var chest = _make_chest_preview(icon_size, "silver")
 	grid.add_child(chest)
 	return p
 
