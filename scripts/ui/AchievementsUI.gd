@@ -52,6 +52,11 @@ func _apply_text_theme():
 func _load_card_names():
 	var f := FileAccess.open("res://data/units_level11_utf8.csv", FileAccess.READ)
 	if f == null:
+		var bm = preload("res://scripts/core/BattleManager.gd").new()
+		bm.load_card_configs()
+		for cfg in bm.configs:
+			_card_names[cfg.card_id] = cfg.card_name
+		bm.free()
 		return
 	var header: PackedStringArray = f.get_csv_line()
 	var id_i: int = -1

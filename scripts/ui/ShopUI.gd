@@ -6,6 +6,7 @@ const CARD_RARITY = preload("res://scripts/data/CardRarity.gd")
 const REWARD_ICON = preload("res://scripts/ui/RewardIcon.gd")
 const EMOTES = preload("res://scripts/data/EmoteCatalog.gd")
 const EMOTE_ICON = preload("res://scripts/ui/EmoteIcon.gd")
+const CHEST3D = preload("res://scripts/ui/Chest3DPreview.gd")
 
 var currency_row: HBoxContainer
 var card_grid: GridContainer
@@ -130,10 +131,10 @@ func _make_chest_card(offer: Dictionary) -> Panel:
 	v.offset_bottom = -8
 	v.add_theme_constant_override("separation", 3)
 	p.add_child(v)
-	var icon = REWARD_ICON.new()
+	var icon = CHEST3D.new()
 	icon.custom_minimum_size = Vector2(0, 112)
 	icon.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	icon.setup("chest", 1)
+	icon.rarity = String(offer.rarity)
 	v.add_child(icon)
 	var name_lbl := Label.new()
 	name_lbl.text = offer.name
