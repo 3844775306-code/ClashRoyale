@@ -50,6 +50,7 @@ var tower_choice: int = 1   # 1=公主塔, 2=王子塔
 var last_card_request: float = 0.0
 var record_replays: bool = true
 var tutorial_done: bool = false
+var tutorial_practice: bool = false
 func _ready():
 	
 	load_data()

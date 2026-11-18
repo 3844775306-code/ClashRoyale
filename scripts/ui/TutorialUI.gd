@@ -267,9 +267,8 @@ func _prev():
 	_render()
 
 func _finish_battle():
-	PlayerData.tutorial_done = true
-	PlayerData.save_data()
-	LoadingScreen.change_scene("res://scenes/battle.tscn", "正在进入第一场对局…")
+	PlayerData.tutorial_practice = true
+	LoadingScreen.change_scene("res://scenes/battle.tscn", "正在进入实战训练…")
 
 func _finish_menu():
 	PlayerData.tutorial_done = true

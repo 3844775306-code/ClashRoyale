@@ -36,6 +36,7 @@ var _ai_timers: Dictionary = {}
 var network_countdown: float = 0.0
 var network_wait_ready: bool = false
 var entry_intro_active: bool = false
+var tutorial_battle: bool = false
 var _network_count_label: Label = null
 var _countdown_overlay: Control = null
 var replay_meta: Dictionary = {}
@@ -499,6 +500,8 @@ func cancel_drag():
 
 func _ready():
 	add_to_group("battle_manager")
+	tutorial_battle = PlayerData.tutorial_practice or OS.get_environment("CR_TUTORIAL_BATTLE") != ""
+	PlayerData.tutorial_practice = false
 	network_host_mode = NetworkManager.role == NetworkManager.Role.HOST and NetworkManager.consume_host_match()
 	if network_host_mode:
 		_setup_network_team_sizes()
@@ -530,7 +533,7 @@ func _ready():
 			call_deferred("_on_clients_ready")
 		else:
 			call_deferred("_network_ready_timeout")
-	else:
+	elif not tutorial_battle:
 		ai_system = preload("res://scripts/ai/AISystem.gd").new()
 		add_child(ai_system)
 	if PlayerData.record_replays and not network_host_mode:
@@ -784,6 +787,10 @@ func play_entry_intro() -> void:
 		await tw.finished
 	if hud:
 		hud.visible = true
+		if tutorial_battle:
+			var ov = preload("res://scripts/ui/TutorialBattleOverlay.gd").new()
+			ov.battle = self
+			hud.add_child(ov)
 	entry_intro_active = false
 
 func _process(delta):

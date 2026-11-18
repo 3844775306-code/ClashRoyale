@@ -16,6 +16,7 @@ const TOKENS := {
 	"🃏": "卡牌", "⚙": "机制", "💡": "提示", "🎴": "卡组", "🛡️": "护盾",
 }
 var _map: Dictionary = {}
+var _scan_acc: float = 0.0
 
 func _ready() -> void:
 	if not OS.has_feature("web"):
@@ -27,6 +28,15 @@ func _ready() -> void:
 		_map[String(k)] = String(TOKENS[k])
 	get_tree().node_added.connect(_on_node_added)
 	call_deferred("_scan_tree")
+
+func _process(delta: float) -> void:
+	if not OS.has_feature("web"):
+		return
+	_scan_acc += delta
+	if _scan_acc < 0.25:
+		return
+	_scan_acc = 0.0
+	_scan_tree()
 
 func _scan_tree() -> void:
 	_walk(get_tree().root)
@@ -43,15 +53,12 @@ func _on_node_added(n: Node) -> void:
 func _fix(n: Node) -> void:
 	if not (n is Label or n is Button or n is RichTextLabel):
 		return
-	if n.has_meta("web_text_fixed"):
-		return
 	var src: String = String(n.get("text"))
 	if src == "":
 		return
 	var out := _replace_emoji(src)
 	if out != src:
 		n.set("text", out)
-	n.set_meta("web_text_fixed", true)
 
 func _replace_emoji(s: String) -> String:
 	var clean := ""
