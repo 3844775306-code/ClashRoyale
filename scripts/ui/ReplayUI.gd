@@ -12,6 +12,8 @@ const CARD_SCAN = preload("res://assets/shaders/card_scan.gdshader")
 const EMOTES = preload("res://scripts/data/EmoteCatalog.gd")
 
 var _bg: ColorRect
+var _bg_layer: ColorRect
+var _menu_backdrop: Control
 var _list_scroll: ScrollContainer
 var _list_box: VBoxContainer
 var _info: Label
@@ -61,7 +63,8 @@ var _speed_btn: Button
 var _tex_cache: Dictionary = {}
 
 func _ready():
-	UiComponents.add_background(self)
+	_bg_layer = UiComponents.add_background(self)
+	_menu_backdrop = get_node_or_null("MenuBackdrop")
 	_bg = ColorRect.new()
 	_bg.color = Color(0, 0, 0, 0)
 	_bg.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
@@ -318,6 +321,8 @@ func _open_replay(data: Dictionary):
 	_refresh_btn.visible = false
 	_gen_btn.visible = false
 	_bg.visible = false
+	if _bg_layer: _bg_layer.visible = false
+	if _menu_backdrop: _menu_backdrop.visible = false
 	_hands = {0: [], 1: []}
 	_decks = {
 		0: Array(meta.get("player_deck", [])).duplicate(),
@@ -615,6 +620,8 @@ func _close_viewer():
 		_viewer.queue_free()
 		_viewer = null
 	_bg.visible = true
+	if _bg_layer: _bg_layer.visible = true
+	if _menu_backdrop: _menu_backdrop.visible = true
 	_list_scroll.visible = true
 	_info.visible = true
 	_refresh_btn.visible = true
