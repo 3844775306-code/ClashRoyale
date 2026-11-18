@@ -54,6 +54,7 @@ var tutorial_done: bool = false
 var tutorial_practice: bool = false
 var tutorial_chest_claimed: bool = false
 var starter_cards_v2: bool = false
+var chest_reveal_pending: bool = false
 func _ready():
 	
 	load_data()
@@ -546,6 +547,7 @@ func load_data():
 		tutorial_done = bool(config.get_value("player", "tutorial_done", false))
 		tutorial_chest_claimed = bool(config.get_value("player", "tutorial_chest_claimed", false))
 		starter_cards_v2 = bool(config.get_value("player", "starter_cards_v2", false))
+		chest_reveal_pending = bool(config.get_value("player", "chest_reveal_pending", false))
 		experience = config.get_value("player", "experience", 0)
 		trophies = config.get_value("player", "trophies", 0)
 		highest_trophies = config.get_value("player", "highest_trophies", trophies)
@@ -609,6 +611,7 @@ func save_data():
 	config.set_value("player", "tutorial_done", tutorial_done)
 	config.set_value("player", "tutorial_chest_claimed", tutorial_chest_claimed)
 	config.set_value("player", "starter_cards_v2", starter_cards_v2)
+	config.set_value("player", "chest_reveal_pending", chest_reveal_pending)
 	config.set_value("player", "donations_used", donations_used)
 	config.set_value("player", "custom_deck", custom_deck)
 	config.set_value("player", "custom_decks", custom_decks)

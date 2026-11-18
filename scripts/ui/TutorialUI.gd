@@ -185,9 +185,9 @@ func _page_starter_cards():
 	grid.add_theme_constant_override("v_separation", 10)
 	_body.add_child(grid)
 	var cards := [
-		["骑士", "3 圣水", "近战坦克，适合顶在前排。"],
+		["骑士", "3 圣水", "地面近战坦克；不能攻击空军。"],
 		["弓箭手", "3 圣水", "远程输出，可以攻击空中单位。"],
-		["亡灵", "3 圣水", "空中群体，适合围杀地面单位。"],
+		["亡灵", "3 圣水", "空中群体；地面近战打不到它，可无伤围杀骑士。"],
 		["巨人", "5 圣水", "只攻击建筑，用来吸引防御塔火力。"],
 		["火球", "4 圣水", "范围法术，清理成群的中低血量单位。"],
 		["万箭齐发", "3 圣水", "大范围低伤害法术，克制骷髅/哥布林人海。"],
@@ -215,7 +215,7 @@ func _page_starter_cards():
 		cost.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
 		head.add_child(cost)
 		v.add_child(_label(c[2], 13, MUTED))
-	_body.add_child(_label("小提示：圣水会随时间恢复；先下低费卡，再用高费卡推进。", 14, Color(0.72, 0.84, 0.98)))
+	_body.add_child(_label("目标类型：巨人只攻击建筑；骑士等地面近战不能攻击空军；亡灵是空中单位，可以无损瓦解敌方骑士。", 14, Color(0.72, 0.84, 0.98)))
 
 func _page_elixir():
 	_heading("圣水是战斗的燃料", "卡牌左下角的数字就是费用；圣水会随时间恢复。")

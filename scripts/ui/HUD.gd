@@ -54,7 +54,16 @@ const PIP_SEP: int = 0
 
 func _ready():
 	_create_ui_elements()
+	_apply_theme_recursive(self)
 	process_mode = Node.PROCESS_MODE_ALWAYS
+
+func _apply_theme_recursive(n: Node) -> void:
+	if ThemeHelper.ui_theme == null:
+		return
+	if n is Control:
+		n.theme = ThemeHelper.ui_theme
+	for c in n.get_children():
+		_apply_theme_recursive(c)
 
 func _create_ui_elements():
 	var screen_size = get_viewport().get_visible_rect().size

@@ -1040,6 +1040,9 @@ func _spawn_tutorial_targets() -> void:
 	for i in range(3):
 		var pos := Vector3(cx + (float(i) - 1.0) * 2.2, 0.0, z + absf(float(i) - 1.0) * 0.8)
 		spawn_unit(archer, Config.Team.ENEMY, pos, 1, PlayerData.ai_level(44))
+	var knight := get_config(4)
+	if knight:
+		spawn_unit(knight, Config.Team.ENEMY, Vector3(cx, 0.0, z - 1.8), 1, PlayerData.ai_level(4))
 
 func _record_tutorial_card(card_id: int) -> void:
 	if tutorial_battle and not tutorial_played.has(card_id):
@@ -1321,7 +1324,7 @@ func _initialize_player_deck():
 		# 严格只使用卡组内的卡牌（不足 8 张时不随机补卡）
 	if tutorial_battle:
 		# 实战训练固定起手：骑士、弓箭手、火球、巨人
-		card_desk = [4, 44, 11, 9, 10, 8]
+		card_desk = [4, 8, 11, 9, 44, 10]
 	#card_desk = [78,79,85,91,97,84,86,91]
 	# 初始手牌4张（镜像不能作为起始卡）
 	for i in range(4):

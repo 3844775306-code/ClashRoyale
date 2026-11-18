@@ -66,6 +66,7 @@ var _panel: StyleBoxFlat
 var _card: StyleBoxFlat
 var _row: StyleBoxFlat
 var _font: Font
+var ui_theme: Theme = null
 
 # 重设计补充的共享样式
 var _btn_primary_normal: StyleBoxFlat
@@ -242,6 +243,7 @@ func _apply_global_theme():
 	# ---- ScrollContainer（透明面板，避免挡住内容）----
 	theme.set_stylebox("panel", "ScrollContainer", StyleBoxEmpty.new())
 
+	ui_theme = theme
 	get_tree().root.theme = theme
 
 

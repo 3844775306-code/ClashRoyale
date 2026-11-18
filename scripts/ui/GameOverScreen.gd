@@ -117,9 +117,9 @@ func populate(data: Dictionary) -> void:
 	_sub.visible = true
 	_score.visible = true
 	_vs.visible = true
-	_title.text = "胜  利" if win else "失  败"
+	_title.text = String(data.get("custom_title", "胜  利" if win else "失  败"))
 	_title.add_theme_color_override("font_color", Color(1.0, 0.91, 0.63) if win else Color(0.95, 0.55, 0.55))
-	_sub.text = "V I C T O R Y" if win else "D E F E A T"
+	_sub.text = String(data.get("custom_sub", "V I C T O R Y" if win else "D E F E A T"))
 	_sub.add_theme_color_override("font_color", Color(0.80, 0.68, 1.0) if win else Color(0.9, 0.6, 0.6))
 	_score.text = "%d : %d" % [data.get("crowns_my", 0), data.get("crowns_en", 0)]
 	_vs.text = "你  VS  对手"
@@ -159,7 +159,7 @@ func populate(data: Dictionary) -> void:
 		lbl.visible = true
 		val.visible = true
 	# 奖励
-	_reward.text = "+%d 奖杯     +500 金币    黄金宝箱" % int(data.get("trophy", 0))
+	_reward.text = String(data.get("reward_text", "+%d 奖杯     +500 金币    黄金宝箱" % int(data.get("trophy", 0))))
 	_reward.position = Vector2(PANEL.position.x + 60, PANEL.position.y + 532)
 	_reward.size = Vector2(PANEL.size.x - 120, 32)
 	_reward.visible = true

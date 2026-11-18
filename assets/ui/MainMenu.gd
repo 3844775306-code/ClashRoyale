@@ -7,6 +7,7 @@ const ProceduralAudio := preload("res://scripts/core/ProceduralAudio.gd")
 const BACKDROP := preload("res://assets/ui/menu/MenuBackdrop.gd")
 const CARD_PIECE := preload("res://assets/ui/menu/MenuCardPiece.gd")
 const ICON := preload("res://assets/ui/menu/MenuIcon.gd")
+const CHEST3D := preload("res://scripts/ui/Chest3DPreview.gd")
 
 const INK := Color(0.020, 0.030, 0.062)
 const NAVY := Color(0.052, 0.078, 0.155)
@@ -26,6 +27,9 @@ var _fan_holder: Control
 var _fan_items: Array = []          # [{node, base, phase}]
 var _intro_nodes: Array = []
 var _fan_time := 0.0
+var _chest_tile: Button
+var _chest_badge: Panel
+var _chest_count_lbl: Label
 
 func _ready():
 	GameSettings.apply_volumes()
@@ -36,6 +40,8 @@ func _ready():
 	_play_intro()
 	if PlayerData.trophies <= 0 and not PlayerData.tutorial_done:
 		call_deferred("_auto_tutorial")
+	if PlayerData.chest_reveal_pending:
+		call_deferred("_play_chest_reveal")
 	# 开场动画「王冠登场」：可轻触跳过；开启时不抢先播 BGM，等标题出现再进音乐
 	if OS.has_environment("CR_SKIP_INTRO"):
 		_start_bgm()
@@ -509,7 +515,67 @@ func _build_menu_grid() -> void:
 		{"icon": "shield", "title": "部落", "sub": "与伙伴并肩作战", "act": _on_clan_pressed},
 	]
 	for e in entries:
-		grid.add_child(_make_tile(e.icon, e.title, e.sub, e.act))
+		var tile := _make_tile(e.icon, e.title, e.sub, e.act)
+		grid.add_child(tile)
+		if String(e.title) == "宝箱":
+			_chest_tile = tile
+			_add_chest_badge(tile)
+
+func _add_chest_badge(tile: Button) -> void:
+	_chest_badge = Panel.new()
+	_chest_badge.position = Vector2(292, 6)
+	_chest_badge.size = Vector2(44, 34)
+	_chest_badge.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	var sb := StyleBoxFlat.new()
+	sb.bg_color = Color(0.86, 0.20, 0.18, 0.98)
+	sb.border_color = Color(1.0, 0.86, 0.42, 0.9)
+	sb.set_border_width_all(2)
+	sb.set_corner_radius_all(16)
+	_chest_badge.add_theme_stylebox_override("panel", sb)
+	tile.add_child(_chest_badge)
+	_chest_count_lbl = Label.new()
+	_chest_count_lbl.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	_chest_count_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_chest_count_lbl.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	_chest_count_lbl.add_theme_font_size_override("font_size", 19)
+	_chest_count_lbl.add_theme_color_override("font_color", Color.WHITE)
+	_chest_count_lbl.add_theme_constant_override("outline_size", 3)
+	_chest_count_lbl.add_theme_color_override("font_outline_color", Color(0.15, 0.03, 0.03))
+	_chest_badge.add_child(_chest_count_lbl)
+	_refresh_chest_badge()
+
+func _refresh_chest_badge() -> void:
+	if _chest_badge == null or _chest_count_lbl == null:
+		return
+	var n: int = PlayerData.chests.size()
+	_chest_badge.visible = n > 0
+	_chest_count_lbl.text = str(mini(n, 99))
+
+func _play_chest_reveal() -> void:
+	PlayerData.chest_reveal_pending = false
+	PlayerData.save_data()
+	await get_tree().create_timer(0.8).timeout
+	if _ui_root == null or _chest_tile == null:
+		return
+	var chest = CHEST3D.new()
+	chest.rarity = "silver"
+	chest.size = Vector2(240, 240)
+	chest.custom_minimum_size = Vector2(240, 240)
+	chest.position = Vector2(280, 680)
+	chest.z_index = 80
+	_ui_root.add_child(chest)
+	var target: Vector2 = _ui_root.to_local(_chest_tile.get_global_rect().get_center()) - Vector2(44, 44)
+	var tw := create_tween()
+	tw.set_parallel(true)
+	tw.tween_property(chest, "position", target, 1.15).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN_OUT)
+	tw.tween_property(chest, "scale", Vector2(0.32, 0.32), 1.15).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN_OUT)
+	await tw.finished
+	chest.queue_free()
+	_refresh_chest_badge()
+	if _chest_tile:
+		var tw2 := create_tween()
+		tw2.tween_property(_chest_tile, "scale", Vector2(1.05, 1.05), 0.12)
+		tw2.tween_property(_chest_tile, "scale", Vector2.ONE, 0.16)
 
 func _make_tile(icon_kind: String, title: String, subtitle: String, action: Callable) -> Button:
 	var btn := Button.new()

@@ -1,6 +1,7 @@
 extends Control
 
 const REWARD_ICON = preload("res://scripts/ui/RewardIcon.gd")
+const CHEST3D = preload("res://scripts/ui/Chest3DPreview.gd")
 const ARENA_VIEW = preload("res://scripts/ui/ArenaSideView.gd")
 
 var scroll: ScrollContainer
@@ -92,7 +93,7 @@ func _build_summary():
 	var top := HBoxContainer.new()
 	vb.add_child(top)
 	var cur := Label.new()
-	cur.text = "🏆 当前 %d 杯" % PlayerData.trophies
+	cur.text = "当前 %d 杯" % PlayerData.trophies
 	cur.add_theme_font_size_override("font_size", 25)
 	cur.add_theme_color_override("font_color", Color(1.0, 0.86, 0.42))
 	top.add_child(cur)
@@ -140,7 +141,7 @@ func _build_summary():
 	cnt.add_theme_color_override("font_color", Color(0.62, 0.70, 0.82))
 	vb.add_child(cnt)
 	var emo := Label.new()
-	emo.text = "🎭 已收集表情 %d" % PlayerData.get_emote_count()
+	emo.text = "已收集表情 %d" % PlayerData.get_emote_count()
 	emo.add_theme_font_size_override("font_size", 12)
 	emo.add_theme_color_override("font_color", Color(0.70, 0.82, 0.96))
 	vb.add_child(emo)
@@ -298,9 +299,7 @@ func _arena_divider(idx: int, rows: Array) -> Control:
 		ic.mouse_filter = Control.MOUSE_FILTER_IGNORE
 		grid.add_child(ic)
 		shown += 1
-	var chest := REWARD_ICON.new()
-	chest.custom_minimum_size = Vector2(84, 108)
-	chest.setup("chest", 1)
+	var chest = _make_chest_preview(Vector2(84, 108), "silver")
 	grid.add_child(chest)
 	return p
 
@@ -331,7 +330,7 @@ func _current_marker() -> Control:
 	bubble.add_theme_stylebox_override("panel", sb)
 	row.add_child(bubble)
 	var lbl := Label.new()
-	lbl.text = "🏆 当前 %d 杯" % PlayerData.trophies
+	lbl.text = "当前 %d 杯" % PlayerData.trophies
 	lbl.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	lbl.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
@@ -350,6 +349,18 @@ func _reward_title(a: Dictionary) -> String:
 	if String(a.get("chest", "")) != "": return "幸运宝箱"
 	if int(a.get("emote", 0)) > 0: return "表情"
 	return "里程碑奖励"
+
+func _make_chest_preview(size: Vector2, chest_name: String = ""):
+	var c = CHEST3D.new()
+	c.custom_minimum_size = size
+	c.size = size
+	c.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	var low := String(chest_name).to_lower()
+	if low.contains("legendary"): c.rarity = "legendary"
+	elif low.contains("magic"): c.rarity = "magical"
+	elif low.contains("gold") or low.contains("giant") or low.contains("epic"): c.rarity = "gold"
+	else: c.rarity = "silver"
+	return c
 
 func _setup_reward_icon(icon, a: Dictionary) -> void:
 	if String(a.get("emote_id", "")) != "":
@@ -384,7 +395,7 @@ func _milestone_row(a: Dictionary) -> Control:
 	rail.size = Vector2(18, 168)
 	row.add_child(rail)
 	var trophy := Label.new()
-	trophy.text = "🏆 %d" % int(a.get("trophies", 0))
+	trophy.text = "%d" % int(a.get("trophies", 0))
 	trophy.position = Vector2(28, 50)
 	trophy.size = Vector2(128, 42)
 	trophy.add_theme_font_size_override("font_size", 23)
@@ -410,10 +421,14 @@ func _milestone_row(a: Dictionary) -> Control:
 	var hb := HBoxContainer.new()
 	hb.add_theme_constant_override("separation", 14)
 	card.add_child(hb)
-	var icon = REWARD_ICON.new()
-	icon.custom_minimum_size = Vector2(112, 124)
-	icon.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	_setup_reward_icon(icon, a)
+	var icon
+	if String(a.get("chest", "")) != "":
+		icon = _make_chest_preview(Vector2(112, 124), String(a.get("chest", "")))
+	else:
+		icon = REWARD_ICON.new()
+		icon.custom_minimum_size = Vector2(112, 124)
+		icon.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		_setup_reward_icon(icon, a)
 	hb.add_child(icon)
 	var vb := VBoxContainer.new()
 	vb.size_flags_horizontal = Control.SIZE_EXPAND_FILL
@@ -505,7 +520,7 @@ func _play_claim_animation(r: Dictionary):
 	vb.add_theme_constant_override("separation", 8)
 	panel.add_child(vb)
 	var title := Label.new()
-	title.text = "✨ 领取成功"
+	title.text = "领取成功"
 	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	title.add_theme_font_size_override("font_size", 30)
 	title.add_theme_color_override("font_color", Color(1.0, 0.84, 0.34))

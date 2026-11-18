@@ -58,8 +58,8 @@ func _refresh():
 		_body.text = "先部署骑士或巨人，让它们走在前面吸收火力。点击底部卡牌再点己方战场，或直接拖拽。"
 		_btn.visible = false
 	elif _step == 1:
-		_title.text = "实战训练 2/4 · 远程跟上"
-		_body.text = "肉盾已经就位。现在部署弓箭手或亡灵，让远程单位在肉盾后面输出。"
+		_title.text = "实战训练 2/4 · 亡灵空中反击"
+		_body.text = "敌方骑士正在推进！骑士是地面近战，打不到空中。部署亡灵，用空中单位无损围杀骑士。"
 		_btn.visible = false
 	elif _step == 2:
 		_title.text = "实战训练 3/4 · 法术清场"
@@ -82,7 +82,7 @@ func _process(_delta):
 	if _step == 0 and (played.has(4) or played.has(9)):
 		_step = 1
 		_refresh()
-	elif _step == 1 and (played.has(44) or played.has(8)):
+	elif _step == 1 and played.has(8):
 		_step = 2
 		_refresh()
 	elif _step == 2 and (played.has(11) or played.has(10)):
@@ -92,6 +92,55 @@ func _process(_delta):
 		if battle.healths.size() >= 5 and (float(battle.healths[3]) <= 0.0 or float(battle.healths[4]) <= 0.0):
 			_step = 4
 			_refresh()
+			_show_result_sequence()
+
+func _award_tutorial_reward() -> void:
+	PlayerData.tutorial_done = true
+	if not PlayerData.tutorial_chest_claimed:
+		PlayerData.tutorial_chest_claimed = true
+		PlayerData.chest_reveal_pending = true
+		PlayerData.add_chest("silver")
+	PlayerData.save_data()
+
+func _show_result_sequence() -> void:
+	if _done:
+		return
+	_award_tutorial_reward()
+	_panel.visible = false
+	_btn.visible = false
+	_skip.visible = false
+	if battle:
+		battle.set_process(false)
+		battle.set_process_input(false)
+		if battle.hud:
+			battle.hud.hide_card_tray()
+	await get_tree().create_timer(0.9).timeout
+	var screen = preload("res://scripts/ui/GameOverScreen.gd").new()
+	var hud = battle.hud if battle else null
+	if hud == null:
+		_finish()
+		return
+	hud.add_child(screen)
+	if ThemeHelper.ui_theme:
+		screen.theme = ThemeHelper.ui_theme
+	var data := {
+		"win": true, "custom_title": "训 练 完 成", "custom_sub": "T R A I N I N G   C O M P L E T E",
+		"crowns_my": 1, "crowns_en": 0, "duration": "0:00", "trophy": 0,
+		"my_spent": 0, "enemy_spent": 0, "my_over": 0.0, "enemy_over": 0.0,
+		"my_top": [], "enemy_top": [],
+		"reward_text": "训练奖励：1 个宝箱（返回主菜单查看）",
+	}
+	screen._btn_restart.visible = false
+	screen._btn_menu.text = "返 回 主 菜 单"
+	screen.populate(data)
+	screen.modulate.a = 0.0
+	screen.pivot_offset = Vector2(400, 800)
+	screen.scale = Vector2(0.94, 0.94)
+	var tw := create_tween()
+	tw.set_parallel(true)
+	tw.tween_property(screen, "modulate:a", 1.0, 0.35)
+	tw.tween_property(screen, "scale", Vector2.ONE, 0.42).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+	screen.menu_pressed.connect(_finish)
 
 func _next_step():
 	_finish()
@@ -109,12 +158,5 @@ func _finish():
 	if _done:
 		return
 	_done = true
-	PlayerData.tutorial_done = true
-	if not PlayerData.tutorial_chest_claimed:
-		PlayerData.tutorial_chest_claimed = true
-		PlayerData.add_chest("silver")
-	PlayerData.save_data()
-	var notifier := get_tree().get_first_node_in_group("ui_notifier")
-	if notifier and "text" in notifier:
-		notifier.text = "新手训练完成：获得 1 个宝箱"
+	_award_tutorial_reward()
 	get_tree().change_scene_to_file("res://scenes/menu.tscn")

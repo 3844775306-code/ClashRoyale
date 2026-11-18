@@ -13,6 +13,8 @@ func _ready():
 	_root.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	_root.mouse_filter = Control.MOUSE_FILTER_STOP
 	_root.visible = false
+	if ThemeHelper.ui_theme:
+		_root.theme = ThemeHelper.ui_theme
 	add_child(_root)
 
 	var grad := Gradient.new()
