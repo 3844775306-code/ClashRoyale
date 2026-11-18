@@ -365,6 +365,12 @@ func _open_replay(data: Dictionary):
 func _build_battle(meta: Dictionary):
 	_battle = load("res://scenes/battle.tscn").instantiate()
 	_battle.replay_mode = true
+	_battle.battle_mode = Dictionary(meta.get("mode", {})).duplicate(true)
+	if _battle.battle_mode.is_empty():
+		var rule := "standard"
+		if NetworkManager.match_info.has("party_rule"):
+			rule = String(NetworkManager.match_info.get("party_rule", "standard"))
+		_battle.battle_mode = preload("res://scripts/core/BattleModes.gd").get_by_id(rule)
 	_battle.replay_player_deck = Array(meta.get("player_deck", [])).duplicate()
 	_battle.replay_towers = Array(meta.get("towers", [])).duplicate()
 	_battle.replay_arena = int(meta.get("arena", 0))

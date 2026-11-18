@@ -24,6 +24,7 @@ var gems: int = 10
 var experience: int = 0
 var player_name:String = "玩家"
 var name_chosen: bool = false        # 玩家是否已完成取名（首次启动强制取名）
+var challenge_state: Dictionary = {}   # 挑战/锦标赛进度（active: {id,wins,losses}）
 var trophies: int = 0          # 新增奖杯
 var highest_trophies: int = 0  # 历史最高奖杯（奖杯门保护）
 var claimed_achievements: Array = []  # 已领取的皇室征程成就（竞技场序号）
@@ -539,6 +540,7 @@ func load_data():
 		# 每个字段先设默认，再尝试用存档值覆盖
 		player_name = config.get_value("player", "name", "玩家")
 		name_chosen = bool(config.get_value("player", "name_chosen", false))
+		challenge_state = config.get_value("player", "challenge_state", {})
 		gold = config.get_value("player", "gold", 100)
 		gems = config.get_value("player", "gems", 10)
 		shop_day = String(config.get_value("shop", "day", ""))
@@ -599,6 +601,7 @@ func save_data():
 	config.set_value("meta", "version", SAVE_VERSION)
 	config.set_value("player", "name", player_name)
 	config.set_value("player", "name_chosen", name_chosen)
+	config.set_value("player", "challenge_state", challenge_state)
 	config.set_value("player", "gold", gold)
 	config.set_value("player", "gems", gems)
 	config.set_value("player", "experience", experience)
@@ -700,12 +703,14 @@ func randomize_avatar() -> void:
 	save_data()
 
 func get_ai_allowed_cards() -> Array:
-	# 常规 AI 只允许：新手六卡 + 当前竞技场已解锁卡
+	# 常规 AI 只允许：新手六卡 + 皇室征程中当前奖杯已解锁的卡牌。
+	# 用征程奖励卡而不是 ARENA_UNLOCK 表，避免新卡默认 arena=1 混入低级竞技场。
 	var out: Array = [44, 10, 4, 8, 9, 11]
-	var arena: int = get_arena()
-	for id_key in CARD_RARITY.ARENA_UNLOCK.keys():
-		var cid: int = int(id_key)
-		if cid > 3 and int(CARD_RARITY.ARENA_UNLOCK[id_key]) <= arena and not out.has(cid):
+	for row in _load_trophy_road():
+		var cid: int = int(row.get("card_id", 0))
+		if cid <= 3:
+			continue
+		if int(row.get("trophies", 0)) <= trophies and not out.has(cid):
 			out.append(cid)
 	return out
 

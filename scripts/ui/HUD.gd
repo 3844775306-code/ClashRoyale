@@ -16,6 +16,7 @@ var elixir_bar: Control = null
 var timer_label: Label                 # 计时药丸内的文字
 var crowns_player_label: Label
 var crowns_enemy_label: Label
+var mode_label: Label                    # 当前对战模式徽标
 var double_elixir_label: Label         # ⚡双倍圣水 徽标
 var card_container: HBoxContainer
 const ShieldBadge := preload("res://scripts/ui/ShieldBadge.gd")
@@ -127,6 +128,21 @@ func _create_ui_elements():
 	crowns_enemy_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
 	crowns_enemy_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	add_child(crowns_enemy_label)
+
+	# 模式徽标（计时药丸下方，标准模式隐藏）
+	mode_label = Label.new()
+	mode_label.position = Vector2(center_x - 200, 66)
+	mode_label.size = Vector2(400, 20)
+	mode_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	mode_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	mode_label.add_theme_font_size_override("font_size", 13)
+	mode_label.add_theme_color_override("font_color", ThemeHelper.COLORS.gold_bright)
+	mode_label.add_theme_color_override("font_shadow_color", Color(0, 0, 0, 0.8))
+	mode_label.add_theme_constant_override("shadow_offset_x", 1)
+	mode_label.add_theme_constant_override("shadow_offset_y", 1)
+	mode_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	mode_label.text = ""
+	add_child(mode_label)
 
 	# 计时药丸（中）
 	timer_pill_panel = Panel.new()
@@ -538,11 +554,41 @@ func _process(_delta):
 		else:
 			elixir_bar.highlight_cost = 0
 	_update_timer()
-	crowns_player_label.text = "你 %d" % battle.player_crowns
-	crowns_enemy_label.text = "敌 %d" % battle.enemy_crowns
+	if String(battle.win_condition) == "touchdown":
+		crowns_player_label.text = "触地 %d/%d" % [int(battle.touchdown_score[0]), int(battle.touchdown_goal)]
+		crowns_enemy_label.text = "触地 %d/%d" % [int(battle.touchdown_score[1]), int(battle.touchdown_goal)]
+	else:
+		crowns_player_label.text = "你 %d" % battle.player_crowns
+		crowns_enemy_label.text = "敌 %d" % battle.enemy_crowns
 	double_elixir_label.visible = battle.elixir_rate >= 1.5
+	if double_elixir_label.visible:
+		if battle.elixir_rate >= 5.0:
+			double_elixir_label.text = "七倍圣水"
+		elif battle.elixir_rate >= 2.5:
+			double_elixir_label.text = "三倍圣水"
+		else:
+			double_elixir_label.text = "双倍圣水"
+	if mode_label:
+		if String(battle.win_condition) == "duel":
+			mode_label.text = "决斗 · 第 %d 回合 · %d : %d" % [int(battle.duel_round), int(battle.duel_wins[0]), int(battle.duel_wins[1])]
+		else:
+			mode_label.text = battle.mode_name if (battle.mode_name != "" and battle.mode_name != "标准对战") else ""
+		var CH := preload("res://scripts/core/Challenges.gd")
+		if CH.active_id() != "":
+			var def := CH.active_def()
+			var a := CH.active()
+			if not def.is_empty():
+				mode_label.text = "%s · 挑战 %d/%d" % [String(def.get("name", "挑战")), int(a.get("wins", 0)), int(def.get("target", 0))]
+		mode_label.visible = mode_label.text != ""
 	# 更新所有血条
 	_update_health_bars()
+
+func set_touchdown_score(a: int, b: int, goal: int) -> void:
+	if crowns_player_label:
+		crowns_player_label.text = "触地 %d/%d" % [a, goal]
+	if crowns_enemy_label:
+		crowns_enemy_label.text = "触地 %d/%d" % [b, goal]
+
 
 func _update_timer():
 	var elapsed_ms = battle.game_time

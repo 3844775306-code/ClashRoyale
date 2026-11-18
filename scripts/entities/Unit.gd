@@ -162,6 +162,8 @@ func initialize_from_config():
 	# 测试模式：战斗中统一按 11 级结算（镜像 +1 可绕过）
 	if not ignore_level_clamp:
 		level = Config.battle_level(level)
+		if battle != null:
+			level = battle.mode_level(level)
 				##print(max_health)
 		#print(max_health)
 	if config.shield > 0:
@@ -1402,6 +1404,8 @@ func die():
 			level =PlayerData.get_card_level(config.card_id)
 		else:
 			level = PlayerData.ai_level(config.card_id)
+		if battle != null:
+			level = battle.mode_level(level)
 		var spell = Spell.create(global_position, team,
 			int(cfg.damage *Config.level_mult(level)), cfg.damage_range,
 			0, cfg.attack_type, cfg.target_type)

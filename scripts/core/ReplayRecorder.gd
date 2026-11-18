@@ -113,6 +113,8 @@ func _capture_meta():
 		"enemy_deck": _deck_for_team(Config.Team.ENEMY),
 		"player_levels": _levels_for_team(Config.Team.PLAYER),
 		"enemy_levels": _levels_for_team(Config.Team.ENEMY),
+		"mode": battle.battle_mode.duplicate(true) if battle else {},
+		"mode_name": battle.mode_name if battle else "标准对战",
 		"result": -2
 	}
 

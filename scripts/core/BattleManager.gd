@@ -48,6 +48,29 @@ var replay_arena: int = 0
 var suppress_game_over_ui: bool = false
 var enemy_elixir: float = 5.0
 var elixir_rate: float = 1.0
+
+# ---- 对战模式（BattleModes 驱动）----
+const BATTLE_MODES := preload("res://scripts/core/BattleModes.gd")
+var battle_mode: Dictionary = {}
+var mode_name: String = "标准对战"
+var mode_id: String = "standard"
+var sudden_death_enabled: bool = false
+var mode_elixir_rate: float = 1.0
+var fixed_level_override: int = -1
+var mode_player_deck: Array = []
+# 冲线 Touchdown
+var win_condition: String = ""
+var touchdown_score: Array = [0, 0]
+var touchdown_goal: int = 3
+var touchdown_resetting: bool = false
+# 决斗 Duel
+var duel_round: int = 1
+var duel_wins: Array = [0, 0]
+var duel_transition: bool = false
+var duel_finished: bool = false
+var duel_match_winner: int = -1
+var challenge_result: Dictionary = {}
+var mode_enemy_deck: Array = []
 var game_time: float = 0.0
 var player_crowns: int = 0
 var enemy_crowns: int = 0
@@ -501,6 +524,260 @@ func cancel_drag():
 	selected_card = null
 	_clean_deny_masks()
 
+func _resolve_battle_mode() -> void:
+	# 联机对局：使用房主下发的派对规则（默认标准）
+	if network_host_mode or network_guest_mode:
+		var rule := "standard"
+		if not NetworkManager.match_info.is_empty():
+			rule = String(NetworkManager.match_info.get("party_rule", "standard"))
+		battle_mode = BATTLE_MODES.get_by_id(rule)
+	# 开发/自动化测试：CR_MODE_ID=double_elixir 等
+	var env_mode := OS.get_environment("CR_MODE_ID")
+	if env_mode != "" and not replay_mode:
+		battle_mode = BATTLE_MODES.get_by_id(env_mode)
+		if env_mode == "custom":
+			battle_mode["elixir"] = float(OS.get_environment("CR_MODE_ELIXIR")) if OS.get_environment("CR_MODE_ELIXIR") != "" else 1.0
+	if battle_mode.is_empty():
+		battle_mode = BATTLE_MODES.current()
+	mode_name = String(battle_mode.get("name", "标准对战"))
+	mode_id = String(battle_mode.get("id", "standard"))
+	sudden_death_enabled = bool(battle_mode.get("sudden_death", false))
+	win_condition = String(battle_mode.get("win_condition", ""))
+	touchdown_goal = int(battle_mode.get("score_to_win", 3))
+	mode_elixir_rate = float(battle_mode.get("elixir", 1.0))
+	fixed_level_override = 11 if String(battle_mode.get("level", "own")) == "fixed" else -1
+	mode_player_deck.clear()
+	mode_enemy_deck.clear()
+	var deck_src := String(battle_mode.get("deck", "custom"))
+	if deck_src == "classic":
+		var decks: Array = BATTLE_MODES.classic_decks()
+		if decks.size() > 0:
+			mode_player_deck = _sanitize_mode_deck(decks[randi() % decks.size()])
+			mode_enemy_deck = _sanitize_mode_deck(decks[randi() % decks.size()])
+	elif deck_src == "draft":
+		var drafted: Dictionary = BATTLE_MODES.draft_decks()
+		mode_player_deck = _sanitize_mode_deck(drafted.get("player", []))
+		mode_enemy_deck = _sanitize_mode_deck(drafted.get("enemy", []))
+		if mode_player_deck.size() < 8 or mode_enemy_deck.size() < 8:
+			# 未经过选卡界面（例如开发环境直接启动）：自动随机选卡
+			mode_player_deck = _random_draft_deck(int(battle_mode.get("draft_choices", 4)))
+			mode_enemy_deck = _random_draft_deck(int(battle_mode.get("draft_choices", 4)))
+	elif deck_src == "mega":
+		mode_player_deck = _build_mega_deck(Config.Team.PLAYER)
+		mode_enemy_deck = _build_mega_deck(Config.Team.ENEMY)
+	elif deck_src == "duel" or win_condition == "duel":
+		var st: Dictionary = BATTLE_MODES.duel_state()
+		if not bool(st.get("active", false)):
+			BATTLE_MODES.start_duel(_fallback_duel_decks(Config.Team.PLAYER), _fallback_duel_decks(Config.Team.ENEMY))
+			st = BATTLE_MODES.duel_state()
+		duel_round = clampi(int(st.get("round", 1)), 1, 3)
+		duel_wins = Array(st.get("wins", [0, 0])).duplicate()
+		var pds: Array = Array(st.get("player_decks", []))
+		var eds: Array = Array(st.get("enemy_decks", []))
+		if pds.size() >= duel_round:
+			mode_player_deck = _sanitize_mode_deck(pds[duel_round - 1])
+		if eds.size() >= duel_round:
+			mode_enemy_deck = _sanitize_mode_deck(eds[duel_round - 1])
+	if OS.has_environment("CR_MODE_DEBUG"):
+		print("[Mode] id=%s name=%s elixir=%.1f sudden_death=%s player_deck=%d enemy_deck=%d" % [
+			mode_id, mode_name, mode_elixir_rate, str(sudden_death_enabled),
+			mode_player_deck.size(), mode_enemy_deck.size()])
+
+
+func _sanitize_mode_deck(src: Array) -> Array:
+	var out: Array = []
+	for cid_v in src:
+		var cid: int = int(cid_v)
+		if get_config(cid) != null and not out.has(cid):
+			out.append(cid)
+	return out
+
+
+func _fallback_duel_decks(team: int) -> Array:
+	var decks: Array = []
+	if team == Config.Team.PLAYER:
+		for d in PlayerData.custom_decks:
+			var arr: Array = []
+			for cid in Array(d):
+				if int(cid) > 0 and get_config(int(cid)) != null:
+					arr.append(int(cid))
+			if arr.size() >= 8:
+				decks.append(arr)
+				if decks.size() >= 3:
+					break
+		while decks.size() < 3:
+			decks.append(PlayerData.get_active_deck().duplicate())
+	else:
+		var classics: Array = BATTLE_MODES.classic_decks()
+		classics.shuffle()
+		for i in range(3):
+			if classics.is_empty():
+				break
+			decks.append(Array(classics[i % classics.size()]).duplicate())
+		while decks.size() < 3:
+			decks.append(_random_draft_deck(4))
+	return decks
+
+
+func _draft_pool() -> Array:
+	var pool: Array = []
+	for cfg in configs:
+		if cfg.cost > 0 and cfg.card_id >= 4 and cfg.card_id != 123:
+			pool.append(int(cfg.card_id))
+	return pool
+
+
+func _random_draft_deck(_choices: int) -> Array:
+	var pool: Array = _draft_pool()
+	pool.shuffle()
+	var out: Array = []
+	for cid in pool:
+		if out.size() >= 8:
+			break
+		if not out.has(cid):
+			out.append(cid)
+	return out
+
+
+func _build_mega_deck(team: int) -> Array:
+	var out: Array = []
+	if team == Config.Team.PLAYER:
+		for cid_v in PlayerData.get_active_deck():
+			var cid: int = int(cid_v)
+			if get_config(cid) != null and PlayerData.is_card_owned(cid) and not out.has(cid):
+				out.append(cid)
+		var pool: Array = []
+		for cfg in configs:
+			if cfg.cost > 0 and cfg.card_id >= 4 and cfg.card_id != 123 and PlayerData.is_card_owned(cfg.card_id):
+				pool.append(int(cfg.card_id))
+		pool.shuffle()
+		for cid in pool:
+			if out.size() >= 18:
+				break
+			if not out.has(cid):
+				out.append(cid)
+	else:
+		var pool: Array = []
+		var allowed: Array = PlayerData.get_ai_allowed_cards()
+		for cfg in configs:
+			if cfg.cost > 0 and cfg.card_id >= 4 and cfg.card_id != 123 and allowed.has(cfg.card_id):
+				pool.append(int(cfg.card_id))
+		pool.shuffle()
+		for cid in pool:
+			if out.size() >= 18:
+				break
+			if not out.has(cid):
+				out.append(cid)
+	return out
+
+
+func mode_level(level: int) -> int:
+	return fixed_level_override if fixed_level_override > 0 else level
+
+
+func mode_badge_text() -> String:
+	return BATTLE_MODES.mode_label(battle_mode)
+
+
+func _team_tower_total_health(team: int) -> float:
+	var total := 0.0
+	for u in units.get_children():
+		if u is Unit and u.config and u.config.card_id <= 3 and u.team == team:
+			total += maxf(0.0, float(u.health))
+	return total
+
+
+func _setup_touchdown_zones() -> void:
+	var top_z: float = Config.ARENA_ORIGIN.z + Config.ARENA_HEIGHT * 4.0 / 32.0
+	var bottom_z: float = Config.ARENA_ORIGIN.z + Config.ARENA_HEIGHT * 28.0 / 32.0
+	_add_touchdown_zone(Vector3(0, 0.03, top_z), Color(0.30, 0.55, 1.0, 0.28))
+	_add_touchdown_zone(Vector3(0, 0.03, bottom_z), Color(1.0, 0.30, 0.28, 0.28))
+
+
+func _add_touchdown_zone(center: Vector3, col: Color) -> void:
+	var mi := MeshInstance3D.new()
+	var box := BoxMesh.new()
+	box.size = Vector3(Config.ARENA_WIDTH * 0.94, 0.03, 2.2)
+	mi.mesh = box
+	var mat := StandardMaterial3D.new()
+	mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	mat.albedo_color = col
+	mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	mi.material_override = mat
+	mi.position = center
+	add_child(mi)
+	# 金色边线提示
+	var line := MeshInstance3D.new()
+	var lb := BoxMesh.new()
+	lb.size = Vector3(Config.ARENA_WIDTH * 0.94, 0.035, 0.10)
+	line.mesh = lb
+	var lm := StandardMaterial3D.new()
+	lm.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	lm.albedo_color = Color(0.95, 0.78, 0.36, 0.9)
+	lm.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	line.material_override = lm
+	line.position = center + Vector3(0, 0.005, 1.1)
+	add_child(line)
+	var line2 := MeshInstance3D.new()
+	var lb2 := BoxMesh.new()
+	lb2.size = Vector3(Config.ARENA_WIDTH * 0.94, 0.035, 0.10)
+	line2.mesh = lb2
+	line2.material_override = lm
+	line2.position = center + Vector3(0, 0.005, -1.1)
+	add_child(line)
+
+
+func _update_touchdown() -> void:
+	var top_z: float = Config.ARENA_ORIGIN.z + Config.ARENA_HEIGHT * 5.0 / 32.0
+	var bottom_z: float = Config.ARENA_ORIGIN.z + Config.ARENA_HEIGHT * 27.0 / 32.0
+	for u in units.get_children():
+		if not (u is Unit) or u.config == null or u.health <= 0:
+			continue
+		if int(u.config.card_id) < 4:
+			continue
+		var z: float = u.global_position.z
+		if u.team == Config.Team.PLAYER and z <= top_z:
+			_touchdown_score(Config.Team.PLAYER)
+			return
+		if u.team == Config.Team.ENEMY and z >= bottom_z:
+			_touchdown_score(Config.Team.ENEMY)
+			return
+
+
+func _touchdown_score(team: int) -> void:
+	if touchdown_resetting or game_over:
+		return
+	touchdown_score[team] = int(touchdown_score[team]) + 1
+	if hud and hud.has_method("set_touchdown_score"):
+		hud.set_touchdown_score(int(touchdown_score[0]), int(touchdown_score[1]), touchdown_goal)
+	if int(touchdown_score[team]) >= touchdown_goal:
+		game_over = true
+		winner = team
+		return
+	_touchdown_reset()
+
+
+func _touchdown_reset() -> void:
+	touchdown_resetting = true
+	var victims: Array = []
+	for u in units.get_children():
+		if u is Unit and u.config and int(u.config.card_id) >= 4:
+			u.set_physics_process(false)
+			u.set_process(false)
+			victims.append(u)
+	await get_tree().create_timer(0.55).timeout
+	for u in victims:
+		if is_instance_valid(u):
+			u.queue_free()
+	for b in bullets.get_children():
+		b.queue_free()
+	for s in spells.get_children():
+		s.queue_free()
+	player_elixir = 5.0
+	enemy_elixir = 5.0
+	touchdown_resetting = false
+
+
 func _ready():
 	add_to_group("battle_manager")
 	tutorial_battle = PlayerData.tutorial_practice or OS.get_environment("CR_TUTORIAL_BATTLE") != ""
@@ -509,7 +786,10 @@ func _ready():
 	if network_host_mode:
 		_setup_network_team_sizes()
 	load_card_configs()
+	_resolve_battle_mode()
 	spawn_initial_towers()
+	if win_condition == "touchdown":
+		_setup_touchdown_zones()
 	_initialize_player_deck()
 	if network_host_mode:
 		_init_network_remote()
@@ -717,6 +997,7 @@ func network_remote_deploy_slot(slot: int, card_id: int, x: float, z: float) -> 
 		deploy_spell(cfg, team, pos)
 	else:
 		var lv: int = int(Dictionary(rp.levels).get(str(card_id), PlayerData.get_card_level(card_id)))
+		lv = mode_level(lv)
 		if card_id == 109:
 			_deploy_miner_tunnel(cfg, team, pos)
 		elif card_id == 110:
@@ -808,6 +1089,10 @@ func _process(delta):
 		if network_countdown > 0.0:
 			return
 	if game_over:
+		if win_condition == "duel" and not duel_finished:
+			if not duel_transition:
+				_duel_round_end()
+			return
 		if king_sequence or timeout_sequence:
 			return
 		if not hud.game_over_panel.visible:
@@ -817,6 +1102,8 @@ func _process(delta):
 	var now = game_time
 	if now >= Config.GAME_TIME_LIMIT and not game_over:
 		_check_timeout()
+	if win_condition == "touchdown" and not game_over and not touchdown_resetting and not timeout_sequence:
+		_update_touchdown()
 	_update_elixir(delta)
 	_update_network_ai(delta)
 	_update_tutorial_enemy(delta)
@@ -1177,7 +1464,9 @@ func _spawn_effect(pos: Vector3):
 # ============ 圣水系统 ============
 func _update_elixir(delta):
 	var now = Time.get_ticks_msec() - start_time
-	if now >= 240000:
+	if mode_elixir_rate != 1.0:
+		elixir_rate = mode_elixir_rate
+	elif now >= 240000:
 		elixir_rate = 3.0
 	elif now >= 180000:
 		elixir_rate = 2.0
@@ -1266,6 +1555,24 @@ func _update_network_ai(delta: float) -> void:
 				break
 
 func _check_timeout():
+	if win_condition == "touchdown":
+		if int(touchdown_score[0]) == int(touchdown_score[1]):
+			overtime = true
+		else:
+			game_over = true
+			winner = Config.Team.PLAYER if int(touchdown_score[0]) > int(touchdown_score[1]) else Config.Team.ENEMY
+			_timeout_game_over()
+		return
+	if sudden_death_enabled:
+		var hp0: float = _team_tower_total_health(Config.Team.PLAYER)
+		var hp1: float = _team_tower_total_health(Config.Team.ENEMY)
+		if absf(hp0 - hp1) < 0.5:
+			overtime = true
+		else:
+			game_over = true
+			winner = Config.Team.PLAYER if hp0 > hp1 else Config.Team.ENEMY
+			_timeout_game_over()
+		return
 	if player_crowns != enemy_crowns:
 		game_over = true
 		winner = Config.Team.PLAYER if player_crowns > enemy_crowns else Config.Team.ENEMY
@@ -1303,8 +1610,11 @@ func _initialize_player_deck():
 		for i in range(mini(4, card_desk.size())):
 			_draw_card()
 		return
+	# 模式指定卡组（经典卡组模式）
+	if not mode_player_deck.is_empty():
+		card_desk = mode_player_deck.duplicate()
 	# 测试模式：随机全卡（不受未解锁限制），等级由 battle_level 固定为 11
-	if PlayerData.test_mode:
+	elif PlayerData.test_mode:
 		var all_ids: Array = []
 		for cfg in configs:
 			if (cfg.cost > 0 or cfg.card_id == 123) and cfg.card_id >= 4:
@@ -1528,7 +1838,7 @@ func deploy_spell(config: CardData, team: int, target_pos: Vector3, level_overri
 			level =PlayerData.get_card_level(config.card_id)
 		else:
 			level = PlayerData.ai_level(config.card_id)
-		level = Config.battle_level(level)
+		level = mode_level(Config.battle_level(level))
 		var spell = Spell.create(target_pos, team,
 			int(config.damage *Config.level_mult(level)), config.damage_range,
 			0, config.attack_type, config.target_type)
@@ -1712,7 +2022,7 @@ func _on_spell_projectile_arrive(config: CardData, team: int, pos: Vector3):
 			level =PlayerData.get_card_level(config.card_id)
 		else:
 			level = PlayerData.ai_level(config.card_id)
-		level = Config.battle_level(level)
+		level = mode_level(Config.battle_level(level))
 		var spell = Spell.create(pos, team,
 			int(config.damage *Config.level_mult(level)), config.damage_range,
 			0, config.attack_type, config.target_type)
@@ -1747,7 +2057,114 @@ func show_network_result(winner_team: int, crowns: Array, local_team: int, durat
 	hud.hide_battle_hud_for_result()
 	hud.game_over_panel.visible = true
 
+func _duel_round_end() -> void:
+	if duel_transition or duel_finished:
+		return
+	duel_transition = true
+	var round_winner: int = winner
+	for u in units.get_children():
+		if u is Unit:
+			u.set_physics_process(false)
+			u.set_process(false)
+	for b in bullets.get_children():
+		b.set_physics_process(false)
+	for s in spells.get_children():
+		s.active = false
+	if hud:
+		hud.hide_card_tray()
+	var res: Dictionary = BATTLE_MODES.duel_advance(round_winner)
+	duel_wins = Array(res.get("wins", duel_wins)).duplicate()
+	_show_duel_overlay(round_winner, res)
+	await get_tree().create_timer(1.7).timeout
+	if bool(res.get("match_over", false)):
+		duel_finished = true
+		duel_match_winner = int(res.get("match_winner", round_winner))
+		winner = duel_match_winner
+		duel_transition = false
+		_show_game_over()
+		return
+	get_tree().reload_current_scene()
+
+
+func _show_duel_overlay(round_winner: int, res: Dictionary) -> void:
+	if hud == null:
+		return
+	var layer := Control.new()
+	layer.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	layer.mouse_filter = Control.MOUSE_FILTER_STOP
+	layer.z_index = 200
+	hud.add_child(layer)
+	var dim := ColorRect.new()
+	dim.color = Color(0.01, 0.015, 0.03, 0.72)
+	dim.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	dim.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	layer.add_child(dim)
+	var panel := Panel.new()
+	panel.anchor_left = 0.5
+	panel.anchor_right = 0.5
+	panel.anchor_top = 0.5
+	panel.anchor_bottom = 0.5
+	panel.offset_left = -330
+	panel.offset_right = 330
+	panel.offset_top = -180
+	panel.offset_bottom = 180
+	var sb := StyleBoxFlat.new()
+	sb.bg_color = Color(0.04, 0.06, 0.12, 0.98)
+	sb.set_corner_radius_all(22)
+	sb.set_border_width_all(2)
+	sb.border_color = Color(0.945, 0.765, 0.36, 0.8)
+	sb.shadow_color = Color(0, 0, 0, 0.6)
+	sb.shadow_size = 18
+	panel.add_theme_stylebox_override("panel", sb)
+	layer.add_child(panel)
+	var vbox := VBoxContainer.new()
+	vbox.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	vbox.offset_left = 26
+	vbox.offset_right = -26
+	vbox.offset_top = 22
+	vbox.offset_bottom = -22
+	vbox.add_theme_constant_override("separation", 12)
+	panel.add_child(vbox)
+	var font: Font = load(ThemeHelper.DEFAULT_FONT_PATH)
+	var title := Label.new()
+	title.text = "决斗 · 第 %d 回合" % int(res.get("round", duel_round))
+	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	title.add_theme_font_size_override("font_size", 30)
+	title.add_theme_color_override("font_color", Color(0.945, 0.765, 0.36))
+	if font != null:
+		title.add_theme_font_override("font", font)
+	vbox.add_child(title)
+	var result := Label.new()
+	result.text = "你赢下本回合" if round_winner == Config.Team.PLAYER else "对手赢下本回合"
+	result.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	result.add_theme_font_size_override("font_size", 20)
+	result.add_theme_color_override("font_color", Color(0.93, 0.90, 0.80))
+	if font != null:
+		result.add_theme_font_override("font", font)
+	vbox.add_child(result)
+	var score := Label.new()
+	score.text = "总比分  %d : %d" % [int(duel_wins[0]), int(duel_wins[1])]
+	score.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	score.add_theme_font_size_override("font_size", 34)
+	score.add_theme_color_override("font_color", Color(0.945, 0.765, 0.36))
+	if font != null:
+		score.add_theme_font_override("font", font)
+	vbox.add_child(score)
+	var hint := Label.new()
+	hint.text = "决斗结束" if bool(res.get("match_over", false)) else "准备下一回合…"
+	hint.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	hint.add_theme_font_size_override("font_size", 16)
+	hint.add_theme_color_override("font_color", Color(0.63, 0.68, 0.795))
+	if font != null:
+		hint.add_theme_font_override("font", font)
+	vbox.add_child(hint)
+
+
 func _show_game_over() -> void:
+	if not replay_mode and not suppress_game_over_ui and not network_host_mode and not network_guest_mode:
+		var CH := preload("res://scripts/core/Challenges.gd")
+		if CH.active_id() != "":
+			challenge_result = CH.report_result(winner == Config.Team.PLAYER)
 	if network_host_mode:
 		var extra := {
 			"top0": _top3_arr(0), "top1": _top3_arr(1),
@@ -1805,7 +2222,7 @@ func _top3_arr(team: int) -> Array:
 	var arr: Array = []
 	for cid in d.keys():
 		var cfg = get_config(int(cid))
-		arr.append([cfg.card_name if cfg else str(cid), int(d[cid])])
+		arr.append([cfg.card_name if cfg else str(cid), int(d[cid]), int(cid)])
 	arr.sort_custom(func(a, b): return a[1] > b[1])
 	return arr.slice(0, 3)
 # ============================================================
@@ -1821,11 +2238,18 @@ func add_crown(tower_team: int, world_pos: Vector3) -> void:
 		enemy_crowns += 1
 	if hud:
 		hud.update_crown_labels(player_crowns, enemy_crowns)
-	if player_crowns >= 3 or enemy_crowns >= 3:
+	if win_condition == "touchdown":
+		return
+	if sudden_death_enabled and not game_over:
+		game_over = true
+		winner = scorer
+	elif player_crowns >= 3 or enemy_crowns >= 3:
 		game_over = true
 		winner = Config.Team.PLAYER if player_crowns > enemy_crowns else Config.Team.ENEMY
 
 func on_king_destroyed(tower_team: int, world_pos: Vector3) -> void:
+	if win_condition == "touchdown":
+		return
 	if king_sequence or game_over:
 		return
 	king_sequence = true
@@ -1887,7 +2311,7 @@ func _lightning_spell_strikes(config: CardData, team: int, target_pos: Vector3) 
 		level = PlayerData.get_card_level(config.card_id)
 	else:
 		level = PlayerData.ai_level(config.card_id)
-	level = Config.battle_level(level)
+	level = mode_level(Config.battle_level(level))
 	var total_dmg: int = int(config.damage * Config.level_mult(level))
 	for i in range(3):
 		var ang: float = float(i) * TAU / 3.0 + randf() * 0.6
@@ -1904,7 +2328,7 @@ func _instant_spell(config: CardData, team: int, target_pos: Vector3, level_over
 		level = PlayerData.get_card_level(config.card_id)
 	else:
 		level = PlayerData.ai_level(config.card_id)
-	level = Config.battle_level(level)
+	level = mode_level(Config.battle_level(level))
 	var spell = Spell.create(target_pos, team, int(config.damage * Config.level_mult(level)), config.damage_range, 0, config.attack_type, config.target_type)
 	spell.card_id = config.card_id
 	spell.time = config.attack_speed if config.attack_speed > 0 else 0

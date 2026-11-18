@@ -22,6 +22,7 @@ const MAX_PLAYERS := 4
 
 var role: int = Role.NONE
 var room_mode: String = "1v1"
+var party_rule: String = "standard"   # 联机派对规则 id（BattleModes）
 var room_code: String = ""
 var peer: ENetMultiplayerPeer = null
 var players: Dictionary = {}          # peer_id -> {name,deck,levels,seated}
@@ -222,6 +223,7 @@ func start_match() -> void:
 	room_mode = mode_name()
 	var base := {
 		"mode": room_mode,
+		"party_rule": party_rule,
 		"room_code": room_code,
 		"seats": _seat_public(),
 		"arena": PlayerData.get_arena(),
@@ -289,6 +291,7 @@ func match_start(info: Dictionary) -> void:
 	local_slot = int(info.get("local_slot", 0))
 	local_team = int(info.get("local_team", 0))
 	room_mode = String(info.get("mode", "1v1"))
+	party_rule = String(info.get("party_rule", "standard"))
 	match_started.emit(info)
 
 @rpc("any_peer", "call_remote", "reliable")

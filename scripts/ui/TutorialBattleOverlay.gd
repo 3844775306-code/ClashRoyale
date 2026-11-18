@@ -129,6 +129,7 @@ func _show_result_sequence() -> void:
 		"my_spent": 0, "enemy_spent": 0, "my_over": 0.0, "enemy_over": 0.0,
 		"my_top": [], "enemy_top": [],
 		"reward_text": "训练奖励：1 个宝箱（返回主菜单查看）",
+		"chest_rarity": "silver",
 	}
 	screen._btn_menu.text = "返 回 主 菜 单"
 	screen.populate(data)

@@ -80,6 +80,14 @@ func _ready():
 
 func _init_ai_deck():
 	ai_deck.clear()
+	# 模式指定卡组（经典卡组模式）
+	if battle != null and not battle.mode_enemy_deck.is_empty():
+		ai_deck = battle.mode_enemy_deck.duplicate()
+		for i in range(4):
+			_draw_ai_card()
+		win_condition_id = _find_win_condition()
+		archetype = _classify_archetype(win_condition_id)
+		return
 	var pool: Array = []
 	var allowed: Array = PlayerData.get_ai_allowed_cards()
 	for cfg in battle.configs:
@@ -431,6 +439,8 @@ func _spell_tower_target(spell_cfg: CardData) -> Vector3:
 	if hp <= 0.0:
 		return Vector3.ZERO
 	var lv: int = PlayerData.ai_level(spell_cfg.card_id) if team == Config.Team.ENEMY else PlayerData.get_card_level(spell_cfg.card_id)
+	if battle != null:
+		lv = battle.mode_level(lv)
 	var dmg: float = spell_cfg.damage * Config.level_mult(lv)
 	if hp <= dmg * 1.15:
 		var x: float = Config.ARENA_ORIGIN.x + Config.ARENA_WIDTH * (3.5 / 18.0 if lane == 0 else 14.5 / 18.0)

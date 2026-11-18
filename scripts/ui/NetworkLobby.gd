@@ -14,11 +14,12 @@ var _seats_box: VBoxContainer
 var _start_btn: Button
 var _room_code_label: Label
 var _mode_label: Label
+var _rule_buttons: Array = []
 var _in_room := false
 
 func _ready():
 	UiComponents.add_background(self)
-	add_child(_make_header())
+	UiComponents.make_header(self, "联机房间", func(): get_tree().change_scene_to_file("res://scenes/menu.tscn"), true)
 	_build_initial()
 	_build_room()
 	NetworkManager.lobby_status.connect(_on_status)
@@ -131,6 +132,29 @@ func _build_room() -> void:
 	_room_box.add_child(_mode_label)
 	_uid_label = _label("", 13, Color(0.6,0.72,0.86))
 	_room_box.add_child(_uid_label)
+	# 派对规则（房主可选，双倍/突然死亡等）
+	var rule_row := HBoxContainer.new()
+	rule_row.add_theme_constant_override("separation", 8)
+	var rule_lbl := _label("派对规则", 14, Color(0.86, 0.80, 0.62))
+	rule_lbl.custom_minimum_size = Vector2(88, 0)
+	rule_lbl.size_flags_horizontal = Control.SIZE_SHRINK_BEGIN
+	rule_lbl.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	rule_row.add_child(rule_lbl)
+	for entry in [["standard", "标准"], ["double_elixir", "双倍圣水"], ["sudden_death", "突然死亡"]]:
+		var b := Button.new()
+		b.text = String(entry[1])
+		b.focus_mode = Control.FOCUS_NONE
+		b.custom_minimum_size = Vector2(118, 38)
+		b.add_theme_font_size_override("font_size", 14)
+		var rid := String(entry[0])
+		b.pressed.connect(func():
+			if NetworkManager.role == NetworkManager.Role.HOST:
+				NetworkManager.party_rule = rid
+				_refresh_rule_buttons()
+				_refresh_seats())
+		_rule_buttons.append([b, rid])
+		rule_row.add_child(b)
+	_room_box.add_child(rule_row)
 	_seats_box = VBoxContainer.new()
 	_seats_box.add_theme_constant_override("separation", 10)
 	_room_box.add_child(_seats_box)
@@ -163,6 +187,11 @@ func _enter_room(is_host: bool) -> void:
 	if _room_bg: _room_bg.visible = true
 	_refresh_seats()
 	if is_host:
+		var env_rule := OS.get_environment("CR_NET_PARTY_RULE")
+		if env_rule != "":
+			NetworkManager.party_rule = env_rule
+			_refresh_rule_buttons()
+			_refresh_seats()
 		var ai0 := OS.get_environment("CR_NET_ADD_BLUE")
 		var ai1 := OS.get_environment("CR_NET_ADD_RED")
 		if ai0 != "": NetworkManager.add_seat(0)
@@ -174,11 +203,33 @@ func _enter_room(is_host: bool) -> void:
 		if auto_s != "":
 			call_deferred("_auto_claim")
 
+func _refresh_rule_buttons() -> void:
+	for item in _rule_buttons:
+		var b: Button = item[0]
+		var active: bool = String(item[1]) == NetworkManager.party_rule
+		b.disabled = NetworkManager.role != NetworkManager.Role.HOST
+		var sb := StyleBoxFlat.new()
+		sb.set_corner_radius_all(12)
+		sb.set_border_width_all(2 if active else 1)
+		sb.bg_color = Color(0.16, 0.11, 0.05, 0.95) if active else Color(0.05, 0.07, 0.13, 0.9)
+		sb.border_color = Color(0.95, 0.76, 0.36, 0.95) if active else Color(1, 1, 1, 0.16)
+		b.add_theme_stylebox_override("normal", sb)
+		b.add_theme_stylebox_override("hover", sb)
+		b.add_theme_stylebox_override("pressed", sb)
+		b.add_theme_color_override("font_color", Color(1.0, 0.93, 0.72) if active else Color(0.72, 0.78, 0.88))
+
+
 func _refresh_seats() -> void:
 	if not _in_room:
 		return
 	_room_code_label.text = "房间码 %s    IP %s" % [NetworkManager.room_code, NetworkManager.get_local_ip()]
-	_mode_label.text = "模式 %s    蓝 %d 席 / 红 %d 席" % [NetworkManager.mode_name(), NetworkManager.seats_in_team(0).size(), NetworkManager.seats_in_team(1).size()]
+	var rule_name := "标准"
+	if NetworkManager.party_rule == "double_elixir":
+		rule_name = "双倍圣水"
+	elif NetworkManager.party_rule == "sudden_death":
+		rule_name = "突然死亡"
+	_mode_label.text = "模式 %s · %s    蓝 %d 席 / 红 %d 席" % [NetworkManager.mode_name(), rule_name, NetworkManager.seats_in_team(0).size(), NetworkManager.seats_in_team(1).size()]
+	_refresh_rule_buttons()
 	_uid_label.text = "你是 %s" % ("房主" if NetworkManager.role == NetworkManager.Role.HOST else "玩家")
 	for ch in _seats_box.get_children():
 		ch.queue_free()

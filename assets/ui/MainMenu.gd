@@ -637,6 +637,8 @@ func _build_bottom_row() -> void:
 	_ui_root.add_child(row)
 	row.add_child(_text_action("star", "新手教程", _on_tutorial_pressed))
 	row.add_child(_dot_sep())
+	row.add_child(_text_action("medal", "挑战", _on_challenges_pressed))
+	row.add_child(_dot_sep())
 	row.add_child(_text_action("quit", "退出", _on_quit_pressed))
 
 func _dot_sep() -> Control:
@@ -781,6 +783,10 @@ func _on_achievements_pressed():
 
 func _on_collection_pressed():
 	LoadingScreen.change_scene("res://scenes/collection.tscn", "正在加载收藏…")
+
+func _on_challenges_pressed():
+	get_tree().change_scene_to_file("res://scenes/challenges.tscn")
+
 
 func _on_clan_pressed():
 	get_tree().change_scene_to_file("res://scenes/clan_ui.tscn")
