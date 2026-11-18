@@ -73,7 +73,7 @@ func _replace_emoji(s: String) -> String:
 		clean += ch
 	clean = clean.strip_edges()
 	if clean == "" and first_emoji != "":
-		return String(_map.get(first_emoji, "图标"))
+		return String(_map.get(first_emoji, ""))
 	return clean
 
 func _is_emoji(cp: int) -> bool:

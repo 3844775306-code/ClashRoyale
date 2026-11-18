@@ -38,6 +38,7 @@ var network_wait_ready: bool = false
 var entry_intro_active: bool = false
 var tutorial_battle: bool = false
 var tutorial_played: Array = []
+var _tutorial_ai_timer: float = 5.0
 var _network_count_label: Label = null
 var _countdown_overlay: Control = null
 var replay_meta: Dictionary = {}
@@ -818,6 +819,7 @@ func _process(delta):
 		_check_timeout()
 	_update_elixir(delta)
 	_update_network_ai(delta)
+	_update_tutorial_enemy(delta)
 
 
 # ============ 配置加载 ============
@@ -1088,6 +1090,11 @@ func spawn_initial_towers():
 		var cfg = get_config(type)
 		if cfg == null:
 			continue
+		if tutorial_battle and team == Config.Team.ENEMY and (type == 1 or type == 2):
+			var tut_cfg = cfg.duplicate()
+			tut_cfg.max_health = float(cfg.max_health) * 0.45
+			tut_cfg.damage = float(cfg.damage) * 0.55
+			cfg = tut_cfg
 		if type == 3 and network_host_mode and String(NetworkManager.room_mode) != "1v1":
 			var cfg2 = cfg.duplicate()
 			cfg2.max_health = float(cfg.max_health) * 1.5
@@ -1197,6 +1204,23 @@ func _update_elixir(delta):
 		rp.elixir = minf(cap, float(rp.elixir) + gain * team_elixir_gain_mult(st))
 		remote_players[sk] = rp
 
+
+func _update_tutorial_enemy(delta: float) -> void:
+	if not tutorial_battle or game_over:
+		return
+	_tutorial_ai_timer -= delta
+	if _tutorial_ai_timer > 0.0:
+		return
+	_tutorial_ai_timer = 7.0
+	var pool: Array = [44, 39, 4, 8, 62]
+	var cid: int = int(pool[randi() % pool.size()])
+	var cfg = get_config(cid)
+	if cfg == null:
+		return
+	var cx: float = Config.ARENA_ORIGIN.x + Config.ARENA_WIDTH * 0.5
+	var x: float = cx + randf_range(-4.5, 4.5)
+	var z: float = Config.ARENA_ORIGIN.z + Config.ARENA_HEIGHT * randf_range(0.16, 0.28)
+	spawn_unit(cfg, Config.Team.ENEMY, Vector3(x, 0.0, z), -1, PlayerData.ai_level(cid))
 
 func network_ai_takeover(slot: int) -> void:
 	if not remote_players.has(slot):

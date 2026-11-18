@@ -54,20 +54,24 @@ func _label(text: String, fs: int, col: Color) -> Label:
 
 func _refresh():
 	if _step == 0:
-		_title.text = "实战训练 1/3 · 肉盾先上"
+		_title.text = "实战训练 1/4 · 肉盾先上"
 		_body.text = "先部署骑士或巨人，让它们走在前面吸收火力。点击底部卡牌再点己方战场，或直接拖拽。"
 		_btn.visible = false
 	elif _step == 1:
-		_title.text = "实战训练 2/3 · 远程跟上"
+		_title.text = "实战训练 2/4 · 远程跟上"
 		_body.text = "肉盾已经就位。现在部署弓箭手或亡灵，让远程单位在肉盾后面输出。"
 		_btn.visible = false
 	elif _step == 2:
-		_title.text = "实战训练 3/3 · 法术清场"
+		_title.text = "实战训练 3/4 · 法术清场"
 		_body.text = "敌方弓箭手正在输出。用火球或万箭齐发清掉它们；点击法术牌后选择敌方单位所在位置。"
+		_btn.visible = false
+	elif _step == 3:
+		_title.text = "实战训练 4/4 · 摧毁一座公主塔"
+		_body.text = "组合进攻并摧毁敌方一座公主塔。敌方 AI 会随机放几张牌，注意圣水与防守。"
 		_btn.visible = false
 	else:
 		_title.text = "实战训练完成"
-		_body.text = "你已经学会肉盾 + 远程的搭配，以及用法术清理远程单位。去主菜单开始真正的对局吧！"
+		_body.text = "你已经学会肉盾 + 远程搭配、法术清场，并摧毁了公主塔。去主菜单开始真正的对局吧！"
 		_btn.visible = true
 		_btn.text = "完成训练"
 
@@ -84,8 +88,10 @@ func _process(_delta):
 	elif _step == 2 and (played.has(11) or played.has(10)):
 		_step = 3
 		_refresh()
-		if not _btn.pressed.is_connected(_finish):
-			_btn.pressed.connect(_finish)
+	elif _step == 3:
+		if battle.healths.size() >= 5 and (float(battle.healths[3]) <= 0.0 or float(battle.healths[4]) <= 0.0):
+			_step = 4
+			_refresh()
 
 func _next_step():
 	_finish()

@@ -35,6 +35,11 @@ NetworkManager="*res://scripts/net/NetworkManager.gd"
 LoadingScreen="*res://scripts/core/LoadingScreen.gd"
 WebTextCompat="*res://scripts/core/WebTextCompat.gd"
 
+[gui]
+
+theme/custom_font="res://assets/fonts/STZHONGS.TTF"
+theme/custom_default_font_size=16
+
 [display]
 
 window/size/viewport_width=800
