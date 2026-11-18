@@ -1,0 +1,62 @@
+<div align="center">
+
+<img src="icon.svg" width="140" alt="Clash Royale toy diorama icon">
+
+# 皇室战争 · Toy Diorama
+
+程序化低模 Q 版皇室战争同人项目 · Godot 4.7.2
+
+[网页版](https://3844775306-code.github.io/ClashRoyale/) · [Releases（Windows / Android）](https://github.com/3844775306-code/ClashRoyale/releases)
+
+</div>
+
+## 项目特色
+
+- **玩具沙盘低模 + Q 版**：全部模型程序化生成，不使用外部 GLB。
+- **完整对战**：卡组、圣水、公主塔/国王塔、法术、召唤、AI。
+- **局域网联机**：
+  - 1V1 / 2V2 / 1V2；
+  - 红蓝席位房间，空席 AI 托管；
+  - 房主权威服务器，ENet UDP（端口 `24500`）；
+  - 入场同步、倒计时、双端结算、表情、回放。
+- **回放**：单机与联机对局均可在设置中开启录制。
+- **多端**：Windows EXE、Android APK、Web（无多线程，适配 GitHub Pages）。
+
+## 下载
+
+| 平台 | 文件 |
+|---|---|
+| Windows | `ClashRoyale-Net9.exe`（Releases） |
+| Android | `ClashRoyale-Net.apk`（Releases） |
+| Web | [GitHub Pages](https://3844775306-code.github.io/ClashRoyale/) / `ClashRoyale-Web.zip` |
+
+## 操作
+
+- 点击卡牌后再点战场，或直接拖拽卡牌到战场。
+- 联机：创建房间后把本机 IP 和 4 位房间码发给朋友；朋友加入房间后点击空/AI 席位进驻。
+- 房主可给红蓝双方增加席位（最多每方 2 席）；所有真人入驻后才能开始。
+
+## 本地构建
+
+需要 Godot **4.7.2 stable** 与对应导出模板。
+
+```powershell
+# 网页
+godot --headless --path . --export-release "Web" "build/web/index.html"
+
+# Windows
+godot --headless --path . --export-release "Windows Desktop" "ClashRoyale-Net9.exe"
+```
+
+Android 导出后再用 `apksigner` 签名；签名文件不随仓库提供。
+
+## 卡牌数据
+
+- 运行时读取 `data/units_level11_utf8.csv` 或 `data/units_level11.csv`，按修改时间选择较新的表。
+- 卡组/详情/升级与战斗共用 `BattleManager.load_card_configs()`。
+- 详细说明见 [`docs/卡牌数据表说明.md`](docs/卡牌数据表说明.md)。
+
+## 说明
+
+- 本项目为非商业同人项目，与 Supercell 无关联；Clash Royale 相关名称与设定归 Supercell 所有。
+- 公开仓库不包含 Android 签名文件、AI 训练产物、本地测试日志与构建缓存。

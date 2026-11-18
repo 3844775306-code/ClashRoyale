@@ -1,0 +1,19 @@
+[remap]
+
+importer="csv_translation"
+type="Translation"
+uid="uid://cn4ukjl7cma5c"
+
+[deps]
+
+files=["res://data/units_level11_utf8.name.translation", "res://data/units_level11_utf8.cost.translation", "res://data/units_level11_utf8.num.translation", "res://data/units_level11_utf8.type.translation", "res://data/units_level11_utf8.hp.translation", "res://data/units_level11_utf8.damage.translation", "res://data/units_level11_utf8.attack.translation", "res://data/units_level11_utf8.attack.translation", "res://data/units_level11_utf8.damage.translation", "res://data/units_level11_utf8.target.translation", "res://data/units_level11_utf8.move.translation", "res://data/units_level11_utf8.move.translation", "res://data/units_level11_utf8.horizon.translation", "res://data/units_level11_utf8.size.translation", "res://data/units_level11_utf8.shield.translation", "res://data/units_level11_utf8.extra.translation", "res://data/units_level11_utf8.spawn.translation", "res://data/units_level11_utf8.attack.translation", "res://data/units_level11_utf8.multiple.translation", "res://data/units_level11_utf8.multiple.translation", "res://data/units_level11_utf8.备注.translation"]
+
+source_file="res://data/units_level11_utf8.csv"
+dest_files=["res://data/units_level11_utf8.name.translation", "res://data/units_level11_utf8.cost.translation", "res://data/units_level11_utf8.num.translation", "res://data/units_level11_utf8.type.translation", "res://data/units_level11_utf8.hp.translation", "res://data/units_level11_utf8.damage.translation", "res://data/units_level11_utf8.attack.translation", "res://data/units_level11_utf8.attack.translation", "res://data/units_level11_utf8.damage.translation", "res://data/units_level11_utf8.target.translation", "res://data/units_level11_utf8.move.translation", "res://data/units_level11_utf8.move.translation", "res://data/units_level11_utf8.horizon.translation", "res://data/units_level11_utf8.size.translation", "res://data/units_level11_utf8.shield.translation", "res://data/units_level11_utf8.extra.translation", "res://data/units_level11_utf8.spawn.translation", "res://data/units_level11_utf8.attack.translation", "res://data/units_level11_utf8.multiple.translation", "res://data/units_level11_utf8.multiple.translation", "res://data/units_level11_utf8.备注.translation"]
+
+[params]
+
+compress=1
+delimiter=0
+unescape_keys=false
+unescape_translations=true

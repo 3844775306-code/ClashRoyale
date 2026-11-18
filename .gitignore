@@ -1,0 +1,30 @@
+# Godot
+.godot/
+*.tmp
+*.translation.old
+
+# Local build outputs / binaries (published via GitHub Releases)
+build/
+web/
+*.exe
+*.apk
+*.idsig
+*.pck
+*.wasm
+ClashRoyale-Web.zip
+
+# Local tooling / generated data / RL runs
+tools/
+rl/
+android/
+.crapi/
+.claude/
+__pycache__/
+*.pyc
+*.log
+*.jsonl
+*.tmp
+
+# OS
+.DS_Store
+Thumbs.db

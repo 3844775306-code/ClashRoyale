@@ -1,0 +1,61 @@
+[gd_scene load_steps=9 format=3 uid="uid://18q03os38atv"]
+
+[ext_resource type="Script" uid="uid://vdekiofotu7j" path="res://scenes/Battlefield.gd" id="1_dn72j"]
+[ext_resource type="Script" uid="uid://bd2lc2eaqslcx" path="res://scripts/core/BattleManager.gd" id="1_th188"]
+[ext_resource type="Script" uid="uid://ckrgdjxe3hfan" path="res://scripts/ui/HUD.gd" id="3_p1qf1"]
+
+[sub_resource type="Gradient" id="Gradient_th188"]
+offsets = PackedFloat32Array(0, 0.627193, 1)
+colors = PackedColorArray(0.7529412, 1, 1, 1, 1, 1, 0.99215686, 1, 0.8156863, 1, 1, 1)
+
+[sub_resource type="GradientTexture2D" id="GradientTexture2D_p1qf1"]
+gradient = SubResource("Gradient_th188")
+
+[sub_resource type="PanoramaSkyMaterial" id="PanoramaSkyMaterial_a12nh"]
+panorama = SubResource("GradientTexture2D_p1qf1")
+
+[sub_resource type="Sky" id="Sky_lpir7"]
+sky_material = SubResource("PanoramaSkyMaterial_a12nh")
+
+[sub_resource type="Environment" id="Environment_6vh42"]
+background_mode = 2
+sky = SubResource("Sky_lpir7")
+ambient_light_color = Color(0.9955804, 0.99558026, 0.99558026, 1)
+ambient_light_energy = 5.0
+ssao_enabled = true
+glow_enabled = true
+
+[node name="Battle" type="Node3D"]
+script = ExtResource("1_th188")
+
+[node name="WorldEnvironment" type="WorldEnvironment" parent="."]
+environment = SubResource("Environment_6vh42")
+
+[node name="DirectionalLight3D" type="DirectionalLight3D" parent="."]
+transform = Transform3D(0.7071067, -0.35355338, 0.6123724, 0, 0.8660254, 0.5, -0.7071067, -0.35355338, 0.6123724, 0, 0, 0)
+shadow_enabled = true
+
+[node name="Camera3D" type="Camera3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 0.49999997, 0.86602545, 0, -0.86602545, 0.49999997, 0, 30, 18)
+projection = 1
+fov = 60.0
+size = 36.5
+near = 10.0
+
+[node name="Battlefield" type="Node3D" parent="."]
+script = ExtResource("1_dn72j")
+
+[node name="Units" type="Node3D" parent="."]
+
+[node name="Bullets" type="Node3D" parent="."]
+
+[node name="Spells" type="Node3D" parent="."]
+
+[node name="UI" type="CanvasLayer" parent="."]
+script = ExtResource("3_p1qf1")
+
+[node name="Label" type="Label" parent="UI"]
+offset_right = 40.0
+offset_bottom = 23.0
+text = "战斗场景
+"

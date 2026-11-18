@@ -1,0 +1,570 @@
+# scripts/core/ClanManager.gd
+extends Node
+
+## LootLocker 部落管理系统 - 基于通用排行榜 + Metadata
+## 原理：每个部落作为一条通用排行榜条目，部落名称作为 member_id，
+##       部落总奖杯作为 score，部落详细数据（成员、聊天等）以 JSON 存入 metadata。
+
+const MAX_MEMBERS := 50
+const MAX_CHAT_MESSAGES := 100
+const CACHE_SECONDS := 12.0
+var _clans_cache: Array = []
+var _cache_at: float = 0.0
+const CLAN_LEADERBOARD_KEY := "global_clan_list"
+
+static func clan_leaderboard_key() -> String:
+	var env := OS.get_environment("CR_CLAN_LEADERBOARD_KEY")
+	return env if env != "" else CLAN_LEADERBOARD_KEY
+func _encode(plain: String) -> String:
+	return Marshalls.utf8_to_base64(plain)
+
+func _decode(encoded: String) -> String:
+	var s: String = encoded.strip_edges()
+	if s == "":
+		return ""
+	if s.begins_with("{") or s.begins_with("["):
+		return s
+	for i in range(s.length()):
+		var c: String = s[i]
+		if not ((c >= "A" and c <= "Z") or (c >= "a" and c <= "z") or (c >= "0" and c <= "9") or c in ["+", "/", "=", "\n", "\r"]):
+			return s
+	var decoded := Marshalls.base64_to_utf8(s)
+	return decoded if decoded.strip_edges() != "" else s
+# 安全地获取响应中的错误信息
+# 将 LootLocker 响应转换为标准字典
+func _response_to_dict(response) -> Dictionary:
+	if response == null:
+		return {}
+	if typeof(response) == TYPE_DICTIONARY:
+		return response
+	# 大多数 LootLocker 响应类都支持 to_dict()
+	if response.has_method("to_dict"):
+		return response.to_dict()
+	# 最后尝试用 get 方法（某些响应支持）
+	var result = {}
+	for prop in ["success", "error", "status_code", "message", "scores"]:
+		if response.has_method("get"):
+			var val = response.get(prop)
+			if val != null:
+				result[prop] = val
+		elif response.has(prop):
+			result[prop] = response[prop]
+	return result
+func _get_response_error(response) -> String:
+	if response.has_method("get"):
+		var err = response.get("error")
+		if err != null and err != "":
+			return err
+		var msg = response.get("message")
+		if msg != null and msg != "":
+			return msg
+	return "未知错误"
+# ---------- 玩家信息（基于 LL_StateData）----------
+func get_player_id() -> int:
+	return LL_StateData.GetCachedPlayerLegacyID()
+
+func get_player_name() -> String:
+	var name = LL_StateData.GetCachedPlayerName()
+	return name if name != "" else "玩家"
+
+func is_logged_in() -> bool:
+	return LL_StateData.IsLoggedIn()
+
+# ---------- 初始化 ----------
+func guest_login():
+	if is_logged_in():
+		print("ClanManager: 已登录，玩家ID: ", get_player_id())
+		get_player_inventory(get_player_id(), func(success, inventory):
+			if success and inventory is Dictionary:
+				for card_id in inventory.keys():
+					PlayerData.card_quantities[int(card_id)] = inventory[card_id]
+				PlayerData.save_data()
+		)
+		return
+	var session = LL_Authentication.GuestSession.new()
+	var response = await session.send()
+	if response.success:
+		print("ClanManager: 游客登录成功, player_id=", get_player_id())
+	else:
+		var err_msg = "登录失败: " + str(response.error)
+		print(err_msg)
+		# 发送信号或直接弹出提示（确保主场景有接收）
+		if get_tree() and get_tree().get_first_node_in_group("ui_notifier"):
+			get_tree().get_first_node_in_group("ui_notifier").show_message(err_msg)
+# 从排行榜读取某玩家的库存 (callback 返回 Dictionary{ card_id: quantity })
+func get_player_inventory(player_id: int, callback: Callable):
+	var leaderboard_key = "player_inventory_%s" % player_id
+	var request = LL_Leaderboards.GetScoreList.new(leaderboard_key, 1)
+	var response = await request.send()
+	if response.success and response.get("scores") != null and response.scores.size() > 0:
+		var metadata_str = response.scores[0].get("metadata", "{}")
+		var decoded = _decode(str(metadata_str))
+		callback.call(true, JSON.parse_string(decoded))
+	else:
+		callback.call(true, {})  # 没有库存条目，返回空字典
+
+# 保存某玩家的库存到排行榜
+func save_player_inventory(player_id: int, inventory: Dictionary, callback: Callable = Callable()):
+	var leaderboard_key = "player_inventory_%s" % player_id
+	var member_id = str(player_id)
+	var metadata = _encode(JSON.stringify(inventory))
+	var request = LL_Leaderboards.SubmitScore.new(leaderboard_key, 0, member_id, metadata)
+	var response = await request.send()
+	if callback.is_valid():
+		callback.call(response.success, response.error if not response.success else null)
+# ---------- 获取当前玩家所在部落 ----------
+## 通过查询名为 "player_clan_{player_id}" 的排行榜条目来获取玩家当前部落
+func get_my_clan(callback: Callable):
+	# 这个函数需要在服务器端维护一个映射表；简化处理：扫描整个部落列表寻找当前玩家
+	# 更高效的方式是使用另一个排行榜或 player storage 记录每个玩家的所属部落
+	# 这里先用遍历方式，适用于小规模测试
+	get_all_clans(func(success, clans):
+		if not success:
+			callback.call(false, "获取部落列表失败")
+			return
+		var pid = str(get_player_id())
+		for clan in clans:
+			if clan.has("members") and clan.members.has(pid):
+				callback.call(true, clan)
+				return
+		callback.call(true, null)  # 没有加入任何部落
+	)
+
+# ---------- 部落操作 ----------
+
+## 创建部落
+func create_clan(clan_name: String, description: String, min_trophies: int, is_open: bool, callback: Callable):
+	if not is_logged_in():
+		callback.call(false, "未登录")
+		return
+
+	# 先检查玩家是否已有部落
+	get_my_clan(func(success, existing):
+		if not success:
+			callback.call(false, "检查部落失败")
+			return
+		if existing != null:
+			callback.call(false, "你已经加入了一个部落，请先离开当前部落")
+			return
+
+		# 构建部落数据
+		var clan_data = {
+			"name": clan_name,
+			"description": description,
+			"min_trophies": min_trophies,
+			"is_open": is_open,
+			"leader_id": get_player_id(),
+			"members": {
+				str(get_player_id()): {
+					"player_name": get_player_name(),
+					"trophies": PlayerData.trophies,
+					"role": "leader",
+					"donations": 0,
+					"joined": Time.get_unix_time_from_system()
+				}
+			},
+			"chat": [],
+			"applications": [],
+			"total_trophies": PlayerData.trophies
+		}
+
+		_submit_clan_to_leaderboard(clan_data, callback)
+	)
+
+# ---------- 内部：将部落数据提交到排行榜 ----------
+func _submit_clan_to_leaderboard(clan_data: Dictionary, callback: Callable):
+	var leaderboard_key = clan_leaderboard_key()
+	var member_id = "clan_" + str(int(Time.get_unix_time_from_system() * 1000.0)) + "_" + str(randi() % 1000)
+	var score = clan_data.get("total_trophies", 0)
+	var metadata = _encode(JSON.stringify(clan_data))
+
+	print("[ClanManager] 提交部落，member_id=", member_id, " metadata长度=", metadata.length())
+	var request = LL_Leaderboards.SubmitScore.new(leaderboard_key, score, member_id, metadata)
+	var response = await request.send()
+	# 响应对象 attr 访问
+	if response.success:
+		print("[ClanManager] 部落创建成功，clan_id=", member_id)
+		clan_data["clan_id"] = member_id
+		callback.call(true, member_id)
+	else:
+		print("[ClanManager] 创建失败，error: ", response.error if response.has("error") else "无错误信息")
+		callback.call(false, response.error if response.has("error") else "提交失败")
+
+# ---------- 内部：更新部落数据（覆盖提交）----------
+func _update_clan_on_leaderboard(clan_data: Dictionary, callback: Callable = Callable()):
+	var member_id = clan_data.get("clan_id", "")
+	if member_id == "":
+		if callback.is_valid(): callback.call(false, "clan_id 缺失")
+		return
+	_recalc_total(clan_data)
+	var score = clan_data.get("total_trophies", 0)
+	var metadata = _encode(JSON.stringify(clan_data))
+	var request = LL_Leaderboards.SubmitScore.new(clan_leaderboard_key(), score, member_id, metadata)
+	var response = await request.send()
+	if callback.is_valid():
+		if response.success:
+			callback.call(true, null)
+		else:
+			callback.call(false, response.error if response.has("error") else "更新失败")
+
+# ---------- 获取所有部落 ----------
+func _recalc_total(clan: Dictionary) -> void:
+	var total := 0
+	var members: Dictionary = clan.get("members", {})
+	for mid in members.keys():
+		total += int(members[mid].get("trophies", 0))
+	clan["total_trophies"] = total
+
+func invalidate_cache() -> void:
+	_cache_at = 0.0
+	_clans_cache.clear()
+
+func get_all_clans(callback: Callable):
+	var now: float = Time.get_unix_time_from_system()
+	if not _clans_cache.is_empty() and now - _cache_at < CACHE_SECONDS:
+		callback.call(true, _clans_cache.duplicate(true))
+		return
+	var request = LL_Leaderboards.GetScoreList.new(clan_leaderboard_key(), 100)
+	var response = await request.send()
+	
+	# 使用 response.get("success") 安全访问
+	if not response.get("success"):
+		var err = response.get("error")
+		callback.call(false, str(err) if err != null else "获取失败")
+		return
+
+	# 尝试常见字段名获取条目数组
+	var items = null
+	for key in ["scores", "items", "entries", "results", "data"]:
+		var val = response.get(key)
+		if val != null and typeof(val) == TYPE_ARRAY:
+			items = val
+			break
+
+	if items == null:
+		# 最后尝试直接遍历属性
+		for prop in response.get_property_list():
+			var val = response.get(prop.name)
+			if typeof(val) == TYPE_ARRAY and val.size() > 0:
+				items = val
+				break
+
+	if items == null:
+		callback.call(false, "响应中没有找到任何条目数组")
+		return
+
+	var clans = []
+	for entry in items:
+		var metadata_str = ""
+		var member_id = ""
+		var score = 0
+
+		# entry 也可能是对象，安全获取
+		metadata_str = _decode(str(entry.get("metadata") if entry.get("metadata") != null else ""))
+		member_id = str(entry.get("member_id") if entry.get("member_id") != null else "")
+		score = int(entry.get("score") if entry.get("score") != null else 0)
+
+		var clan = JSON.parse_string(metadata_str)
+		if clan is Dictionary:
+			clan["clan_id"] = member_id
+			clan["total_trophies"] = score
+			clans.append(clan)
+
+	_cache_at = Time.get_unix_time_from_system()
+	_clans_cache = clans.duplicate(true)
+	callback.call(true, clans)
+
+## 搜索部落
+func search_clans(callback: Callable, keyword: String = ""):
+	get_all_clans(func(ok, clans):
+		if not ok:
+			callback.call(false, clans)
+			return
+		var kw: String = keyword.strip_edges()
+		if kw == "":
+			callback.call(true, clans)
+			return
+		var filtered: Array = []
+		for c in clans:
+			if String(c.get("name", "")).contains(kw) or String(c.get("description", "")).contains(kw):
+				filtered.append(c)
+		callback.call(true, filtered)
+	)
+
+## 加入部落
+func join_clan(clan_id: String, callback: Callable):
+	get_all_clans(func(success, clans):
+		if not success:
+			callback.call(false, "获取部落列表失败")
+			return
+		var target_clan = null
+		for c in clans:
+			if c.get("clan_id") == clan_id:
+				target_clan = c
+				break
+		if target_clan == null:
+			callback.call(false, "部落不存在")
+			return
+		if target_clan.members.size() >= MAX_MEMBERS:
+			callback.call(false, "部落已满")
+			return
+		if target_clan.min_trophies > 0 and PlayerData.trophies < target_clan.min_trophies:
+			callback.call(false, "奖杯不足，无法加入")
+			return
+		if not target_clan.is_open:
+			if not target_clan.has("applications"):
+				target_clan["applications"] = []
+			for app in target_clan.applications:
+				if int(app.get("player_id", -1)) == get_player_id():
+					callback.call(false, "你已经提交过申请")
+					return
+			target_clan.applications.append({
+				"player_id": get_player_id(),
+				"player_name": get_player_name(),
+				"trophies": PlayerData.trophies,
+				"time": Time.get_unix_time_from_system()
+			})
+			_update_clan_on_leaderboard(target_clan, func(ok, err):
+				if ok:
+					callback.call(true, "applied")
+				else:
+					callback.call(false, err)
+			)
+			return
+
+		# 把当前玩家加入成员列表
+		target_clan.members[str(get_player_id())] = {
+			"player_name": get_player_name(),
+			"trophies": PlayerData.trophies,
+			"role": "member",
+			"donations": 0,
+			"joined": Time.get_unix_time_from_system()
+		}
+		_recalc_total(target_clan)
+		_update_clan_on_leaderboard(target_clan, callback)
+	)
+
+## 离开部落
+func leave_clan(callback: Callable):
+	get_my_clan(func(success, clan):
+		if not success:
+			callback.call(false, "获取部落信息失败")
+			return
+		if clan == null:
+			callback.call(false, "你不在任何部落中")
+			return
+		if clan.leader_id == get_player_id():
+			callback.call(false, "你是首领，请先转让首领或解散部落")
+			return
+		clan.members.erase(str(get_player_id()))
+		_recalc_total(clan)
+		_update_clan_on_leaderboard(clan, callback)
+	)
+
+## 首领踢人
+func kick_member(member_id: int, callback: Callable):
+	get_my_clan(func(success, clan):
+		if not success or clan == null:
+			callback.call(false, "获取部落信息失败")
+			return
+		if clan.leader_id != get_player_id():
+			callback.call(false, "只有首领可以踢人")
+			return
+		if not clan.members.has(str(member_id)):
+			callback.call(false, "该成员不在部落中")
+			return
+		if member_id == get_player_id():
+			callback.call(false, "不能踢自己")
+			return
+		clan.members.erase(str(member_id))
+		_recalc_total(clan)
+		_update_clan_on_leaderboard(clan, callback)
+	)
+
+## 转让首领
+func promote_to_leader(new_leader_id: int, callback: Callable):
+	get_my_clan(func(success, clan):
+		if not success or clan == null:
+			callback.call(false, "获取部落信息失败")
+			return
+		if clan.leader_id != get_player_id():
+			callback.call(false, "你不是首领")
+			return
+		if not clan.members.has(str(new_leader_id)):
+			callback.call(false, "目标玩家不在部落中")
+			return
+		clan.members[str(get_player_id())].role = "member"
+		clan.members[str(new_leader_id)].role = "leader"
+		clan.leader_id = new_leader_id
+		_update_clan_on_leaderboard(clan, callback)
+	)
+
+func approve_application(applicant_id: int, callback: Callable):
+	get_my_clan(func(success, clan):
+		if not success or clan == null:
+			callback.call(false, "获取部落信息失败")
+			return
+		if clan.leader_id != get_player_id():
+			callback.call(false, "只有首领可以审批")
+			return
+		var apps: Array = clan.get("applications", [])
+		var target: Dictionary = {}
+		for a in apps:
+			if int(a.get("player_id", -1)) == applicant_id:
+				target = a
+				break
+		if target.is_empty():
+			callback.call(false, "申请不存在")
+			return
+		if clan.members.size() >= MAX_MEMBERS:
+			callback.call(false, "部落已满")
+			return
+		clan.members[str(applicant_id)] = {
+			"player_name": target.get("player_name", "玩家"),
+			"trophies": int(target.get("trophies", 0)),
+			"role": "member",
+			"donations": 0,
+			"joined": Time.get_unix_time_from_system()
+		}
+		apps.erase(target)
+		clan["applications"] = apps
+		_recalc_total(clan)
+		_update_clan_on_leaderboard(clan, callback)
+	)
+
+func reject_application(applicant_id: int, callback: Callable):
+	get_my_clan(func(success, clan):
+		if not success or clan == null:
+			callback.call(false, "获取部落信息失败")
+			return
+		if clan.leader_id != get_player_id():
+			callback.call(false, "只有首领可以审批")
+			return
+		var apps: Array = clan.get("applications", [])
+		for i in range(apps.size() - 1, -1, -1):
+			if int(apps[i].get("player_id", -1)) == applicant_id:
+				apps.remove_at(i)
+		clan["applications"] = apps
+		_update_clan_on_leaderboard(clan, callback)
+	)
+
+# ---------- 聊天系统 ----------
+## 发送聊天消息
+func send_chat_message(message: String, callback: Callable = Callable()):
+	get_my_clan(func(success, clan):
+		if not success or clan == null:
+			if callback.is_valid(): callback.call(false, "获取部落信息失败")
+			return
+		if not clan.has("chat"):
+			clan["chat"] = []
+		clan["chat"].push_front({
+			"player_id": get_player_id(),
+			"player_name": get_player_name(),
+			"message": message,
+			"timestamp": Time.get_unix_time_from_system(),
+			"type": "chat"
+		})
+		if clan["chat"].size() > MAX_CHAT_MESSAGES:
+			clan["chat"].resize(MAX_CHAT_MESSAGES)
+		_update_clan_on_leaderboard(clan, callback)
+	)
+
+## 获取聊天记录（异步）
+func get_chat_history(callback: Callable):
+	get_my_clan(func(success, clan):
+		if not success or clan == null:
+			callback.call(false, "获取部落信息失败")
+			return
+		callback.call(true, clan.get("chat", []))
+	)
+
+# ---------- 卡牌请求与捐赠 ----------
+## 请求卡牌
+func request_card(card_id: int, amount: int, callback: Callable):
+	if not PlayerData.can_request_card():
+		callback.call(false, "卡牌请求冷却中")
+		return
+	get_my_clan(func(success, clan):
+		if not success or clan == null:
+			callback.call(false, "获取部落信息失败")
+			return
+		if PlayerData.get_card_quantity(card_id) < amount:
+			callback.call(false, "你拥有的该卡牌数量不足，无法发出请求")
+			return
+		var bm = get_tree().get_first_node_in_group("battle_manager")
+		if not bm:
+			bm = load("res://scripts/core/BattleManager.gd").new()
+			bm.load_card_configs()
+		var cfg = bm.get_config(card_id)
+		if not clan.has("chat"):
+			clan["chat"] = []
+		clan["chat"].push_front({
+			"player_id": get_player_id(),
+			"player_name": get_player_name(),
+			"message": "请求 %d 张 %s" % [amount, cfg.card_name],
+			"timestamp": Time.get_unix_time_from_system(),
+			"type": "request",
+			"card_id": card_id,
+			"amount": amount
+		})
+		if clan["chat"].size() > MAX_CHAT_MESSAGES:
+			clan["chat"].resize(MAX_CHAT_MESSAGES)
+		PlayerData.mark_card_request()
+		_update_clan_on_leaderboard(clan, callback)
+	)
+
+func donate_card(to_player_id: int, card_id: int, amount: int, callback: Callable):
+	if to_player_id == get_player_id():
+		callback.call(false, "不能捐赠给自己")
+		return
+	if PlayerData.get_card_quantity(card_id) < amount:
+		callback.call(false, "你拥有的该卡牌数量不足")
+		return
+	if PlayerData.donations_used + amount > 8:
+		callback.call(false, "今日捐赠次数已用完")
+		return
+
+	# 扣除捐赠者本地库存
+	PlayerData.remove_card(card_id, amount)
+	PlayerData.donations_used += amount
+	PlayerData.save_data()
+
+	get_my_clan(func(success, clan):
+		if not success or clan == null:
+			callback.call(false, "获取部落信息失败")
+			return
+
+		# 更新捐赠者捐赠计数
+		if clan.members.has(str(get_player_id())):
+			clan.members[str(get_player_id())].donations += amount
+
+		# 从聊天中移除第一条匹配的请求（按时间顺序最早的一条）
+		var chat_list = clan.get("chat", [])
+		var removed = false
+		for i in range(chat_list.size() - 1, -1, -1):  # 从后往前找，因为新消息在头部
+			var msg = chat_list[i]
+			if msg.get("type", "") == "request" and msg.get("player_id", -1) == to_player_id and msg.get("card_id", -1) == card_id:
+				chat_list.remove_at(i)
+				removed = true
+				break
+		# 即使没有找到请求消息也不影响捐赠（可能已被他人捐掉）
+
+		# 保存部落数据（成员捐赠计数 + 聊天更新）
+		_update_clan_on_leaderboard(clan, func(ok, err):
+			if ok:
+				# 同步接收者库存
+				get_player_inventory(to_player_id, func(inv_ok, inventory):
+					if not inv_ok:
+						inventory = {}
+					inventory[str(card_id)] = inventory.get(str(card_id), 0) + amount
+					save_player_inventory(to_player_id, inventory, func(wok, werr):
+						if wok:
+							callback.call(true, null)
+						else:
+							callback.call(false, "接收者库存更新失败，但请求已处理")
+					)
+				)
+			else:
+				callback.call(false, "保存部落失败")
+		)
+	)
