@@ -130,9 +130,9 @@ func _show_result_sequence() -> void:
 		"my_top": [], "enemy_top": [],
 		"reward_text": "训练奖励：1 个宝箱（返回主菜单查看）",
 	}
-	screen._btn_restart.visible = false
 	screen._btn_menu.text = "返 回 主 菜 单"
 	screen.populate(data)
+	screen._btn_restart.visible = false
 	screen.modulate.a = 0.0
 	screen.pivot_offset = Vector2(400, 800)
 	screen.scale = Vector2(0.94, 0.94)
