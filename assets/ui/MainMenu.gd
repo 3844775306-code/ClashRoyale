@@ -663,6 +663,12 @@ func _sheen_texture() -> Texture2D:
 # 信号处理
 # ============================================================
 func _auto_tutorial():
+	# 先等名字弹窗结束，避免在场景/节点添加过程中切换场景
+	await get_tree().create_timer(0.4).timeout
+	var waited := 0.0
+	while not PlayerData.name_chosen and waited < 20.0:
+		await get_tree().create_timer(0.3).timeout
+		waited += 0.3
 	LoadingScreen.change_scene("res://scenes/tutorial.tscn", "正在打开新手训练营…")
 
 func _on_tutorial_pressed():
