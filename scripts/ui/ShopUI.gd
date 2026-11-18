@@ -5,6 +5,7 @@ extends Control
 const CARD_RARITY = preload("res://scripts/data/CardRarity.gd")
 const REWARD_ICON = preload("res://scripts/ui/RewardIcon.gd")
 const EMOTES = preload("res://scripts/data/EmoteCatalog.gd")
+const EMOTE_ICON = preload("res://scripts/ui/EmoteIcon.gd")
 
 var currency_row: HBoxContainer
 var card_grid: GridContainer
@@ -180,7 +181,7 @@ func _build_cards(vbox: VBoxContainer):
 	_build_exchange(vbox)
 
 func _build_emote_shop(vbox: VBoxContainer):
-	vbox.add_child(UiComponents.make_section_title("😀 表情商店"))
+	vbox.add_child(UiComponents.make_section_title("表情商店"))
 	var center := CenterContainer.new()
 	vbox.add_child(center)
 	var grid := GridContainer.new()
@@ -211,11 +212,12 @@ func _build_emote_shop(vbox: VBoxContainer):
 		v.alignment = BoxContainer.ALIGNMENT_CENTER
 		v.add_theme_constant_override("separation", 2)
 		p.add_child(v)
-		var gl := Label.new()
-		gl.text = String(item.glyph) if owned else "🎁"
-		gl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-		gl.add_theme_font_size_override("font_size", 54)
-		gl.add_theme_color_override("font_color", Color(String(item.color)))
+		var gl = EMOTE_ICON.new()
+		gl.emote_id = String(item.id)
+		gl.custom_minimum_size = Vector2(110, 110)
+		gl.size = Vector2(110, 110)
+		if not owned:
+			gl.modulate = Color(0.45, 0.45, 0.50, 0.75)
 		v.add_child(gl)
 		var nm := Label.new()
 		nm.text = String(item.name) if owned else "表情盲盒"

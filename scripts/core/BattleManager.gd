@@ -37,6 +37,7 @@ var network_countdown: float = 0.0
 var network_wait_ready: bool = false
 var entry_intro_active: bool = false
 var tutorial_battle: bool = false
+var tutorial_played: Array = []
 var _network_count_label: Label = null
 var _countdown_overlay: Control = null
 var replay_meta: Dictionary = {}
@@ -473,6 +474,7 @@ func end_drag(screen_pos: Vector2):
 			_deploy_log_like(drag_card.config, Config.Team.PLAYER, deploy_pos)
 		else:
 			spawn_unit(drag_card.config, Config.Team.PLAYER, deploy_pos)
+		_record_tutorial_card(int(drag_card.config.card_id))
 		if replay_recorder:
 			replay_recorder.record_player_action(drag_card.config, deploy_pos)
 		if match_replay_recorder:
@@ -510,6 +512,8 @@ func _ready():
 	_initialize_player_deck()
 	if network_host_mode:
 		_init_network_remote()
+	if tutorial_battle:
+		_spawn_tutorial_targets()
 	hud.battle = self
 	if network_host_mode and hud.has_signal("emote_sent"):
 		hud.emote_sent.connect(func(id, team): NetworkManager.broadcast_emote(id, team))
@@ -1025,6 +1029,20 @@ func _network_tower_data() -> Array:
 		out.append([2, 3, team, Vector3(mid_x, 0, king_z)])
 	return out
 
+func _spawn_tutorial_targets() -> void:
+	var archer := get_config(44)
+	if archer == null:
+		return
+	var cx: float = Config.ARENA_ORIGIN.x + Config.ARENA_WIDTH * 0.5
+	var z: float = Config.ARENA_ORIGIN.z + Config.ARENA_HEIGHT * 0.30
+	for i in range(3):
+		var pos := Vector3(cx + (float(i) - 1.0) * 2.2, 0.0, z + absf(float(i) - 1.0) * 0.8)
+		spawn_unit(archer, Config.Team.ENEMY, pos, 1, PlayerData.ai_level(44))
+
+func _record_tutorial_card(card_id: int) -> void:
+	if tutorial_battle and not tutorial_played.has(card_id):
+		tutorial_played.append(card_id)
+
 func spawn_initial_towers():
 	if replay_skip_towers:
 		return
@@ -1277,6 +1295,9 @@ func _initialize_player_deck():
 			if get_config(cid) != null and PlayerData.is_card_owned(cid) and not card_desk.has(cid):
 				card_desk.append(cid)
 		# 严格只使用卡组内的卡牌（不足 8 张时不随机补卡）
+	if tutorial_battle:
+		# 实战训练固定起手：骑士、弓箭手、火球、巨人
+		card_desk = [4, 44, 11, 9, 10, 8]
 	#card_desk = [78,79,85,91,97,84,86,91]
 	# 初始手牌4张（镜像不能作为起始卡）
 	for i in range(4):
@@ -1405,6 +1426,8 @@ func _input(event):
 			return
 
 func deploy_spell(config: CardData, team: int, target_pos: Vector3, level_override: int = -1):
+	if team == Config.Team.PLAYER:
+		_record_tutorial_card(int(config.card_id))
 	if config.card_id == 48:
 		# 雷电法术：不从国王塔飞出，3 道雷电依次从天而降（间隔 0.67s）
 		_lightning_spell_strikes(config, team, target_pos)
