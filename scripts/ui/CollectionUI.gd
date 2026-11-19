@@ -20,6 +20,34 @@ func _ready():
 	summary.add_theme_font_size_override("font_size", 18)
 	summary.add_theme_color_override("font_color", Color(0.82, 0.90, 1.0))
 	vbox.add_child(summary)
+	# 收藏等级奖励入口
+	var lv: int = PlayerData.get_collection_level()
+	var pending: int = PlayerData.get_collection_reward_pending_count()
+	var reward_panel := UiComponents.make_card(ThemeHelper.COLORS.gold)
+	reward_panel.custom_minimum_size = Vector2(0, 94)
+	var rh := HBoxContainer.new()
+	rh.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	rh.offset_left = 16
+	rh.offset_right = -16
+	rh.add_theme_constant_override("separation", 12)
+	reward_panel.add_child(rh)
+	var rv := VBoxContainer.new()
+	rv.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	rv.alignment = BoxContainer.ALIGNMENT_CENTER
+	var rl := Label.new()
+	rl.text = "收藏等级 Lv.%d" % lv
+	rl.add_theme_font_size_override("font_size", 22)
+	rl.add_theme_color_override("font_color", Color(1.0, 0.87, 0.46))
+	rv.add_child(rl)
+	var rs := Label.new()
+	rs.text = "每 10 级一个奖励 · 待领取 %d" % pending
+	rs.add_theme_font_size_override("font_size", 14)
+	rs.add_theme_color_override("font_color", Color(0.78, 0.86, 0.98))
+	rv.add_child(rs)
+	rh.add_child(rv)
+	var rb := UiComponents.make_primary_button("查看奖励", func(): get_tree().change_scene_to_file("res://scenes/collection_rewards.tscn"), Vector2(180, 48))
+	rh.add_child(rb)
+	vbox.add_child(reward_panel)
 	# 表情
 	vbox.add_child(UiComponents.make_section_title("😀 表情收藏"))
 	var ec := CenterContainer.new()

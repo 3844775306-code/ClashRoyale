@@ -1,0 +1,1896 @@
+[
+  {
+    "level": 20,
+    "type": "gems",
+    "amount": 50
+  },
+  {
+    "level": 30,
+    "type": "gems",
+    "amount": 50
+  },
+  {
+    "level": 40,
+    "type": "gems",
+    "amount": 50
+  },
+  {
+    "level": 50,
+    "rarity": "magical",
+    "stars": 4,
+    "type": "chest"
+  },
+  {
+    "level": 60,
+    "rarity": "common",
+    "type": "wild",
+    "amount": 20
+  },
+  {
+    "level": 70,
+    "type": "gems",
+    "amount": 30
+  },
+  {
+    "level": 80,
+    "rarity": "common",
+    "type": "wild",
+    "amount": 20
+  },
+  {
+    "level": 90,
+    "type": "gems",
+    "amount": 30
+  },
+  {
+    "level": 100,
+    "rarity": "magical",
+    "stars": 5,
+    "type": "chest"
+  },
+  {
+    "level": 110,
+    "rarity": "common",
+    "type": "wild",
+    "amount": 20
+  },
+  {
+    "level": 120,
+    "type": "gems",
+    "amount": 40
+  },
+  {
+    "level": 130,
+    "rarity": "common",
+    "type": "wild",
+    "amount": 20
+  },
+  {
+    "level": 140,
+    "type": "gems",
+    "amount": 40
+  },
+  {
+    "level": 150,
+    "rarity": "magical",
+    "stars": 5,
+    "type": "chest"
+  },
+  {
+    "level": 160,
+    "type": "gems",
+    "amount": 40
+  },
+  {
+    "level": 170,
+    "rarity": "common",
+    "type": "wild",
+    "amount": 20
+  },
+  {
+    "level": 180,
+    "type": "gems",
+    "amount": 50
+  },
+  {
+    "level": 190,
+    "rarity": "magical",
+    "label": "进化宝箱",
+    "stars": 6,
+    "type": "chest"
+  },
+  {
+    "level": 200,
+    "rarity": "magical",
+    "stars": 5,
+    "type": "chest"
+  },
+  {
+    "level": 210,
+    "rarity": "common",
+    "type": "wild",
+    "amount": 20
+  },
+  {
+    "level": 220,
+    "type": "gems",
+    "amount": 50
+  },
+  {
+    "level": 230,
+    "rarity": "common",
+    "type": "wild",
+    "amount": 20
+  },
+  {
+    "level": 240,
+    "type": "gems",
+    "amount": 60
+  },
+  {
+    "level": 250,
+    "rarity": "magical",
+    "stars": 5,
+    "type": "chest"
+  },
+  {
+    "level": 260,
+    "type": "gems",
+    "amount": 60
+  },
+  {
+    "level": 270,
+    "rarity": "common",
+    "type": "wild",
+    "amount": 20
+  },
+  {
+    "level": 280,
+    "type": "gems",
+    "amount": 60
+  },
+  {
+    "level": 290,
+    "rarity": "common",
+    "type": "wild",
+    "amount": 20
+  },
+  {
+    "level": 300,
+    "rarity": "magical",
+    "stars": 5,
+    "type": "chest"
+  },
+  {
+    "level": 310,
+    "rarity": "common",
+    "type": "wild",
+    "amount": 20
+  },
+  {
+    "level": 320,
+    "rarity": "rare",
+    "type": "wild",
+    "amount": 10
+  },
+  {
+    "level": 330,
+    "rarity": "common",
+    "type": "wild",
+    "amount": 20
+  },
+  {
+    "level": 340,
+    "type": "gems",
+    "amount": 70
+  },
+  {
+    "level": 350,
+    "rarity": "magical",
+    "stars": 5,
+    "type": "chest"
+  },
+  {
+    "level": 360,
+    "rarity": "common",
+    "type": "wild",
+    "amount": 20
+  },
+  {
+    "level": 370,
+    "rarity": "magical",
+    "label": "进化宝箱",
+    "stars": 6,
+    "type": "chest"
+  },
+  {
+    "level": 380,
+    "rarity": "common",
+    "type": "wild",
+    "amount": 20
+  },
+  {
+    "level": 390,
+    "type": "gems",
+    "amount": 80
+  },
+  {
+    "level": 400,
+    "rarity": "magical",
+    "stars": 5,
+    "type": "chest"
+  },
+  {
+    "level": 410,
+    "rarity": "rare",
+    "type": "wild",
+    "amount": 20
+  },
+  {
+    "level": 420,
+    "rarity": "common",
+    "type": "wild",
+    "amount": 60
+  },
+  {
+    "level": 430,
+    "type": "gems",
+    "amount": 90
+  },
+  {
+    "level": 440,
+    "rarity": "rare",
+    "type": "wild",
+    "amount": 20
+  },
+  {
+    "level": 450,
+    "rarity": "magical",
+    "stars": 5,
+    "type": "chest"
+  },
+  {
+    "level": 460,
+    "type": "gems",
+    "amount": 90
+  },
+  {
+    "level": 470,
+    "rarity": "rare",
+    "type": "wild",
+    "amount": 20
+  },
+  {
+    "level": 480,
+    "rarity": "common",
+    "type": "wild",
+    "amount": 60
+  },
+  {
+    "level": 490,
+    "type": "gems",
+    "amount": 90
+  },
+  {
+    "level": 500,
+    "rarity": "magical",
+    "stars": 5,
+    "type": "chest"
+  },
+  {
+    "level": 510,
+    "rarity": "common",
+    "type": "wild",
+    "amount": 60
+  },
+  {
+    "level": 520,
+    "rarity": "epic",
+    "type": "wild",
+    "amount": 1
+  },
+  {
+    "level": 530,
+    "type": "gems",
+    "amount": 100
+  },
+  {
+    "level": 540,
+    "rarity": "common",
+    "type": "wild",
+    "amount": 60
+  },
+  {
+    "level": 550,
+    "rarity": "magical",
+    "label": "进化宝箱",
+    "stars": 6,
+    "type": "chest"
+  },
+  {
+    "level": 560,
+    "rarity": "common",
+    "type": "wild",
+    "amount": 60
+  },
+  {
+    "level": 570,
+    "type": "gems",
+    "amount": 100
+  },
+  {
+    "level": 580,
+    "rarity": "rare",
+    "type": "wild",
+    "amount": 20
+  },
+  {
+    "level": 590,
+    "rarity": "common",
+    "type": "wild",
+    "amount": 60
+  },
+  {
+    "level": 600,
+    "rarity": "magical",
+    "stars": 5,
+    "type": "chest"
+  },
+  {
+    "level": 610,
+    "rarity": "common",
+    "type": "wild",
+    "amount": 250
+  },
+  {
+    "level": 620,
+    "type": "gems",
+    "amount": 100
+  },
+  {
+    "level": 630,
+    "rarity": "rare",
+    "type": "wild",
+    "amount": 60
+  },
+  {
+    "level": 640,
+    "rarity": "epic",
+    "type": "wild",
+    "amount": 6
+  },
+  {
+    "level": 650,
+    "rarity": "magical",
+    "stars": 5,
+    "type": "chest"
+  },
+  {
+    "level": 660,
+    "type": "gems",
+    "amount": 125
+  },
+  {
+    "level": 670,
+    "rarity": "common",
+    "type": "wild",
+    "amount": 250
+  },
+  {
+    "level": 680,
+    "rarity": "rare",
+    "type": "wild",
+    "amount": 60
+  },
+  {
+    "level": 690,
+    "type": "gems",
+    "amount": 125
+  },
+  {
+    "level": 700,
+    "rarity": "magical",
+    "stars": 5,
+    "type": "chest"
+  },
+  {
+    "level": 710,
+    "rarity": "epic",
+    "type": "wild",
+    "amount": 6
+  },
+  {
+    "level": 720,
+    "rarity": "common",
+    "type": "wild",
+    "amount": 250
+  },
+  {
+    "level": 730,
+    "rarity": "magical",
+    "label": "进化宝箱",
+    "stars": 6,
+    "type": "chest"
+  },
+  {
+    "level": 740,
+    "type": "gems",
+    "amount": 125
+  },
+  {
+    "level": 750,
+    "rarity": "magical",
+    "stars": 5,
+    "type": "chest"
+  },
+  {
+    "level": 760,
+    "rarity": "rare",
+    "type": "wild",
+    "amount": 60
+  },
+  {
+    "level": 770,
+    "rarity": "common",
+    "type": "wild",
+    "amount": 250
+  },
+  {
+    "level": 780,
+    "type": "gems",
+    "amount": 125
+  },
+  {
+    "level": 790,
+    "rarity": "epic",
+    "type": "wild",
+    "amount": 6
+  },
+  {
+    "level": 800,
+    "rarity": "magical",
+    "stars": 5,
+    "type": "chest"
+  },
+  {
+    "level": 810,
+    "rarity": "rare",
+    "type": "wild",
+    "amount": 60
+  },
+  {
+    "level": 820,
+    "rarity": "common",
+    "type": "wild",
+    "amount": 250
+  },
+  {
+    "level": 830,
+    "type": "gems",
+    "amount": 125
+  },
+  {
+    "level": 840,
+    "rarity": "common",
+    "type": "wild",
+    "amount": 250
+  },
+  {
+    "level": 850,
+    "type": "gems",
+    "amount": 150
+  },
+  {
+    "level": 860,
+    "rarity": "rare",
+    "type": "wild",
+    "amount": 60
+  },
+  {
+    "level": 870,
+    "rarity": "epic",
+    "type": "wild",
+    "amount": 6
+  },
+  {
+    "level": 880,
+    "type": "gems",
+    "amount": 150
+  },
+  {
+    "level": 890,
+    "rarity": "common",
+    "type": "wild",
+    "amount": 250
+  },
+  {
+    "level": 900,
+    "rarity": "magical",
+    "stars": 5,
+    "type": "chest"
+  },
+  {
+    "level": 910,
+    "rarity": "magical",
+    "label": "进化宝箱",
+    "stars": 6,
+    "type": "chest"
+  },
+  {
+    "level": 920,
+    "rarity": "epic",
+    "type": "wild",
+    "amount": 6
+  },
+  {
+    "level": 930,
+    "type": "gems",
+    "amount": 150
+  },
+  {
+    "level": 940,
+    "rarity": "rare",
+    "type": "wild",
+    "amount": 60
+  },
+  {
+    "level": 950,
+    "rarity": "magical",
+    "stars": 5,
+    "type": "chest"
+  },
+  {
+    "level": 960,
+    "type": "gems",
+    "amount": 150
+  },
+  {
+    "level": 970,
+    "rarity": "epic",
+    "type": "wild",
+    "amount": 6
+  },
+  {
+    "level": 980,
+    "rarity": "common",
+    "type": "wild",
+    "amount": 250
+  },
+  {
+    "level": 990,
+    "type": "gems",
+    "amount": 150
+  },
+  {
+    "level": 1000,
+    "rarity": "magical",
+    "stars": 6,
+    "type": "chest"
+  },
+  {
+    "level": 1010,
+    "type": "gems",
+    "amount": 150
+  },
+  {
+    "level": 1020,
+    "rarity": "epic",
+    "type": "wild",
+    "amount": 6
+  },
+  {
+    "level": 1030,
+    "type": "gems",
+    "amount": 150
+  },
+  {
+    "level": 1040,
+    "rarity": "epic",
+    "type": "wild",
+    "amount": 6
+  },
+  {
+    "level": 1050,
+    "rarity": "magical",
+    "stars": 6,
+    "type": "chest"
+  },
+  {
+    "level": 1060,
+    "rarity": "epic",
+    "type": "wild",
+    "amount": 6
+  },
+  {
+    "level": 1070,
+    "type": "gems",
+    "amount": 150
+  },
+  {
+    "level": 1080,
+    "rarity": "epic",
+    "type": "wild",
+    "amount": 6
+  },
+  {
+    "level": 1090,
+    "type": "gems",
+    "amount": 150
+  },
+  {
+    "level": 1100,
+    "rarity": "magical",
+    "stars": 6,
+    "type": "chest"
+  },
+  {
+    "level": 1110,
+    "rarity": "rare",
+    "type": "wild",
+    "amount": 8
+  },
+  {
+    "level": 1120,
+    "rarity": "epic",
+    "type": "wild",
+    "amount": 6
+  },
+  {
+    "level": 1130,
+    "type": "gems",
+    "amount": 150
+  },
+  {
+    "level": 1140,
+    "rarity": "epic",
+    "type": "wild",
+    "amount": 6
+  },
+  {
+    "level": 1150,
+    "rarity": "magical",
+    "stars": 6,
+    "type": "chest"
+  },
+  {
+    "level": 1160,
+    "rarity": "epic",
+    "type": "wild",
+    "amount": 6
+  },
+  {
+    "level": 1170,
+    "rarity": "rare",
+    "type": "wild",
+    "amount": 8
+  },
+  {
+    "level": 1180,
+    "rarity": "epic",
+    "type": "wild",
+    "amount": 6
+  },
+  {
+    "level": 1190,
+    "type": "gems",
+    "amount": 150
+  },
+  {
+    "level": 1200,
+    "rarity": "magical",
+    "stars": 6,
+    "type": "chest"
+  },
+  {
+    "level": 1210,
+    "type": "gems",
+    "amount": 150
+  },
+  {
+    "level": 1220,
+    "rarity": "epic",
+    "type": "wild",
+    "amount": 6
+  },
+  {
+    "level": 1230,
+    "rarity": "rare",
+    "type": "wild",
+    "amount": 8
+  },
+  {
+    "level": 1240,
+    "rarity": "epic",
+    "type": "wild",
+    "amount": 6
+  },
+  {
+    "level": 1250,
+    "rarity": "magical",
+    "stars": 6,
+    "type": "chest"
+  },
+  {
+    "level": 1260,
+    "rarity": "epic",
+    "type": "wild",
+    "amount": 6
+  },
+  {
+    "level": 1270,
+    "type": "gems",
+    "amount": 150
+  },
+  {
+    "level": 1280,
+    "rarity": "epic",
+    "type": "wild",
+    "amount": 6
+  },
+  {
+    "level": 1290,
+    "rarity": "rare",
+    "type": "wild",
+    "amount": 8
+  },
+  {
+    "level": 1300,
+    "rarity": "magical",
+    "stars": 6,
+    "type": "chest"
+  },
+  {
+    "level": 1310,
+    "type": "gems",
+    "amount": 150
+  },
+  {
+    "level": 1320,
+    "rarity": "epic",
+    "type": "wild",
+    "amount": 6
+  },
+  {
+    "level": 1330,
+    "type": "gems",
+    "amount": 150
+  },
+  {
+    "level": 1340,
+    "rarity": "epic",
+    "type": "wild",
+    "amount": 6
+  },
+  {
+    "level": 1350,
+    "rarity": "magical",
+    "stars": 6,
+    "type": "chest"
+  },
+  {
+    "level": 1360,
+    "rarity": "epic",
+    "type": "wild",
+    "amount": 6
+  },
+  {
+    "level": 1370,
+    "type": "gems",
+    "amount": 150
+  },
+  {
+    "level": 1380,
+    "rarity": "epic",
+    "type": "wild",
+    "amount": 6
+  },
+  {
+    "level": 1390,
+    "type": "gems",
+    "amount": 150
+  },
+  {
+    "level": 1400,
+    "rarity": "magical",
+    "stars": 6,
+    "type": "chest"
+  },
+  {
+    "level": 1410,
+    "rarity": "rare",
+    "type": "wild",
+    "amount": 8
+  },
+  {
+    "level": 1420,
+    "rarity": "epic",
+    "type": "wild",
+    "amount": 6
+  },
+  {
+    "level": 1430,
+    "type": "gems",
+    "amount": 150
+  },
+  {
+    "level": 1440,
+    "rarity": "epic",
+    "type": "wild",
+    "amount": 6
+  },
+  {
+    "level": 1450,
+    "rarity": "magical",
+    "stars": 6,
+    "type": "chest"
+  },
+  {
+    "level": 1460,
+    "rarity": "epic",
+    "type": "wild",
+    "amount": 6
+  },
+  {
+    "level": 1470,
+    "rarity": "rare",
+    "type": "wild",
+    "amount": 8
+  },
+  {
+    "level": 1480,
+    "rarity": "epic",
+    "type": "wild",
+    "amount": 6
+  },
+  {
+    "level": 1490,
+    "type": "gems",
+    "amount": 150
+  },
+  {
+    "level": 1500,
+    "rarity": "magical",
+    "stars": 6,
+    "type": "chest"
+  },
+  {
+    "level": 1505,
+    "type": "gems",
+    "amount": 100
+  },
+  {
+    "level": 1510,
+    "type": "gems",
+    "amount": 100
+  },
+  {
+    "level": 1515,
+    "type": "gems",
+    "amount": 100
+  },
+  {
+    "level": 1520,
+    "type": "gems",
+    "amount": 100
+  },
+  {
+    "level": 1525,
+    "rarity": "legendary",
+    "type": "wild",
+    "amount": 2
+  },
+  {
+    "level": 1530,
+    "type": "gems",
+    "amount": 100
+  },
+  {
+    "level": 1535,
+    "type": "gems",
+    "amount": 100
+  },
+  {
+    "level": 1540,
+    "type": "gems",
+    "amount": 100
+  },
+  {
+    "level": 1545,
+    "type": "gems",
+    "amount": 100
+  },
+  {
+    "level": 1550,
+    "rarity": "magical",
+    "stars": 6,
+    "type": "chest"
+  },
+  {
+    "level": 1555,
+    "type": "gems",
+    "amount": 100
+  },
+  {
+    "level": 1560,
+    "type": "gems",
+    "amount": 100
+  },
+  {
+    "level": 1565,
+    "type": "gems",
+    "amount": 100
+  },
+  {
+    "level": 1570,
+    "type": "gems",
+    "amount": 100
+  },
+  {
+    "level": 1575,
+    "rarity": "legendary",
+    "type": "wild",
+    "amount": 2
+  },
+  {
+    "level": 1580,
+    "type": "gems",
+    "amount": 100
+  },
+  {
+    "level": 1585,
+    "type": "gems",
+    "amount": 100
+  },
+  {
+    "level": 1590,
+    "type": "gems",
+    "amount": 100
+  },
+  {
+    "level": 1595,
+    "type": "gems",
+    "amount": 100
+  },
+  {
+    "level": 1600,
+    "rarity": "magical",
+    "stars": 6,
+    "type": "chest"
+  },
+  {
+    "level": 1605,
+    "type": "gems",
+    "amount": 100
+  },
+  {
+    "level": 1610,
+    "type": "gems",
+    "amount": 100
+  },
+  {
+    "level": 1615,
+    "type": "gems",
+    "amount": 100
+  },
+  {
+    "level": 1620,
+    "type": "gems",
+    "amount": 100
+  },
+  {
+    "level": 1625,
+    "rarity": "legendary",
+    "type": "wild",
+    "amount": 2
+  },
+  {
+    "level": 1630,
+    "type": "gems",
+    "amount": 100
+  },
+  {
+    "level": 1635,
+    "type": "gems",
+    "amount": 100
+  },
+  {
+    "level": 1640,
+    "type": "gems",
+    "amount": 100
+  },
+  {
+    "level": 1645,
+    "type": "gems",
+    "amount": 100
+  },
+  {
+    "level": 1650,
+    "rarity": "magical",
+    "stars": 6,
+    "type": "chest"
+  },
+  {
+    "level": 1655,
+    "type": "gems",
+    "amount": 100
+  },
+  {
+    "level": 1660,
+    "type": "gems",
+    "amount": 100
+  },
+  {
+    "level": 1665,
+    "type": "gems",
+    "amount": 100
+  },
+  {
+    "level": 1670,
+    "type": "gems",
+    "amount": 100
+  },
+  {
+    "level": 1675,
+    "rarity": "legendary",
+    "type": "wild",
+    "amount": 2
+  },
+  {
+    "level": 1680,
+    "type": "gems",
+    "amount": 100
+  },
+  {
+    "level": 1685,
+    "type": "gems",
+    "amount": 100
+  },
+  {
+    "level": 1690,
+    "type": "gems",
+    "amount": 100
+  },
+  {
+    "level": 1695,
+    "type": "gems",
+    "amount": 100
+  },
+  {
+    "level": 1700,
+    "rarity": "magical",
+    "stars": 6,
+    "type": "chest"
+  },
+  {
+    "level": 1705,
+    "type": "gems",
+    "amount": 100
+  },
+  {
+    "level": 1710,
+    "type": "gems",
+    "amount": 100
+  },
+  {
+    "level": 1715,
+    "type": "gems",
+    "amount": 100
+  },
+  {
+    "level": 1720,
+    "type": "gems",
+    "amount": 100
+  },
+  {
+    "level": 1725,
+    "rarity": "legendary",
+    "type": "wild",
+    "amount": 2
+  },
+  {
+    "level": 1730,
+    "type": "gems",
+    "amount": 100
+  },
+  {
+    "level": 1735,
+    "type": "gems",
+    "amount": 100
+  },
+  {
+    "level": 1740,
+    "type": "gems",
+    "amount": 100
+  },
+  {
+    "level": 1745,
+    "type": "gems",
+    "amount": 100
+  },
+  {
+    "level": 1750,
+    "rarity": "magical",
+    "stars": 6,
+    "type": "chest"
+  },
+  {
+    "level": 1755,
+    "type": "gems",
+    "amount": 100
+  },
+  {
+    "level": 1760,
+    "type": "gems",
+    "amount": 100
+  },
+  {
+    "level": 1765,
+    "type": "gems",
+    "amount": 100
+  },
+  {
+    "level": 1770,
+    "type": "gems",
+    "amount": 100
+  },
+  {
+    "level": 1775,
+    "rarity": "legendary",
+    "type": "wild",
+    "amount": 2
+  },
+  {
+    "level": 1780,
+    "type": "gems",
+    "amount": 100
+  },
+  {
+    "level": 1785,
+    "type": "gems",
+    "amount": 100
+  },
+  {
+    "level": 1790,
+    "type": "gems",
+    "amount": 100
+  },
+  {
+    "level": 1795,
+    "type": "gems",
+    "amount": 100
+  },
+  {
+    "level": 1800,
+    "rarity": "magical",
+    "stars": 6,
+    "type": "chest"
+  },
+  {
+    "level": 1805,
+    "type": "gems",
+    "amount": 100
+  },
+  {
+    "level": 1810,
+    "type": "gems",
+    "amount": 100
+  },
+  {
+    "level": 1815,
+    "type": "gems",
+    "amount": 100
+  },
+  {
+    "level": 1820,
+    "type": "gems",
+    "amount": 100
+  },
+  {
+    "level": 1825,
+    "rarity": "legendary",
+    "type": "wild",
+    "amount": 2
+  },
+  {
+    "level": 1830,
+    "type": "gems",
+    "amount": 100
+  },
+  {
+    "level": 1835,
+    "type": "gems",
+    "amount": 100
+  },
+  {
+    "level": 1840,
+    "type": "gems",
+    "amount": 100
+  },
+  {
+    "level": 1845,
+    "type": "gems",
+    "amount": 100
+  },
+  {
+    "level": 1850,
+    "rarity": "magical",
+    "stars": 6,
+    "type": "chest"
+  },
+  {
+    "level": 1855,
+    "type": "gems",
+    "amount": 100
+  },
+  {
+    "level": 1860,
+    "type": "gems",
+    "amount": 100
+  },
+  {
+    "level": 1865,
+    "type": "gems",
+    "amount": 100
+  },
+  {
+    "level": 1870,
+    "type": "gems",
+    "amount": 100
+  },
+  {
+    "level": 1875,
+    "rarity": "legendary",
+    "type": "wild",
+    "amount": 2
+  },
+  {
+    "level": 1880,
+    "type": "gems",
+    "amount": 100
+  },
+  {
+    "level": 1885,
+    "type": "gems",
+    "amount": 100
+  },
+  {
+    "level": 1890,
+    "type": "gems",
+    "amount": 100
+  },
+  {
+    "level": 1895,
+    "type": "gems",
+    "amount": 100
+  },
+  {
+    "level": 1900,
+    "rarity": "magical",
+    "stars": 6,
+    "type": "chest"
+  },
+  {
+    "level": 1905,
+    "type": "gems",
+    "amount": 100
+  },
+  {
+    "level": 1910,
+    "type": "gems",
+    "amount": 100
+  },
+  {
+    "level": 1915,
+    "type": "gems",
+    "amount": 100
+  },
+  {
+    "level": 1920,
+    "type": "gems",
+    "amount": 100
+  },
+  {
+    "level": 1925,
+    "rarity": "legendary",
+    "type": "wild",
+    "amount": 2
+  },
+  {
+    "level": 1930,
+    "type": "gems",
+    "amount": 100
+  },
+  {
+    "level": 1935,
+    "type": "gems",
+    "amount": 100
+  },
+  {
+    "level": 1940,
+    "type": "gems",
+    "amount": 100
+  },
+  {
+    "level": 1945,
+    "type": "gems",
+    "amount": 100
+  },
+  {
+    "level": 1950,
+    "rarity": "magical",
+    "stars": 6,
+    "type": "chest"
+  },
+  {
+    "level": 1955,
+    "type": "gems",
+    "amount": 100
+  },
+  {
+    "level": 1960,
+    "type": "gems",
+    "amount": 100
+  },
+  {
+    "level": 1965,
+    "type": "gems",
+    "amount": 100
+  },
+  {
+    "level": 1970,
+    "type": "gems",
+    "amount": 100
+  },
+  {
+    "level": 1975,
+    "rarity": "legendary",
+    "type": "wild",
+    "amount": 2
+  },
+  {
+    "level": 1980,
+    "type": "gems",
+    "amount": 100
+  },
+  {
+    "level": 1985,
+    "type": "gems",
+    "amount": 100
+  },
+  {
+    "level": 1990,
+    "type": "gems",
+    "amount": 100
+  },
+  {
+    "level": 1995,
+    "type": "gems",
+    "amount": 100
+  },
+  {
+    "level": 2000,
+    "rarity": "magical",
+    "stars": 6,
+    "type": "chest"
+  },
+  {
+    "level": 2005,
+    "type": "gems",
+    "amount": 100
+  },
+  {
+    "level": 2010,
+    "type": "gems",
+    "amount": 100
+  },
+  {
+    "level": 2015,
+    "type": "gems",
+    "amount": 100
+  },
+  {
+    "level": 2020,
+    "type": "gems",
+    "amount": 100
+  },
+  {
+    "level": 2025,
+    "rarity": "legendary",
+    "type": "wild",
+    "amount": 2
+  },
+  {
+    "level": 2030,
+    "type": "gems",
+    "amount": 100
+  },
+  {
+    "level": 2035,
+    "type": "gems",
+    "amount": 100
+  },
+  {
+    "level": 2040,
+    "type": "gems",
+    "amount": 100
+  },
+  {
+    "level": 2045,
+    "type": "gems",
+    "amount": 100
+  },
+  {
+    "level": 2050,
+    "rarity": "magical",
+    "stars": 6,
+    "type": "chest"
+  },
+  {
+    "level": 2055,
+    "type": "gems",
+    "amount": 100
+  },
+  {
+    "level": 2060,
+    "type": "gems",
+    "amount": 100
+  },
+  {
+    "level": 2065,
+    "type": "gems",
+    "amount": 100
+  },
+  {
+    "level": 2070,
+    "type": "gems",
+    "amount": 100
+  },
+  {
+    "level": 2075,
+    "rarity": "legendary",
+    "type": "wild",
+    "amount": 2
+  },
+  {
+    "level": 2080,
+    "type": "gems",
+    "amount": 100
+  },
+  {
+    "level": 2085,
+    "type": "gems",
+    "amount": 100
+  },
+  {
+    "level": 2090,
+    "type": "gems",
+    "amount": 100
+  },
+  {
+    "level": 2095,
+    "type": "gems",
+    "amount": 100
+  },
+  {
+    "level": 2100,
+    "rarity": "magical",
+    "stars": 6,
+    "type": "chest"
+  },
+  {
+    "level": 2105,
+    "type": "gems",
+    "amount": 100
+  },
+  {
+    "level": 2110,
+    "type": "gems",
+    "amount": 100
+  },
+  {
+    "level": 2115,
+    "type": "gems",
+    "amount": 100
+  },
+  {
+    "level": 2120,
+    "type": "gems",
+    "amount": 100
+  },
+  {
+    "level": 2125,
+    "rarity": "legendary",
+    "type": "wild",
+    "amount": 2
+  },
+  {
+    "level": 2130,
+    "type": "gems",
+    "amount": 100
+  },
+  {
+    "level": 2135,
+    "type": "gems",
+    "amount": 100
+  },
+  {
+    "level": 2140,
+    "type": "gems",
+    "amount": 100
+  },
+  {
+    "level": 2145,
+    "type": "gems",
+    "amount": 100
+  },
+  {
+    "level": 2150,
+    "rarity": "magical",
+    "stars": 6,
+    "type": "chest"
+  },
+  {
+    "level": 2155,
+    "type": "gems",
+    "amount": 100
+  },
+  {
+    "level": 2160,
+    "type": "gems",
+    "amount": 100
+  },
+  {
+    "level": 2165,
+    "type": "gems",
+    "amount": 100
+  },
+  {
+    "level": 2170,
+    "type": "gems",
+    "amount": 100
+  },
+  {
+    "level": 2175,
+    "rarity": "legendary",
+    "type": "wild",
+    "amount": 2
+  },
+  {
+    "level": 2180,
+    "type": "gems",
+    "amount": 100
+  },
+  {
+    "level": 2185,
+    "type": "gems",
+    "amount": 100
+  },
+  {
+    "level": 2190,
+    "type": "gems",
+    "amount": 100
+  },
+  {
+    "level": 2195,
+    "type": "gems",
+    "amount": 100
+  },
+  {
+    "level": 2200,
+    "rarity": "magical",
+    "stars": 6,
+    "type": "chest"
+  },
+  {
+    "level": 2205,
+    "type": "gems",
+    "amount": 100
+  },
+  {
+    "level": 2210,
+    "type": "gems",
+    "amount": 100
+  },
+  {
+    "level": 2215,
+    "type": "gems",
+    "amount": 100
+  },
+  {
+    "level": 2220,
+    "type": "gems",
+    "amount": 100
+  },
+  {
+    "level": 2225,
+    "rarity": "legendary",
+    "type": "wild",
+    "amount": 2
+  },
+  {
+    "level": 2230,
+    "type": "gems",
+    "amount": 100
+  },
+  {
+    "level": 2235,
+    "type": "gems",
+    "amount": 100
+  },
+  {
+    "level": 2240,
+    "type": "gems",
+    "amount": 100
+  },
+  {
+    "level": 2245,
+    "type": "gems",
+    "amount": 100
+  },
+  {
+    "level": 2250,
+    "rarity": "magical",
+    "stars": 6,
+    "type": "chest"
+  },
+  {
+    "level": 2255,
+    "type": "gems",
+    "amount": 100
+  },
+  {
+    "level": 2260,
+    "type": "gems",
+    "amount": 100
+  },
+  {
+    "level": 2265,
+    "type": "gems",
+    "amount": 100
+  },
+  {
+    "level": 2270,
+    "type": "gems",
+    "amount": 100
+  },
+  {
+    "level": 2275,
+    "rarity": "legendary",
+    "type": "wild",
+    "amount": 2
+  },
+  {
+    "level": 2280,
+    "type": "gems",
+    "amount": 100
+  },
+  {
+    "level": 2285,
+    "type": "gems",
+    "amount": 100
+  },
+  {
+    "level": 2290,
+    "type": "gems",
+    "amount": 100
+  },
+  {
+    "level": 2295,
+    "type": "gems",
+    "amount": 100
+  },
+  {
+    "level": 2300,
+    "rarity": "magical",
+    "stars": 6,
+    "type": "chest"
+  },
+  {
+    "level": 2305,
+    "type": "gems",
+    "amount": 100
+  },
+  {
+    "level": 2310,
+    "type": "gems",
+    "amount": 100
+  },
+  {
+    "level": 2315,
+    "type": "gems",
+    "amount": 100
+  },
+  {
+    "level": 2320,
+    "type": "gems",
+    "amount": 100
+  },
+  {
+    "level": 2325,
+    "rarity": "legendary",
+    "type": "wild",
+    "amount": 2
+  },
+  {
+    "level": 2330,
+    "type": "gems",
+    "amount": 100
+  },
+  {
+    "level": 2335,
+    "type": "gems",
+    "amount": 100
+  },
+  {
+    "level": 2340,
+    "type": "gems",
+    "amount": 100
+  },
+  {
+    "level": 2345,
+    "type": "gems",
+    "amount": 100
+  },
+  {
+    "level": 2350,
+    "rarity": "magical",
+    "stars": 6,
+    "type": "chest"
+  },
+  {
+    "level": 2355,
+    "type": "gems",
+    "amount": 100
+  },
+  {
+    "level": 2360,
+    "type": "gems",
+    "amount": 100
+  },
+  {
+    "level": 2365,
+    "type": "gems",
+    "amount": 100
+  },
+  {
+    "level": 2370,
+    "type": "gems",
+    "amount": 100
+  },
+  {
+    "level": 2375,
+    "rarity": "legendary",
+    "type": "wild",
+    "amount": 2
+  },
+  {
+    "level": 2380,
+    "type": "gems",
+    "amount": 100
+  },
+  {
+    "level": 2385,
+    "type": "gems",
+    "amount": 100
+  },
+  {
+    "level": 2390,
+    "type": "gems",
+    "amount": 100
+  },
+  {
+    "level": 2395,
+    "type": "gems",
+    "amount": 100
+  },
+  {
+    "level": 2400,
+    "rarity": "magical",
+    "stars": 6,
+    "type": "chest"
+  },
+  {
+    "level": 2405,
+    "type": "gems",
+    "amount": 100
+  },
+  {
+    "level": 2410,
+    "type": "gems",
+    "amount": 100
+  },
+  {
+    "level": 2415,
+    "type": "gems",
+    "amount": 100
+  },
+  {
+    "level": 2420,
+    "type": "gems",
+    "amount": 100
+  },
+  {
+    "level": 2425,
+    "rarity": "legendary",
+    "type": "wild",
+    "amount": 2
+  },
+  {
+    "level": 2430,
+    "type": "gems",
+    "amount": 100
+  },
+  {
+    "level": 2435,
+    "type": "gems",
+    "amount": 100
+  },
+  {
+    "level": 2440,
+    "type": "gems",
+    "amount": 100
+  },
+  {
+    "level": 2445,
+    "type": "gems",
+    "amount": 100
+  },
+  {
+    "level": 2450,
+    "rarity": "magical",
+    "stars": 6,
+    "type": "chest"
+  },
+  {
+    "level": 2455,
+    "type": "gems",
+    "amount": 100
+  },
+  {
+    "level": 2460,
+    "type": "gems",
+    "amount": 100
+  },
+  {
+    "level": 2465,
+    "type": "gems",
+    "amount": 100
+  },
+  {
+    "level": 2470,
+    "type": "gems",
+    "amount": 100
+  },
+  {
+    "level": 2475,
+    "rarity": "legendary",
+    "type": "wild",
+    "amount": 2
+  },
+  {
+    "level": 2480,
+    "type": "gems",
+    "amount": 100
+  },
+  {
+    "level": 2485,
+    "type": "gems",
+    "amount": 100
+  },
+  {
+    "level": 2490,
+    "type": "gems",
+    "amount": 100
+  },
+  {
+    "level": 2495,
+    "type": "gems",
+    "amount": 100
+  },
+  {
+    "level": 2500,
+    "rarity": "magical",
+    "stars": 6,
+    "type": "chest"
+  }
+]

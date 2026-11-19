@@ -25,6 +25,7 @@ var experience: int = 0
 var player_name:String = "玩家"
 var name_chosen: bool = false        # 玩家是否已完成取名（首次启动强制取名）
 var challenge_state: Dictionary = {}   # 挑战/锦标赛进度（active: {id,wins,losses}）
+var party_deck: Array = []             # 派对模式专用卡组（全卡可用，固定 11 级）
 var trophies: int = 0          # 新增奖杯
 var highest_trophies: int = 0  # 历史最高奖杯（奖杯门保护）
 var claimed_achievements: Array = []  # 已领取的皇室征程成就（竞技场序号）
@@ -56,6 +57,8 @@ var tutorial_practice: bool = false
 var tutorial_chest_claimed: bool = false
 var starter_cards_v2: bool = false
 var chest_reveal_pending: bool = false
+var collection_rewards_claimed: Array = []
+var _collection_rewards_cache: Array = []
 var avatar_seed: int = 0
 var avatar_index: int = 0
 var avatar_custom_path: String = ""
@@ -541,6 +544,7 @@ func load_data():
 		player_name = config.get_value("player", "name", "玩家")
 		name_chosen = bool(config.get_value("player", "name_chosen", false))
 		challenge_state = config.get_value("player", "challenge_state", {})
+		party_deck = config.get_value("player", "party_deck", [])
 		gold = config.get_value("player", "gold", 100)
 		gems = config.get_value("player", "gems", 10)
 		shop_day = String(config.get_value("shop", "day", ""))
@@ -557,6 +561,7 @@ func load_data():
 		avatar_seed = int(config.get_value("player", "avatar_seed", 0))
 		avatar_index = int(config.get_value("player", "avatar_index", 0))
 		avatar_custom_path = String(config.get_value("player", "avatar_custom_path", ""))
+		collection_rewards_claimed = config.get_value("player", "collection_rewards_claimed", [])
 		experience = config.get_value("player", "experience", 0)
 		trophies = config.get_value("player", "trophies", 0)
 		highest_trophies = config.get_value("player", "highest_trophies", trophies)
@@ -602,6 +607,7 @@ func save_data():
 	config.set_value("player", "name", player_name)
 	config.set_value("player", "name_chosen", name_chosen)
 	config.set_value("player", "challenge_state", challenge_state)
+	config.set_value("player", "party_deck", party_deck)
 	config.set_value("player", "gold", gold)
 	config.set_value("player", "gems", gems)
 	config.set_value("player", "experience", experience)
@@ -625,6 +631,7 @@ func save_data():
 	config.set_value("player", "avatar_seed", avatar_seed)
 	config.set_value("player", "avatar_index", avatar_index)
 	config.set_value("player", "avatar_custom_path", avatar_custom_path)
+	config.set_value("player", "collection_rewards_claimed", collection_rewards_claimed)
 	config.set_value("player", "donations_used", donations_used)
 	config.set_value("player", "custom_deck", custom_deck)
 	config.set_value("player", "custom_decks", custom_decks)
@@ -701,6 +708,75 @@ func randomize_avatar() -> void:
 	avatar_seed = int(randi())
 	avatar_index = randi() % 12
 	save_data()
+
+func _load_collection_rewards() -> Array:
+	if not _collection_rewards_cache.is_empty():
+		return _collection_rewards_cache
+	var f := FileAccess.open("res://data/collection_rewards.json", FileAccess.READ)
+	if f == null:
+		return []
+	var parsed = JSON.parse_string(f.get_as_text())
+	if parsed is Array:
+		_collection_rewards_cache = parsed
+	return _collection_rewards_cache
+
+func get_collection_rewards() -> Array:
+	return _load_collection_rewards()
+
+func get_collection_reward_pending() -> Array:
+	var lv: int = get_collection_level()
+	var out: Array = []
+	for r in _load_collection_rewards():
+		var level: int = int(r.get("level", 0))
+		if level <= lv and not collection_rewards_claimed.has(level):
+			out.append(r)
+	return out
+
+func get_collection_reward_pending_count() -> int:
+	return get_collection_reward_pending().size()
+
+func get_next_collection_reward() -> Dictionary:
+	var lv: int = get_collection_level()
+	for r in _load_collection_rewards():
+		if int(r.get("level", 0)) > lv:
+			return r
+	return {}
+
+func _grant_collection_reward(r: Dictionary) -> void:
+	var typ := String(r.get("type", "gems"))
+	if typ == "gems":
+		gems += int(r.get("amount", 0))
+	elif typ == "wild":
+		add_wildcards(String(r.get("rarity", "common")), int(r.get("amount", 0)))
+	elif typ == "chest":
+		var stars: int = clampi(int(r.get("stars", 4)), 1, 5)
+		add_chest(String(r.get("rarity", "magical")))
+		if not chests.is_empty():
+			chests[chests.size() - 1]["stars"] = stars
+			chests[chests.size() - 1]["taps_left"] = 4
+			chests[chests.size() - 1]["total_taps"] = 4
+	save_data()
+
+func claim_collection_reward(level: int) -> Dictionary:
+	if level > get_collection_level() or collection_rewards_claimed.has(level):
+		return {}
+	for r in _load_collection_rewards():
+		if int(r.get("level", 0)) == level:
+			collection_rewards_claimed.append(level)
+			_grant_collection_reward(r)
+			save_data()
+			return r
+	return {}
+
+func claim_all_collection_rewards() -> Array:
+	var out: Array = []
+	for r in get_collection_reward_pending():
+		var level: int = int(r.get("level", 0))
+		collection_rewards_claimed.append(level)
+		_grant_collection_reward(r)
+		out.append(r)
+	save_data()
+	return out
 
 func get_ai_allowed_cards() -> Array:
 	# 常规 AI 只允许：新手六卡 + 皇室征程中当前奖杯已解锁的卡牌。
