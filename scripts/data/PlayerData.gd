@@ -155,6 +155,34 @@ func use_account(acct_id: String, migrate_legacy := true) -> void:
 	ensure_local_save()
 
 
+func use_account_file(acct_id: String, save_path: String) -> void:
+	account_id = acct_id
+	account_save_path = save_path
+	ensure_save_dir(account_save_path)
+	load_data()
+	_ensure_avatar()
+	_ensure_season()
+	_ensure_starter_cards()
+	_ensure_default_mail()
+	ensure_local_save()
+
+func apply_save_text(text: String) -> bool:
+	if text == "":
+		return false
+	ensure_save_dir(current_save_path())
+	var f := FileAccess.open(current_save_path(), FileAccess.WRITE)
+	if f == null:
+		last_save_error = "无法写入云端存档：%s" % current_save_path()
+		return false
+	f.store_string(text)
+	f.close()
+	load_data()
+	_ensure_avatar()
+	_ensure_season()
+	_ensure_starter_cards()
+	_ensure_default_mail()
+	return true
+
 func get_card_quantity(card_id: int) -> int:
 	return card_quantities.get(card_id, 0)
 
