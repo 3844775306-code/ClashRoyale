@@ -21,6 +21,7 @@ const ARENA_DATA := [
 const KING_TOWER_REQS := [[2,9,1],[3,9,2],[4,10,3],[5,10,4],[6,10,5],[7,10,6],[8,10,7],[9,10,8],[10,10,9],[11,10,10],[12,11,11],[13,11,12],[14,12,13],[15,13,14],[16,14,15]]
 var gold: int = 100
 var gems: int = 10
+var email_bind_reward_claimed: bool = false
 var experience: int = 0
 var player_name:String = "玩家"
 var name_chosen: bool = false        # 玩家是否已完成取名（首次启动强制取名）
@@ -645,6 +646,7 @@ func load_data():
 		party_deck = config.get_value("player", "party_deck", [])
 		gold = config.get_value("player", "gold", 100)
 		gems = config.get_value("player", "gems", 10)
+		email_bind_reward_claimed = bool(config.get_value("player", "email_bind_reward_claimed", false))
 		shop_day = String(config.get_value("shop", "day", ""))
 		chest_reward_day = String(config.get_value("player", "chest_reward_day", ""))
 		chest_reward_wins = int(config.get_value("player", "chest_reward_wins", 0))
@@ -708,6 +710,7 @@ func _apply_defaults():
 	party_deck = []
 	gold = 100
 	gems = 10
+	email_bind_reward_claimed = false
 	experience = 0
 	trophies = 0
 	highest_trophies = 0
@@ -757,6 +760,7 @@ func save_data():
 	config.set_value("player", "party_deck", party_deck)
 	config.set_value("player", "gold", gold)
 	config.set_value("player", "gems", gems)
+	config.set_value("player", "email_bind_reward_claimed", email_bind_reward_claimed)
 	config.set_value("player", "experience", experience)
 	config.set_value("player", "trophies", trophies)
 	config.set_value("player", "highest_trophies", highest_trophies)

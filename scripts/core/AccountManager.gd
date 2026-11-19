@@ -232,6 +232,8 @@ func login(email: String, password: String) -> Dictionary:
 	if online:
 		_sync_public_profile()
 		await _sync_cloud_after_login()
+		if _supabase_using:
+			await _edge_request("sync-email", {}, true)
 	else:
 		cloud_status = "离线模式（云端未连接）"
 		cloud_status_changed.emit()
@@ -295,6 +297,113 @@ func logout() -> void:
 	PlayerData.use_account("default", false)
 	cloud_status_changed.emit()
 
+
+func synthetic_email(username: String) -> String:
+	var ctx := HashingContext.new()
+	ctx.start(HashingContext.HASH_SHA256)
+	ctx.update(username.strip_edges().to_lower().to_utf8_buffer())
+	return "u_%s@login.clashroyale.local" % ctx.finish().hex_encode()
+
+func _edge_request(action: String, payload: Dictionary, use_user_token: bool = false) -> Dictionary:
+	var body := payload.duplicate(true)
+	body["action"] = action
+	var headers := PackedStringArray([
+		"apikey: " + SUPABASE_KEY,
+		"Authorization: Bearer " + (_supabase_access_token if use_user_token and _supabase_access_token != "" else SUPABASE_KEY),
+		"Content-Type: application/json",
+	])
+	var res: Array = await _http_request(HTTPClient.METHOD_POST,
+		SUPABASE_URL + "/functions/v1/cr-auth", headers, JSON.stringify(body).to_utf8_buffer())
+	var data = JSON.parse_string(String(res[3].get_string_from_utf8()))
+	if not (data is Dictionary):
+		return {"ok": false, "error": "云端返回格式错误"}
+	return data
+
+func register_username(username: String, password: String) -> Dictionary:
+	var u := username.strip_edges()
+	if u.length() < 2 or u.length() > 20:
+		return {"ok": false, "error": "用户名需 2-20 位"}
+	if password.length() < 6:
+		return {"ok": false, "error": "密码至少 6 位"}
+	var r := await _edge_request("signup", {"username": u, "password": password})
+	if bool(r.get("ok", false)):
+		r["email"] = String(r.get("email", synthetic_email(u)))
+	return r
+
+func login_username(username: String, password: String) -> Dictionary:
+	var email := synthetic_email(username)
+	var r := await _edge_request("resolve", {"username": username.strip_edges()})
+	if bool(r.get("ok", false)) and String(r.get("email", "")) != "":
+		email = String(r.get("email"))
+	return await login(email, password)
+
+func request_bind_email(email: String) -> Dictionary:
+	if not is_supabase_authenticated():
+		return {"ok": false, "error": "请先登录云端"}
+	var body := JSON.stringify({"email": email}).to_utf8_buffer()
+	var res: Array = await _http_request(HTTPClient.METHOD_PUT,
+		SUPABASE_URL + "/auth/v1/user", _supabase_headers(_supabase_access_token), body)
+	if int(res[1]) < 200 or int(res[1]) >= 300:
+		return {"ok": false, "error": _supabase_error(res)}
+	await _edge_request("sync-email", {}, true)
+	return {"ok": true}
+
+func send_email_otp(email: String) -> Dictionary:
+	var body := JSON.stringify({"email": email, "create_user": false}).to_utf8_buffer()
+	var res: Array = await _http_request(HTTPClient.METHOD_POST,
+		SUPABASE_URL + "/auth/v1/otp", _supabase_headers(), body)
+	if int(res[1]) < 200 or int(res[1]) >= 300:
+		return {"ok": false, "error": _supabase_error(res)}
+	return {"ok": true}
+
+func verify_email_otp(email: String, token: String) -> Dictionary:
+	var body := JSON.stringify({"email": email, "token": token, "type": "email"}).to_utf8_buffer()
+	var res: Array = await _http_request(HTTPClient.METHOD_POST,
+		SUPABASE_URL + "/auth/v1/verify", _supabase_headers(), body)
+	if int(res[1]) < 200 or int(res[1]) >= 300:
+		return {"ok": false, "error": _supabase_error(res)}
+	var data = JSON.parse_string(String(res[3].get_string_from_utf8()))
+	if not (data is Dictionary):
+		return {"ok": false, "error": "验证码登录失败"}
+	var d: Dictionary = data
+	_supabase_access_token = String(d.get("access_token", ""))
+	_supabase_refresh_token = String(d.get("refresh_token", ""))
+	var user: Dictionary = Dictionary(d.get("user", {}))
+	_supabase_user_id = String(user.get("id", ""))
+	_supabase_using = true
+	_session_online = true
+	account_email = email
+	account_id = _make_id(email)
+	_player_load_account(false)
+	_save_session(true)
+	is_authenticated = true
+	auto_login_pending = false
+	await _edge_request("sync-email", {}, true)
+	await _sync_cloud_after_login()
+	return {"ok": true, "online": true}
+
+func try_claim_bind_reward() -> bool:
+	if not is_supabase_authenticated():
+		return false
+	var user := await _supabase_get_user()
+	if user.is_empty():
+		return false
+	var email := String(user.get("email", ""))
+	if email.ends_with("@login.clashroyale.local"):
+		return false
+	if String(user.get("email_confirmed_at", "")) == "":
+		return false
+	var meta: Dictionary = Dictionary(user.get("user_metadata", {}))
+	if bool(meta.get("bind_reward_claimed", false)) or PlayerData.email_bind_reward_claimed:
+		return false
+	var r := await _edge_request("claim-bind-reward", {}, true)
+	if bool(r.get("ok", false)):
+		PlayerData.gold += 500
+		PlayerData.gems += 10
+		PlayerData.email_bind_reward_claimed = true
+		PlayerData.save_data()
+		return true
+	return false
 
 func supabase_token() -> String:
 	return _supabase_access_token

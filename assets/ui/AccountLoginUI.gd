@@ -108,9 +108,9 @@ func _build() -> void:
 			_form.add_child(rb)
 			_recent_buttons.append(rb)
 
-	_form.add_child(_label("邮箱", 14, PARCHMENT))
+	_form.add_child(_label("用户名 / 邮箱", 14, PARCHMENT))
 	_email = LineEdit.new()
-	_email.placeholder_text = "you@example.com"
+	_email.placeholder_text = "用户名，或已绑定邮箱"
 	_email.custom_minimum_size = Vector2(0, 56)
 	_email.add_theme_font_size_override("font_size", 18)
 	_style_input(_email)
@@ -145,12 +145,20 @@ func _build() -> void:
 	_register_btn.pressed.connect(_on_register)
 	_form.add_child(_register_btn)
 
+	var otp_btn := Button.new()
+	otp_btn.text = "邮箱验证码登录"
+	otp_btn.focus_mode = Control.FOCUS_NONE
+	otp_btn.custom_minimum_size = Vector2(0, 44)
+	_style_secondary(otp_btn)
+	otp_btn.pressed.connect(_show_otp_dialog)
+	_form.add_child(otp_btn)
+
 	_status = _label("", 13, MUTED)
 	_status.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	_status.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	_form.add_child(_status)
 
-	var hint := _label("云端由 LootLocker 账号系统提供；离线时可用本机账号进入，联网后自动上传", 11, Color(0.5, 0.56, 0.66))
+	var hint := _label("用户名+密码登录；登录后可绑定邮箱领取奖励。云端存档由 Supabase 提供", 11, Color(0.5, 0.56, 0.66))
 	hint.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	hint.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	_form.add_child(hint)
@@ -180,7 +188,8 @@ func _on_login() -> void:
 	_set_busy(true)
 	_status.text = "正在登录…"
 	_status.add_theme_color_override("font_color", MUTED)
-	var res: Dictionary = await AccountManager.login(_email.text, _password.text)
+	var ident := _email.text.strip_edges()
+	var res: Dictionary = await AccountManager.login(ident, _password.text) if ident.contains("@") else await AccountManager.login_username(ident, _password.text)
 	if bool(res.get("ok", false)):
 		if bool(res.get("online", false)):
 			_status.text = "云端登录成功"
@@ -189,7 +198,8 @@ func _on_login() -> void:
 			_status.add_theme_color_override("font_color", DANGER)
 			await get_tree().create_timer(1.0).timeout
 		await get_tree().create_timer(0.25).timeout
-		_enter_game()
+		await _after_login()
+		_maybe_bind_email()
 	else:
 		_status.text = String(res.get("error", "登录失败"))
 		_status.add_theme_color_override("font_color", DANGER)
@@ -202,16 +212,173 @@ func _on_register() -> void:
 	_set_busy(true)
 	_status.text = "正在创建账号…"
 	_status.add_theme_color_override("font_color", MUTED)
-	var res: Dictionary = await AccountManager.register(_email.text, _password.text)
-	if bool(res.get("ok", false)):
-		_status.text = "账号已创建" + ("（请验证邮箱后云端同步）" if String(res.get("error", "")) != "" else "")
-		await get_tree().create_timer(0.35).timeout
-		_enter_game()
+	var ident := _email.text.strip_edges()
+	var reg: Dictionary = await AccountManager.register(ident, _password.text) if ident.contains("@") else await AccountManager.register_username(ident, _password.text)
+	if bool(reg.get("ok", false)):
+		_status.text = "账号已创建，正在登录…"
+		var res: Dictionary = await AccountManager.login(ident, _password.text) if ident.contains("@") else await AccountManager.login_username(ident, _password.text)
+		if bool(res.get("ok", false)):
+			await _after_login()
+			_maybe_bind_email()
+		else:
+			_status.text = "账号已创建，请返回登录"
+			_set_busy(false)
 	else:
-		_status.text = String(res.get("error", "注册失败"))
+		_status.text = String(reg.get("error", "注册失败"))
 		_status.add_theme_color_override("font_color", DANGER)
 		_set_busy(false)
 
+
+func _after_login() -> void:
+	if await AccountManager.try_claim_bind_reward():
+		_status.text = "邮箱绑定奖励已领取：500 金币 + 10 宝石"
+		_status.add_theme_color_override("font_color", GOLD)
+
+func _maybe_bind_email() -> void:
+	if not AccountManager.is_supabase_authenticated() or not AccountManager.account_email.ends_with("@login.clashroyale.local"):
+		_enter_game()
+		return
+	var layer := CanvasLayer.new()
+	layer.layer = 300
+	add_child(layer)
+	var root := Control.new()
+	root.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	layer.add_child(root)
+	var dim := ColorRect.new()
+	dim.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	dim.color = Color(0, 0, 0, 0.66)
+	root.add_child(dim)
+	var panel := Panel.new()
+	panel.position = Vector2(80, 430)
+	panel.size = Vector2(640, 560)
+	var psb := StyleBoxFlat.new()
+	psb.bg_color = Color(0.04, 0.06, 0.13, 0.99)
+	psb.border_color = Color(GOLD.r, GOLD.g, GOLD.b, 0.9)
+	psb.set_border_width_all(2)
+	psb.set_corner_radius_all(22)
+	panel.add_theme_stylebox_override("panel", psb)
+	root.add_child(panel)
+	var v := VBoxContainer.new()
+	v.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	v.offset_left = 26; v.offset_right = -26; v.offset_top = 24; v.offset_bottom = -24
+	v.add_theme_constant_override("separation", 12)
+	panel.add_child(v)
+	var title := _label("绑定邮箱", 28, GOLD_LIGHT, true)
+	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	v.add_child(title)
+	var notice := _label("完成绑定奖励：500 金币 + 10 宝石\n绑定后可用邮箱验证码登录，也可用于找回账号。", 15, PARCHMENT)
+	notice.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	notice.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	v.add_child(notice)
+	var em := LineEdit.new()
+	em.placeholder_text = "you@example.com"
+	em.custom_minimum_size = Vector2(0, 50)
+	_style_input(em)
+	v.add_child(em)
+	var msg := _label("", 13, MUTED)
+	msg.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	msg.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	v.add_child(msg)
+	var send := Button.new()
+	send.text = "发送确认邮件"
+	send.custom_minimum_size = Vector2(0, 54)
+	_style_primary(send)
+	v.add_child(send)
+	var skip := Button.new()
+	skip.text = "暂不绑定，先进入游戏"
+	skip.custom_minimum_size = Vector2(0, 46)
+	_style_secondary(skip)
+	v.add_child(skip)
+	send.pressed.connect(func():
+		send.disabled = true
+		msg.text = "正在发送…"
+		var r: Dictionary = await AccountManager.request_bind_email(em.text.strip_edges())
+		if bool(r.get("ok", false)):
+			msg.text = "确认邮件已发送，请到邮箱点击链接；确认后下次登录自动领取奖励。"
+			await get_tree().create_timer(1.2).timeout
+			layer.queue_free()
+			_enter_game()
+		else:
+			msg.text = String(r.get("error", "发送失败"))
+			send.disabled = false)
+	skip.pressed.connect(func():
+		layer.queue_free()
+		_enter_game())
+
+func _show_otp_dialog() -> void:
+	var layer := CanvasLayer.new()
+	layer.layer = 300
+	add_child(layer)
+	var root := Control.new()
+	root.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	layer.add_child(root)
+	var dim := ColorRect.new()
+	dim.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	dim.color = Color(0, 0, 0, 0.66)
+	root.add_child(dim)
+	var panel := Panel.new()
+	panel.position = Vector2(80, 450)
+	panel.size = Vector2(640, 520)
+	var psb := StyleBoxFlat.new()
+	psb.bg_color = Color(0.04, 0.06, 0.13, 0.99)
+	psb.border_color = Color(0.55, 0.80, 1.0, 0.9)
+	psb.set_border_width_all(2)
+	psb.set_corner_radius_all(22)
+	panel.add_theme_stylebox_override("panel", psb)
+	root.add_child(panel)
+	var v := VBoxContainer.new()
+	v.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	v.offset_left = 26; v.offset_right = -26; v.offset_top = 24; v.offset_bottom = -24
+	v.add_theme_constant_override("separation", 12)
+	panel.add_child(v)
+	var title := _label("邮箱验证码登录", 26, Color(0.70, 0.88, 1.0), true)
+	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	v.add_child(title)
+	var em := LineEdit.new()
+	em.placeholder_text = "已绑定的邮箱"
+	em.custom_minimum_size = Vector2(0, 50)
+	_style_input(em)
+	v.add_child(em)
+	var code := LineEdit.new()
+	code.placeholder_text = "6 位验证码"
+	code.custom_minimum_size = Vector2(0, 50)
+	_style_input(code)
+	v.add_child(code)
+	var msg := _label("", 13, MUTED)
+	msg.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	v.add_child(msg)
+	var send := Button.new()
+	send.text = "发送验证码"
+	send.custom_minimum_size = Vector2(0, 48)
+	_style_secondary(send)
+	v.add_child(send)
+	var verify := Button.new()
+	verify.text = "验证并登录"
+	verify.custom_minimum_size = Vector2(0, 54)
+	_style_primary(verify)
+	v.add_child(verify)
+	var close := Button.new()
+	close.text = "返回"
+	close.custom_minimum_size = Vector2(0, 42)
+	_style_secondary(close)
+	v.add_child(close)
+	send.pressed.connect(func():
+		send.disabled = true
+		msg.text = "发送中…"
+		var r: Dictionary = await AccountManager.send_email_otp(em.text.strip_edges())
+		msg.text = "验证码已发送" if bool(r.get("ok", false)) else String(r.get("error", "发送失败"))
+		send.disabled = false)
+	verify.pressed.connect(func():
+		verify.disabled = true
+		msg.text = "验证中…"
+		var r: Dictionary = await AccountManager.verify_email_otp(em.text.strip_edges(), code.text.strip_edges())
+		if bool(r.get("ok", false)):
+			layer.queue_free()
+			_enter_game()
+		else:
+			msg.text = String(r.get("error", "验证失败"))
+			verify.disabled = false)
+	close.pressed.connect(func(): layer.queue_free())
 
 func _enter_game() -> void:
 	get_tree().change_scene_to_file("res://scenes/menu.tscn")
