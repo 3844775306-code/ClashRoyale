@@ -338,17 +338,36 @@ func _build_network_swap_decks() -> void:
 	for pid in pids:
 		order.append(int(pid))
 	network_draft_decks.clear()
+	var used: Array = []
+	var all_cards: Array = []
+	for pid in order:
+		for cid in network_draft_picks.get(pid, []):
+			if not all_cards.has(int(cid)):
+				all_cards.append(int(cid))
+		for cid in network_draft_rejects.get(pid, []):
+			if not all_cards.has(int(cid)):
+				all_cards.append(int(cid))
 	for i in range(order.size()):
 		var cur: int = int(order[i])
 		var nxt: int = int(order[(i + 1) % order.size()])
 		var deck: Array = []
+		var candidates: Array = []
 		for cid in network_draft_picks.get(cur, []):
-			deck.append(int(cid))
+			candidates.append(int(cid))
 		for cid in network_draft_rejects.get(nxt, []):
-			deck.append(int(cid))
+			candidates.append(int(cid))
+		for cid in all_cards:
+			candidates.append(int(cid))
+		for cid in candidates:
+			if deck.size() >= 8:
+				break
+			if used.has(cid) or deck.has(cid):
+				continue
+			deck.append(cid)
+			used.append(cid)
 		network_draft_decks[cur] = deck
 		if OS.get_environment("CR_MODE_DEBUG") != "":
-			print("[DraftNet] swap deck for ", cur, " = picks(", cur, ") + rejects(", nxt, ") = ", str(deck))
+			print("[DraftNet] swap deck for ", cur, " unique=", str(deck))
 
 
 @rpc("any_peer", "call_remote", "reliable")

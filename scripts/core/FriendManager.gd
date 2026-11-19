@@ -469,6 +469,11 @@ func _broadcast_presence(payload: String) -> void:
 	_send.put_packet(data)
 	_send.set_dest_address("127.0.0.1", UDP_PORT)
 	_send.put_packet(data)
+	for pid in online_peers.keys():
+		var ip := String(Dictionary(online_peers[pid]).get("ip", ""))
+		if ip != "":
+			_send.set_dest_address(ip, UDP_PORT)
+			_send.put_packet(data)
 
 
 func _process(delta: float) -> void:
@@ -533,6 +538,13 @@ func _process(delta: float) -> void:
 			var pip := _recv.get_packet_ip() if _recv else ""
 			online_peers[pid2] = {"name": String(data.get("name", "好友")), "last": ts, "ip": pip}
 			presence_changed.emit()
+			# 收到对方 presence 后立刻单播回执，修复单向在线
+			if pip != "":
+				_send_to_ip(pip, {
+					"type": "cr_presence", "id": str(ClanManager.get_player_id()),
+					"name": PlayerData.player_name,
+					"ts": int(Time.get_unix_time_from_system()),
+				})
 			continue
 		if ptype in ["cr_friend_request", "cr_friend_accept", "cr_friend_reject", "cr_friend_accept_ack"]:
 			handle_friend_packet(data)

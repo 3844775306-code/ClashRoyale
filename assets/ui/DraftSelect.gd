@@ -23,6 +23,7 @@ var _own_picks: Array = []
 var _own_rejects: Array = []
 var _round := 0
 var _pool: Array = []
+var _used: Array = []
 var _player: Array = []
 var _enemy: Array = []
 var _picked_row: HBoxContainer
@@ -153,33 +154,37 @@ func _refresh() -> void:
 		call_deferred("_auto_pick", offer)
 
 
-func _draw_offer() -> Array:
+func _remaining_cards() -> Array:
 	var remaining: Array = []
 	for cid in _pool:
-		if not _player.has(cid) and not _enemy.has(cid):
+		if not _used.has(cid) and not _player.has(cid) and not _enemy.has(cid):
 			remaining.append(cid)
+	return remaining
+
+
+func _draw_offer() -> Array:
 	var offer: Array = []
-	for cid in remaining:
+	for cid in _remaining_cards():
 		if offer.size() >= _choices:
 			break
 		offer.append(cid)
+	for cid in offer:
+		_used.append(cid)
 	return offer
 
 
 func _draw_swap_offers() -> Array:
-	var remaining: Array = []
-	for cid in _pool:
-		if not _player.has(cid) and not _enemy.has(cid):
-			remaining.append(cid)
 	var player_offer: Array = []
 	var ai_offer: Array = []
-	for cid in remaining:
+	for cid in _remaining_cards():
 		if player_offer.size() < _choices:
 			player_offer.append(cid)
 		elif ai_offer.size() < _choices:
 			ai_offer.append(cid)
 		else:
 			break
+	for cid in player_offer + ai_offer:
+		_used.append(cid)
 	return [player_offer, ai_offer]
 
 
@@ -335,6 +340,28 @@ func _pick(cid: int) -> void:
 
 
 func _finish_draft() -> void:
+	if _net_draft and _swap:
+		while _own_picks.size() < _picks_total:
+			var found := false
+			for cid in _pool:
+				if not _used.has(cid) and not _own_picks.has(cid) and not _own_rejects.has(cid):
+					_own_picks.append(cid)
+					_player.append(cid)
+					_used.append(cid)
+					found = true
+					break
+			if not found:
+				break
+		while _own_rejects.size() < _picks_total:
+			var found2 := false
+			for cid in _pool:
+				if not _used.has(cid) and not _own_picks.has(cid) and not _own_rejects.has(cid):
+					_own_rejects.append(cid)
+					_used.append(cid)
+					found2 = true
+					break
+			if not found2:
+				break
 	if _swap:
 		BATTLE_MODES.set_swap_decks(_player, _enemy)
 	else:
