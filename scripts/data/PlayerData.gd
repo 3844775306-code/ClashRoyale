@@ -1257,6 +1257,14 @@ const APP_VERSION := "1.2.0"
 const UPDATE_URL := "https://github.com/3844775306-code/ClashRoyale/releases/tag/v1.2.0"
 const GLOBAL_MAIL_URL := "https://raw.githubusercontent.com/3844775306-code/ClashRoyale/main/data/global_mail.json"
 
+func add_gift_mail_once(title: String, body: String, reward: Dictionary, sender: String, gift_id: String) -> void:
+	if gift_id != "":
+		for m in mailbox:
+			if String(m.get("gift_id", "")) == gift_id:
+				return
+	var extra := {"gift_id": gift_id}
+	add_mail(title, body, reward, sender, "donation", extra)
+
 func add_mail(title: String, body: String, reward: Dictionary = {}, sender: String = "官方", kind: String = "official", extra: Dictionary = {}) -> void:
 	var mail := {
 		"id": "mail_%d_%d" % [Time.get_ticks_usec(), randi() % 100000],

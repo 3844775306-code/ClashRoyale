@@ -145,11 +145,61 @@ func sync_my_inventory(callback: Callable = Callable()) -> void:
 		_claim_pending_gifts(callback)
 	)
 
+const LOCAL_SHARED_DIR := "user://local_shared"
+
+func _local_gift_path(player_id: int) -> String:
+	return LOCAL_SHARED_DIR + "/gifts_%s.json" % player_id
+
+func _queue_local_gift(to_player_id: int, card_id: int, amount: int, sender: String, gift_id: String) -> void:
+	DirAccess.make_dir_recursive_absolute(ProjectSettings.globalize_path(LOCAL_SHARED_DIR))
+	var path := _local_gift_path(to_player_id)
+	var arr: Array = []
+	if FileAccess.file_exists(path):
+		var rf := FileAccess.open(path, FileAccess.READ)
+		if rf:
+			var parsed = JSON.parse_string(rf.get_as_text())
+			if parsed is Array:
+				arr = parsed
+			rf.close()
+	arr.append({"card_id": card_id, "amount": amount, "sender": sender, "gift_id": gift_id})
+	var wf := FileAccess.open(path, FileAccess.WRITE)
+	if wf:
+		wf.store_string(JSON.stringify(arr))
+		wf.close()
+
+func _drain_local_gifts() -> Array:
+	var path := _local_gift_path(get_player_id())
+	var arr: Array = []
+	if FileAccess.file_exists(path):
+		var rf := FileAccess.open(path, FileAccess.READ)
+		if rf:
+			var parsed = JSON.parse_string(rf.get_as_text())
+			if parsed is Array:
+				arr = parsed
+			rf.close()
+		DirAccess.remove_absolute(ProjectSettings.globalize_path(path))
+	return arr
+
+func _deliver_gift_mail(g: Dictionary) -> void:
+	var cid: int = int(g.get("card_id", 0))
+	var amount: int = int(g.get("amount", 0))
+	if cid <= 0 or amount <= 0:
+		return
+	var sender := String(g.get("sender", "部落成员"))
+	var gid := String(g.get("gift_id", "%s_%s_%s" % [sender, cid, amount]))
+	PlayerData.add_gift_mail_once(
+		"部落赠卡",
+		"来自 %s 的赠卡：卡牌 #%d ×%d\n请点击领取加入卡牌收藏。" % [sender, cid, amount],
+		{"cards": {str(cid): amount}}, sender, gid)
+
 func _claim_pending_gifts(callback: Callable = Callable()) -> void:
+	var local_gifts := _drain_local_gifts()
+	for lg in local_gifts:
+		_deliver_gift_mail(lg)
 	invalidate_cache()
 	get_my_clan(func(success, clan):
 		if not success or clan == null:
-			if _cb_valid(callback): callback.call(false)
+			if _cb_valid(callback): callback.call(not local_gifts.is_empty())
 			return
 		var gifts: Dictionary = clan.get("pending_card_gifts", {})
 		var key := str(get_player_id())
@@ -166,10 +216,7 @@ func _claim_pending_gifts(callback: Callable = Callable()) -> void:
 			var cid: int = int(g.get("card_id", 0))
 			var amount: int = int(g.get("amount", 0))
 			if cid > 0 and amount > 0:
-				PlayerData.add_mail(
-					"部落赠卡",
-					"来自 %s 的赠卡：卡牌 #%d ×%d\n请点击领取加入卡牌收藏。" % [String(g.get("sender", "部落成员")), cid, amount],
-					{"cards": {str(cid): amount}}, String(g.get("sender", "部落成员")), "donation")
+				_deliver_gift_mail(g)
 		gifts.erase(key)
 		clan["pending_card_gifts"] = gifts
 		invalidate_cache()
@@ -706,9 +753,11 @@ func donate_card(to_player_id: int, card_id: int, amount: int, request_key: Stri
 			for k in mine.keys():
 				conv.append({"card_id": int(k), "amount": int(mine[k]), "sender": "部落成员"})
 			mine = conv
-		mine.append({"card_id": card_id, "amount": contribute, "sender": get_player_name()})
+		var gift_id := "%s_%s_%d_%d" % [str(get_player_id()), str(to_player_id), Time.get_ticks_usec(), card_id]
+		mine.append({"card_id": card_id, "amount": contribute, "sender": get_player_name(), "gift_id": gift_id})
 		gifts[gkey] = mine
 		clan["pending_card_gifts"] = gifts
+		_queue_local_gift(to_player_id, card_id, contribute, get_player_name(), gift_id)
 		_update_clan_on_leaderboard(clan, func(ok, err):
 			if not ok:
 				if _cb_valid(callback): callback.call(false, "保存部落失败")

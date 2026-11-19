@@ -74,7 +74,6 @@ var touchdown_resetting: bool = false
 var touchdown_round: int = 1
 var touchdown_scorer: Unit = null
 var _deny_selected_spell: bool = false
-var _crash_acc: float = 0.0
 # 决斗 Duel
 var duel_round: int = 1
 var duel_wins: Array = [0, 0]
@@ -1051,31 +1050,6 @@ func _apply_mobile_safe_rendering() -> void:
 	var dl := get_node_or_null("DirectionalLight3D") as DirectionalLight3D
 	if dl:
 		dl.shadow_enabled = false
-
-
-func _crash_state() -> Dictionary:
-	var cam := get_viewport().get_camera_3d() if is_inside_tree() else null
-	return {
-		"mode": String(mode_id),
-		"win_condition": String(win_condition),
-		"game_time": float(game_time / 1000.0),
-		"units": units.get_child_count() if units else 0,
-		"bullets": bullets.get_child_count() if bullets else 0,
-		"spells": spells.get_child_count() if spells else 0,
-		"player_elixir": float(player_elixir),
-		"enemy_elixir": float(enemy_elixir),
-		"crowns": [int(player_crowns), int(enemy_crowns)],
-		"touchdown": [int(touchdown_score[0]), int(touchdown_score[1])],
-		"touchdown_round": int(touchdown_round),
-		"network": bool(network_host_mode or network_guest_mode),
-		"network_host": bool(network_host_mode),
-		"network_guest": bool(network_guest_mode),
-		"team_sizes": [int(team_size(0)), int(team_size(1))],
-		"selected_card": String(selected_card.config.card_name) if selected_card and selected_card.config else "",
-		"game_over": bool(game_over),
-		"camera": [float(cam.global_position.x), float(cam.global_position.y), float(cam.global_position.z)] if cam else [],
-	}
-
 
 
 

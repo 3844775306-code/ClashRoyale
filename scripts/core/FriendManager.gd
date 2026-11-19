@@ -12,6 +12,7 @@ signal friend_request_answered(request: Dictionary, accepted: bool)
 const UDP_PORT := 24511
 const INVITE_TTL := 300
 const PROTOCOL := "cr_room_invite"
+const LOCAL_SHARED_DIR := "user://local_shared"
 
 var friends: Array = []
 var pending_invite: Dictionary = {}
@@ -249,6 +250,7 @@ func send_friend_request(profile: Dictionary) -> bool:
 		"ts": int(Time.get_unix_time_from_system()),
 	}
 	_broadcast_packet(req_data)
+	_queue_local_packet(pid, req_data)
 	_send_to_ip(String(online_peers.get(pid, {}).get("ip", "")), req_data)
 	requests_changed.emit()
 	return true
@@ -263,12 +265,14 @@ func accept_request(pid: String) -> bool:
 	save_friends()
 	var me := _self_profile()
 	_accept_notices[pid] = {"profile": me, "expires": int(Time.get_unix_time_from_system()) + 60}
-	_broadcast_packet({
+	var accept_data := {
 		"type": "cr_friend_accept", "target": pid,
 		"from_id": str(ClanManager.get_player_id()),
 		"from_profile": me,
 		"ts": int(Time.get_unix_time_from_system()),
-	})
+	}
+	_broadcast_packet(accept_data)
+	_queue_local_packet(pid, accept_data)
 	requests_changed.emit()
 	return true
 
@@ -279,11 +283,13 @@ func reject_request(pid: String) -> bool:
 	incoming_requests.erase(pid)
 	_rejected[pid] = int(Time.get_unix_time_from_system())
 	save_friends()
-	_broadcast_packet({
+	var reject_data := {
 		"type": "cr_friend_reject", "target": pid,
 		"from_id": str(ClanManager.get_player_id()),
 		"ts": int(Time.get_unix_time_from_system()),
-	})
+	}
+	_broadcast_packet(reject_data)
+	_queue_local_packet(pid, reject_data)
 	requests_changed.emit()
 	return true
 
@@ -557,7 +563,44 @@ func _broadcast_presence(payload: String) -> void:
 			_send.put_packet(data)
 
 
+func _local_packet_dir() -> String:
+	return LOCAL_SHARED_DIR + "/friend_packets"
+
+func _queue_local_packet(target_id: String, data: Dictionary) -> void:
+	var dir := _local_packet_dir()
+	DirAccess.make_dir_recursive_absolute(ProjectSettings.globalize_path(dir))
+	var path := dir + "/%s_%d_%d.json" % [target_id, Time.get_ticks_usec(), randi() % 1000]
+	var f := FileAccess.open(path, FileAccess.WRITE)
+	if f:
+		f.store_string(JSON.stringify(data))
+		f.close()
+
+func _drain_local_packets() -> void:
+	var dir := _local_packet_dir()
+	if not DirAccess.dir_exists_absolute(ProjectSettings.globalize_path(dir)):
+		return
+	var da := DirAccess.open(dir)
+	if da == null:
+		return
+	for fn in da.get_files():
+		if not fn.ends_with(".json"):
+			continue
+		var path := dir + "/" + fn
+		var f := FileAccess.open(path, FileAccess.READ)
+		if f == null:
+			continue
+		var parsed = JSON.parse_string(f.get_as_text())
+		f.close()
+		if not (parsed is Dictionary):
+			DirAccess.remove_absolute(ProjectSettings.globalize_path(path))
+			continue
+		var d: Dictionary = parsed
+		if String(d.get("target", "")) == str(ClanManager.get_player_id()):
+			DirAccess.remove_absolute(ProjectSettings.globalize_path(path))
+			handle_friend_packet(d)
+
 func _process(delta: float) -> void:
+	_drain_local_packets()
 	# 同局域网在线状态心跳
 	_presence_acc += delta
 	if _presence_acc >= 2.5:
