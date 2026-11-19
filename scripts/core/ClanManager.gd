@@ -124,9 +124,17 @@ func save_player_inventory(player_id: int, inventory: Dictionary, callback: Call
 	if callback.is_valid():
 		callback.call(response.success, response.error if not response.success else null)
 # ---------- 获取当前玩家所在部落 ----------
+func _cb_valid(cb: Callable) -> bool:
+	if cb == null or not cb.is_valid():
+		return false
+	var obj = cb.get_object()
+	if obj != null and not is_instance_valid(obj):
+		return false
+	return true
+
 func sync_my_inventory(callback: Callable = Callable()) -> void:
 	if not is_logged_in() or get_player_id() <= 0:
-		if callback.is_valid(): callback.call(false)
+		if _cb_valid(callback): callback.call(false)
 		return
 	get_player_inventory(get_player_id(), func(success, inventory):
 		if success and inventory is Dictionary and not inventory.is_empty():
@@ -139,7 +147,7 @@ func sync_my_inventory(callback: Callable = Callable()) -> void:
 func _claim_pending_gifts(callback: Callable = Callable()) -> void:
 	get_my_clan(func(success, clan):
 		if not success or clan == null:
-			if callback.is_valid(): callback.call(false)
+			if _cb_valid(callback): callback.call(false)
 			return
 		var gifts: Dictionary = clan.get("pending_card_gifts", {})
 		var key := str(get_player_id())
@@ -150,7 +158,7 @@ func _claim_pending_gifts(callback: Callable = Callable()) -> void:
 				conv.append({"card_id": int(k), "amount": int(mine[k]), "sender": "部落成员"})
 			mine = conv
 		if mine.is_empty():
-			if callback.is_valid(): callback.call(true)
+			if _cb_valid(callback): callback.call(true)
 			return
 		for g in mine:
 			var cid: int = int(g.get("card_id", 0))
@@ -164,7 +172,7 @@ func _claim_pending_gifts(callback: Callable = Callable()) -> void:
 		clan["pending_card_gifts"] = gifts
 		invalidate_cache()
 		_update_clan_on_leaderboard(clan, func(ok, err):
-			if callback.is_valid(): callback.call(ok)
+			if _cb_valid(callback): callback.call(ok)
 		)
 	)
 func get_my_clan(callback: Callable):

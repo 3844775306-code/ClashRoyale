@@ -57,8 +57,7 @@ func _ready():
 	_build_content()
 	_refresh_my_clan()
 	_load_all_clans()
-	ClanManager.sync_my_inventory(func(_ok):
-		_show_mail_alert_if_any())
+	ClanManager.sync_my_inventory(_on_inventory_synced)
 	_poll_timer = Timer.new()
 	_poll_timer.wait_time = 3.0
 	_poll_timer.one_shot = false
@@ -456,14 +455,13 @@ func _poll_clan() -> void:
 	ClanManager.invalidate_cache()
 	ClanManager.get_my_clan(func(success, clan):
 		_polling = false
-		if not success:
+		if not is_inside_tree() or not success:
 			return
 		if clan == null:
 			_show_no_clan()
 		else:
 			_show_clan_home(clan)
-		ClanManager.sync_my_inventory(func(_ok):
-			_show_mail_alert_if_any())
+		ClanManager.sync_my_inventory(_on_inventory_synced)
 	)
 
 func _show_no_clan():
@@ -1078,6 +1076,10 @@ func _reject_app(pid: int):
 			_toast("审批失败：%s" % str(err))
 	)
 
+func _on_inventory_synced(_ok) -> void:
+	if is_inside_tree():
+		_show_mail_alert_if_any()
+
 func _show_mail_alert_if_any() -> void:
 	var msg := PlayerData.mail_alert_pending
 	if msg == "":
@@ -1120,6 +1122,8 @@ func _show_mail_alert(text: String) -> void:
 	tw.tween_property(panel, "scale", Vector2.ONE, 0.28).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
 	tw.tween_property(panel, "modulate:a", 1.0, 0.22)
 	await get_tree().create_timer(2.4).timeout
+	if not is_inside_tree():
+		return
 	var tw2 := create_tween()
 	tw2.tween_property(panel, "modulate:a", 0.0, 0.3)
 	await tw2.finished

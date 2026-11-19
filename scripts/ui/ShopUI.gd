@@ -7,6 +7,7 @@ const REWARD_ICON = preload("res://scripts/ui/RewardIcon.gd")
 const EMOTES = preload("res://scripts/data/EmoteCatalog.gd")
 const EMOTE_ICON = preload("res://scripts/ui/EmoteIcon.gd")
 const CHEST3D = preload("res://scripts/ui/Chest3DPreview.gd")
+const CLAIM_ANIM = preload("res://scripts/ui/ClaimAnimation.gd")
 
 var currency_row: HBoxContainer
 var card_grid: GridContainer
@@ -418,6 +419,8 @@ func _on_buy_offer(offer_index: int):
 	PlayerData.save_data()
 	if bool(offer.get("free", false)):
 		status_lbl.text = "已免费领取 %s ×%d" % [cfg.card_name if cfg else "卡牌", int(offer.qty)]
+		CLAIM_ANIM.play(self, "领取成功", "免费领取 %s ×%d" % [cfg.card_name if cfg else "卡牌", int(offer.qty)],
+			{"kind": "card", "card_id": int(offer.card_id), "card_name": cfg.card_name if cfg else "卡牌", "amount": int(offer.qty)})
 	else:
 		status_lbl.text = "已购买 %s ×%d" % [cfg.card_name if cfg else "卡牌", int(offer.qty)]
 	_refresh()

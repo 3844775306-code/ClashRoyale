@@ -3,6 +3,7 @@ extends Control
 
 const REWARD_ICON = preload("res://scripts/ui/RewardIcon.gd")
 const CHEST3D = preload("res://scripts/ui/Chest3DPreview.gd")
+const CLAIM_ANIM = preload("res://scripts/ui/ClaimAnimation.gd")
 const WILD_CN := {"common": "普通", "rare": "稀有", "epic": "史诗", "legendary": "传奇", "champion": "冠军"}
 
 var content: VBoxContainer
@@ -173,11 +174,25 @@ func _reward_text(r: Dictionary) -> String:
 	return "奖励"
 
 func _claim_one(level: int):
-	PlayerData.claim_collection_reward(level)
+	var r: Dictionary = PlayerData.claim_collection_reward(level)
+	if r.is_empty():
+		return
+	CLAIM_ANIM.play(self, "领取成功", "收藏等级奖励", _collection_spec(r))
+	await get_tree().create_timer(1.1).timeout
 	get_tree().reload_current_scene()
 
 func _claim_all():
 	var got: Array = PlayerData.claim_all_collection_rewards()
 	if got.is_empty():
 		return
+	var spec := _collection_spec(got[0]) if not got.is_empty() else {"kind": "gold", "amount": 0}
+	CLAIM_ANIM.play(self, "领取成功", "收藏等级奖励 ×%d" % got.size(), spec)
+	await get_tree().create_timer(1.1).timeout
 	get_tree().reload_current_scene()
+
+func _collection_spec(r: Dictionary) -> Dictionary:
+	match String(r.get("type", "gems")):
+		"gems": return {"kind": "gems", "amount": int(r.get("amount", 0))}
+		"wild": return {"kind": "wild", "amount": int(r.get("amount", 0))}
+		"chest": return {"kind": "chest", "chest_rarity": "magical"}
+		_: return {"kind": "gold", "amount": int(r.get("amount", 0))}

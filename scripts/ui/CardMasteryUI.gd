@@ -3,6 +3,7 @@ extends Control
 
 const REWARD_ICON = preload("res://scripts/ui/RewardIcon.gd")
 const CHEST3D = preload("res://scripts/ui/Chest3DPreview.gd")
+const CLAIM_ANIM = preload("res://scripts/ui/ClaimAnimation.gd")
 const CARD_RARITY = preload("res://scripts/data/CardRarity.gd")
 const RARITY_CN := {"common": "普通", "rare": "稀有", "epic": "史诗", "legendary": "传奇", "champion": "冠军"}
 
@@ -185,10 +186,29 @@ func _card_row(cfg) -> Panel:
 	return row
 
 func _claim_one(cid: int):
-	PlayerData.claim_mastery(cid)
+	var r: Dictionary = PlayerData.claim_mastery(cid)
+	if r.is_empty():
+		return
+	CLAIM_ANIM.play(self, "领取成功", "卡牌大师奖励", _mastery_spec(r))
+	await get_tree().create_timer(1.1).timeout
 	get_tree().reload_current_scene()
 
 func _claim_all():
-	if PlayerData.claim_all_mastery().is_empty():
+	var got: Array = PlayerData.claim_all_mastery()
+	if got.is_empty():
 		return
+	var spec := {"kind": "gold", "amount": 0}
+	if not got.is_empty():
+		spec = _mastery_spec(got[0].get("reward", {}))
+	CLAIM_ANIM.play(self, "领取成功", "卡牌大师奖励 ×%d" % got.size(), spec)
+	await get_tree().create_timer(1.1).timeout
 	get_tree().reload_current_scene()
+
+func _mastery_spec(r: Dictionary) -> Dictionary:
+	if String(r.get("chest", "")) != "":
+		return {"kind": "chest", "chest_rarity": String(r.chest)}
+	if not (r.get("wildcards", {}) as Dictionary).is_empty():
+		return {"kind": "wild", "amount": int((r.wildcards as Dictionary).values()[0])}
+	if int(r.get("gold", 0)) > 0:
+		return {"kind": "gold", "amount": int(r.gold)}
+	return {"kind": "gold", "amount": 0}

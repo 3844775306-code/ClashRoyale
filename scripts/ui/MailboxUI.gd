@@ -4,6 +4,7 @@ extends Control
 const REWARD_ICON = preload("res://scripts/ui/RewardIcon.gd")
 const EMOTE_ICON = preload("res://scripts/ui/EmoteIcon.gd")
 const CHEST3D = preload("res://scripts/ui/Chest3DPreview.gd")
+const CLAIM_ANIM = preload("res://scripts/ui/ClaimAnimation.gd")
 
 var content: VBoxContainer
 
@@ -160,9 +161,35 @@ func _claim(mail_id: String):
 	var m: Dictionary = PlayerData.claim_mail(mail_id)
 	if m.is_empty():
 		return
-	_show_claim_anim(String(m.get("title", "邮件")))
-	await get_tree().create_timer(0.9).timeout
+	var r: Dictionary = m.get("reward", {})
+	CLAIM_ANIM.play(self, "领取成功", _reward_summary(r), _claim_spec(r))
+	await get_tree().create_timer(1.1).timeout
 	get_tree().reload_current_scene()
+
+func _claim_spec(r: Dictionary) -> Dictionary:
+	if not (r.get("cards", {}) as Dictionary).is_empty():
+		for cid in r.cards.keys():
+			return {"kind": "card", "card_id": int(cid), "card_name": _card_name(int(cid)), "amount": int(r.cards[cid])}
+	if String(r.get("chest", "")) != "":
+		return {"kind": "chest", "chest_rarity": String(r.chest)}
+	if String(r.get("emote", "")) != "":
+		return {"kind": "emote", "emote_id": String(r.emote)}
+	if int(r.get("gems", 0)) > 0:
+		return {"kind": "gems", "amount": int(r.gems)}
+	if not (r.get("wildcards", {}) as Dictionary).is_empty():
+		return {"kind": "wild", "amount": int((r.wildcards as Dictionary).values()[0])}
+	return {"kind": "gold", "amount": int(r.get("gold", 0))}
+
+func _reward_summary(r: Dictionary) -> String:
+	var parts: Array = []
+	if int(r.get("gold", 0)) > 0: parts.append("+%d 金币" % int(r.gold))
+	if int(r.get("gems", 0)) > 0: parts.append("+%d 宝石" % int(r.gems))
+	if not (r.get("cards", {}) as Dictionary).is_empty():
+		for cid in r.cards.keys(): parts.append("%s ×%d" % [_card_name(int(cid)), int(r.cards[cid])])
+	if not (r.get("wildcards", {}) as Dictionary).is_empty():
+		for k in r.wildcards.keys(): parts.append("%s万能卡 ×%d" % [String(k), int(r.wildcards[k])])
+	if String(r.get("chest", "")) != "": parts.append("宝箱")
+	return "   ".join(parts) if not parts.is_empty() else "奖励已领取"
 
 func _show_claim_anim(title: String):
 	var lbl := Label.new()
