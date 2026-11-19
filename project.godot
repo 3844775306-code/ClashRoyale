@@ -30,20 +30,18 @@ ThemeHelper="*res://assets/ui/ThemeHelper.gd"
 UiComponents="*res://assets/ui/UiComponents.gd"
 LootLockerSDK="*res://addons/LootLockerSDK/LootLockerSDK_Autoload.gd"
 LeaderboardAPI="*res://scripts/core/LeaderboardAPI.gd"
+AccountManager="*res://scripts/core/AccountManager.gd"
 ClanManager="*res://scripts/core/ClanManager.gd"
 NetworkManager="*res://scripts/net/NetworkManager.gd"
+FriendManager="*res://scripts/core/FriendManager.gd"
 LoadingScreen="*res://scripts/core/LoadingScreen.gd"
 WebTextCompat="*res://scripts/core/WebTextCompat.gd"
-
-[gui]
-
-theme/custom_font="res://assets/fonts/STZHONGS.TTF"
-theme/custom_default_font_size=16
 
 [display]
 
 window/size/viewport_width=800
 window/size/viewport_height=1600
+window/size/mode=1
 window/stretch/mode="canvas_items"
 window/stretch/aspect="expand"
 window/handheld/orientation=1
@@ -56,10 +54,15 @@ enabled=PackedStringArray("res://addons/LootLockerSDK/plugin.cfg")
 
 import/blender/enabled=false
 
+[gui]
+
+theme/custom_font="res://assets/fonts/STZHONGS.TTF"
+theme/custom_default_font_size=16
+
 [rendering]
 
 renderer/rendering_method="gl_compatibility"
 renderer/rendering_method.mobile="gl_compatibility"
 textures/vram_compression/import_etc2_astc=true
-anti_aliasing/quality/msaa_3d=1
-anti_aliasing/quality/screen_space_aa=1
+anti_aliasing/quality/msaa_3d=0
+anti_aliasing/quality/screen_space_aa=0

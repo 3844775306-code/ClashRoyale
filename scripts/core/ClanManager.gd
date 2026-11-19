@@ -133,6 +133,7 @@ func _cb_valid(cb: Callable) -> bool:
 	return true
 
 func sync_my_inventory(callback: Callable = Callable()) -> void:
+	invalidate_cache()
 	if not is_logged_in() or get_player_id() <= 0:
 		if _cb_valid(callback): callback.call(false)
 		return
@@ -145,6 +146,7 @@ func sync_my_inventory(callback: Callable = Callable()) -> void:
 	)
 
 func _claim_pending_gifts(callback: Callable = Callable()) -> void:
+	invalidate_cache()
 	get_my_clan(func(success, clan):
 		if not success or clan == null:
 			if _cb_valid(callback): callback.call(false)

@@ -27,6 +27,66 @@ const DEFS := [
 		"mode_id": "touchdown", "target": 4, "max_losses": 3,
 		"entry_gems": 15, "reward_gold": 1800, "reward_gems": 15,
 	},
+	{
+		"id": "triple", "name": "三倍圣水挑战", "icon": "flask",
+		"desc": "全程三倍圣水，6 胜领取奖励",
+		"mode_id": "triple_elixir", "target": 6, "max_losses": 3,
+		"entry_gems": 20, "reward_gold": 3000, "reward_gems": 30,
+	},
+	{
+		"id": "seven", "name": "七倍圣水挑战", "icon": "flask",
+		"desc": "圣水爆炸的娱乐规则，5 胜领取奖励",
+		"mode_id": "seven_elixir", "target": 5, "max_losses": 3,
+		"entry_gems": 25, "reward_gold": 3200, "reward_gems": 35,
+	},
+	{
+		"id": "sudden", "name": "突然死亡挑战", "icon": "sword",
+		"desc": "先推掉一座塔立刻获胜，4 胜领取奖励",
+		"mode_id": "sudden_death", "target": 4, "max_losses": 3,
+		"entry_gems": 15, "reward_gold": 1800, "reward_gems": 15,
+	},
+	{
+		"id": "classic_deck", "name": "经典卡组挑战", "icon": "deck",
+		"desc": "随机经典卡组，5 胜领取奖励",
+		"mode_id": "classic_deck", "target": 5, "max_losses": 3,
+		"entry_gems": 20, "reward_gold": 2500, "reward_gems": 30,
+	},
+	{
+		"id": "triple_draft", "name": "三选一挑战", "icon": "deck",
+		"desc": "每轮 3 选 1，5 胜领取奖励",
+		"mode_id": "triple_draft", "target": 5, "max_losses": 3,
+		"entry_gems": 25, "reward_gold": 2600, "reward_gems": 40,
+	},
+	{
+		"id": "mega_deck", "name": "超级卡组挑战", "icon": "deck",
+		"desc": "18 张卡的大卡组，4 胜领取奖励",
+		"mode_id": "mega_deck", "target": 4, "max_losses": 3,
+		"entry_gems": 20, "reward_gold": 2200, "reward_gems": 30,
+	},
+	{
+		"id": "swap_draft", "name": "双向选卡挑战", "icon": "deck",
+		"desc": "4 轮 2 选 1，不要的卡送给对手，5 胜领取奖励",
+		"mode_id": "swap_draft", "target": 5, "max_losses": 3,
+		"entry_gems": 30, "reward_gold": 2800, "reward_gems": 50,
+	},
+	{
+		"id": "mirror_deck", "name": "镜像卡组挑战", "icon": "deck",
+		"desc": "双方卡组完全相同，5 胜领取奖励",
+		"mode_id": "mirror_deck", "target": 5, "max_losses": 3,
+		"entry_gems": 20, "reward_gold": 2400, "reward_gems": 30,
+	},
+	{
+		"id": "commando", "name": "主题特种兵挑战", "icon": "sword",
+		"desc": "每日特种兵不断来袭，4 胜领取奖励",
+		"mode_id": "commando", "target": 4, "max_losses": 3,
+		"entry_gems": 20, "reward_gold": 2400, "reward_gems": 25,
+	},
+	{
+		"id": "duel", "name": "决斗挑战", "icon": "sword",
+		"desc": "三套卡组 Bo3，赢下比赛领取奖励",
+		"mode_id": "duel", "target": 1, "max_losses": 3,
+		"entry_gems": 30, "reward_gold": 3000, "reward_gems": 40,
+	},
 ]
 
 

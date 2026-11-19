@@ -28,8 +28,8 @@ func _build_ui():
 	panel.anchor_bottom = 0.5
 	panel.offset_left = -260
 	panel.offset_right = 260
-	panel.offset_top = -400
-	panel.offset_bottom = 400
+	panel.offset_top = -460
+	panel.offset_bottom = 460
 	add_child(panel)
 
 	var vbox := VBoxContainer.new()
@@ -99,6 +99,17 @@ func _build_ui():
 	rec_check.custom_minimum_size = Vector2(0, 44)
 	rec_check.toggled.connect(_on_record_toggled)
 	vbox.add_child(rec_check)
+
+	# ---- 账号 / 云端 ----
+	vbox.add_child(_row_label("👤 账号"))
+	var acct_lbl := Label.new()
+	var email_txt := AccountManager.account_email if AccountManager.account_email != "" else "本机账号"
+	acct_lbl.text = "%s\n云存档：%s" % [email_txt, AccountManager.cloud_status]
+	acct_lbl.add_theme_font_size_override("font_size", 13)
+	acct_lbl.add_theme_color_override("font_color", Color(0.72, 0.78, 0.88))
+	acct_lbl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	vbox.add_child(acct_lbl)
+	vbox.add_child(UiComponents.make_secondary_button("切换账号 / 退出登录", _on_logout_pressed, Vector2(0, 44)))
 
 	vbox.add_child(_spacer())
 
@@ -258,6 +269,12 @@ func _on_difficulty_changed(index: int):
 func _on_record_toggled(on: bool):
 	PlayerData.record_replays = on
 	PlayerData.save_data()
+
+func _on_logout_pressed():
+	queue_free()
+	await AccountManager.logout()
+	get_tree().change_scene_to_file("res://scenes/account_login.tscn")
+
 
 func _on_close_pressed():
 	queue_free()

@@ -16,6 +16,7 @@ var _bar
 var _arrow: Label
 var _in_deck_mark: Label
 var _locked: bool = false
+static var party_preview: bool = false
 var _arrow_tween: Tween = null
 
 func setup(cfg: CardData, tile_mode: String, compact: bool = false) -> void:
@@ -72,6 +73,8 @@ func setup(cfg: CardData, tile_mode: String, compact: bool = false) -> void:
 	tr.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	tr.texture = tex
 	_locked = not PlayerData.is_card_owned(config.card_id)
+	if party_preview:
+		_locked = false
 	if _locked:
 		var mat := ShaderMaterial.new()
 		mat.shader = GRAY_SHADER
@@ -107,7 +110,7 @@ func setup(cfg: CardData, tile_mode: String, compact: bool = false) -> void:
 	lv_box.add_theme_stylebox_override("panel", lvsb)
 	img_panel.add_child(lv_box)
 	_lv_badge = Label.new()
-	_lv_badge.text = "Lv.%d" % PlayerData.get_card_level(config.card_id)
+	_lv_badge.text = "Lv.11" if party_preview else "Lv.%d" % PlayerData.get_card_level(config.card_id)
 	_lv_badge.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	_lv_badge.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	_lv_badge.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
@@ -226,7 +229,7 @@ func refresh() -> void:
 	_arrow.position.y = 0.0
 	var lv: int = PlayerData.get_card_level(config.card_id)
 	if _lv_badge:
-		_lv_badge.text = "Lv.%d" % lv
+		_lv_badge.text = "Lv.11" if party_preview else "Lv.%d" % lv
 	var own: int = PlayerData.get_card_quantity(config.card_id)
 	var need: int = PlayerData.calculate_upgrade_cards_needed(config.card_id, lv)
 	var maxed: bool = lv >= 16

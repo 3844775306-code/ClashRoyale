@@ -207,9 +207,10 @@ func _process(delta):
 		if randf() < 0.35:
 			_send_ai_emote()
 	if ai_timer <= 0:
-		ai_timer = randf_range(1.0, 1.8) if difficulty != Difficulty.EASY else randf_range(2.0, 3.2)
+		var td_scale := 0.72 if (battle != null and String(battle.win_condition) == "touchdown") else 1.0
+		ai_timer = randf_range(1.0, 1.8) * td_scale if difficulty != Difficulty.EASY else randf_range(2.0, 3.2) * td_scale
 		if difficulty == Difficulty.HARD:
-			ai_timer = randf_range(0.7, 1.2)
+			ai_timer = randf_range(0.7, 1.2) * td_scale
 		_ai_act()
 
 func _ai_act():
@@ -228,7 +229,8 @@ func _ai_act():
 		if defending and elixir < 4.0:
 			return
 		if not defending:
-			if archetype == "beatdown" and elixir < 7.0 and _has_win_condition_in_hand():
+			if archetype == "beatdown" and elixir < 7.0 and _has_win_condition_in_hand() \
+					and not (battle != null and String(battle.win_condition) == "touchdown"):
 				return
 			if archetype == "cycle" and elixir < 4.0:
 				return
@@ -399,6 +401,16 @@ func _analyze_battlefield():
 	var rh: float = battle.healths[right_idx] if battle.healths.size() > right_idx else 1.0
 	target_lane = 0 if lh <= rh else 1
 	_update_lane_commitment()
+	if battle != null and String(battle.win_condition) == "touchdown":
+		var own_lanes := [0, 0]
+		for u in battle.units.get_children():
+			if u is Unit and u.team == team and u.health > 0 and u.config.card_id > 3:
+				var lx: float = Config.ARENA_ORIGIN.x + Config.ARENA_WIDTH * 0.5
+				own_lanes[0 if u.global_position.x < lx else 1] += 1
+		target_lane = 0 if int(own_lanes[0]) <= int(own_lanes[1]) else 1
+		if threat_level >= 2:
+			target_lane = defense_lane
+		committed_lane = target_lane
 
 func _urgent_defense() -> bool:
 	var n := 0
@@ -624,6 +636,9 @@ func _pick_best(cards: Array) -> CardData:
 
 # ============ 放置位置 ============
 func _get_best_place(cfg: CardData, style: String) -> Vector3:
+	if battle != null and String(battle.win_condition) == "touchdown":
+		var use_lane_td: int = defense_lane if (style == "defensive" or style == "emergency") else target_lane
+		return _touchdown_place(cfg, style, use_lane_td)
 	var mid_x: float = Config.ARENA_ORIGIN.x + Config.ARENA_WIDTH / 2.0
 	var tower_left_x: float = Config.ARENA_ORIGIN.x + Config.ARENA_WIDTH * 3.5 / 18.0
 	var tower_right_x: float = Config.ARENA_ORIGIN.x + Config.ARENA_WIDTH * 14.5 / 18.0
@@ -657,6 +672,36 @@ func _get_best_place(cfg: CardData, style: String) -> Vector3:
 	if cfg.type == Config.UnitType.AIR:
 		return Vector3(lane_x, 0.0, config_bridge_z())
 	return Vector3(lane_x, 0.0, bridge_z)
+
+func _touchdown_place(cfg: CardData, style: String, lane: int) -> Vector3:
+	var lane_x: float = Config.ARENA_ORIGIN.x + Config.ARENA_WIDTH * (0.28 if lane == 0 else 0.72)
+	var origin: float = Config.ARENA_ORIGIN.z
+	var h: float = Config.ARENA_HEIGHT
+	var own_front: float
+	var own_back: float
+	if team == Config.Team.ENEMY:
+		own_front = origin + h / 3.0 - 2.0
+		own_back = origin + 2.5
+	else:
+		own_front = origin + h * 2.0 / 3.0 + 2.0
+		own_back = origin + h - 2.5
+	var defensive: bool = style == "defensive" or style == "emergency"
+	var is_tank: bool = _is_win_condition(cfg) or cfg.max_health >= 1800 or cfg.cost >= 5
+	var z: float = own_back
+	if cfg.type == Config.UnitType.BUILDING:
+		z = own_back + (2.0 if defensive else 4.0)
+	elif defensive:
+		z = own_front - (2.0 if is_tank else 5.0)
+	else:
+		z = own_front
+	# 冲线模式 AI 也应该敢于把坦克/推进单位压到前场线
+	z = clampf(z, origin + 2.0, origin + h - 2.0)
+	if team == Config.Team.ENEMY:
+		z = minf(z, origin + h / 3.0 - 1.0)
+	else:
+		z = maxf(z, origin + h * 2.0 / 3.0 + 1.0)
+	return Vector3(lane_x, 0.0, z)
+
 
 func config_bridge_z() -> float:
 	return Config.ARENA_ORIGIN.z + Config.ARENA_HEIGHT * 0.5 - 1.0
@@ -712,6 +757,14 @@ func _find_spell_target(spell_config: CardData) -> Vector3:
 			best_pos = candidate.global_position
 	var zmin: float = Config.ARENA_ORIGIN.z + Config.ARENA_HEIGHT * (0.0 if team == Config.Team.PLAYER else 0.35)
 	var zmax: float = Config.ARENA_ORIGIN.z + Config.ARENA_HEIGHT * (0.65 if team == Config.Team.PLAYER else 1.0)
+	if battle != null and String(battle.win_condition) == "touchdown":
+		# 法术可放己方 2/3：玩家覆盖下 2/3，敌方 AI 覆盖上 2/3
+		if team == Config.Team.PLAYER:
+			zmin = Config.ARENA_ORIGIN.z + Config.ARENA_HEIGHT / 3.0
+			zmax = Config.ARENA_ORIGIN.z + Config.ARENA_HEIGHT
+		else:
+			zmin = Config.ARENA_ORIGIN.z
+			zmax = Config.ARENA_ORIGIN.z + Config.ARENA_HEIGHT * 2.0 / 3.0
 	best_pos.z = clampf(best_pos.z, zmin, zmax)
 	best_pos.x = clampf(best_pos.x, Config.ARENA_ORIGIN.x, Config.ARENA_ORIGIN.x + Config.ARENA_WIDTH)
 	return best_pos

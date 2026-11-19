@@ -31,9 +31,9 @@ func _ready():
 	_viewport.add_child(env)
 	var cam := Camera3D.new()
 	cam.position = Vector3(0, 1.8, 4.6)
-	cam.look_at(Vector3(0, 0.75, 0), Vector3.UP)
 	cam.fov = 35.0
 	_viewport.add_child(cam)
+	cam.look_at(Vector3(0, 0.75, 0), Vector3.UP)
 	cam.current = true
 	var light := DirectionalLight3D.new()
 	light.rotation_degrees = Vector3(-48, -36, 0)

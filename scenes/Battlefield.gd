@@ -42,7 +42,18 @@ var bridge_kind: String = "wood"
 var decor_kind: String = "goblin"
 static var _wood_nrm: ImageTexture
 
+const BATTLE_MODES := preload("res://scripts/core/BattleModes.gd")
+
 func _ready():
+	# 按对战模式决定战场长度（冲线 80 米），必须在生成地形前设置
+	var mode := BATTLE_MODES.current()
+	var env_mode := OS.get_environment("CR_MODE_ID")
+	if env_mode != "":
+		mode = BATTLE_MODES.get_by_id(env_mode)
+	var td := String(mode.get("win_condition", "")) == "touchdown"
+	Config.set_arena_size(
+		Config.ARENA_TOUCHDOWN_WIDTH if td else Config.ARENA_BASE_WIDTH,
+		Config.ARENA_TOUCHDOWN_HEIGHT if td else Config.ARENA_BASE_HEIGHT)
 	var force_arena := OS.get_environment("CR_ARENA_FORCE")
 	if forced_arena > 0:
 		arena_idx = forced_arena
@@ -53,6 +64,15 @@ func _ready():
 	else:
 		arena_idx = PlayerData.get_arena()
 	is_workshop = arena_idx == 5
+	if td:
+		_apply_football_theme()
+		_setup_lighting()
+		_apply_arena_environment()
+		_grass_tex = _make_grass_texture()
+		_generate_touchdown_field()
+		_generate_stadium()
+		_apply_touchdown_camera()
+		return
 	_apply_arena_theme()
 	_setup_lighting()
 	_apply_arena_environment()
@@ -64,6 +84,276 @@ func _ready():
 	_generate_outer_ground()
 	_generate_decor()
 	_generate_theme_decor()
+	if td:
+		_apply_touchdown_camera()
+
+func _generate_stadium() -> void:
+	var W: float = Config.ARENA_WIDTH
+	var H: float = Config.ARENA_HEIGHT
+	var z0: float = Config.ARENA_ORIGIN.z
+	# 广告板（长边）
+	for sx in [-1.0, 1.0]:
+		var board := MeshInstance3D.new()
+		var bm := BoxMesh.new()
+		bm.size = Vector3(0.35, 1.1, H * 0.82)
+		board.mesh = bm
+		board.position = Vector3(sx * (W * 0.5 + 1.0), 0.55, 0)
+		var bmat := StandardMaterial3D.new()
+		bmat.albedo_color = Color(0.10, 0.16, 0.26) if sx < 0 else Color(0.24, 0.10, 0.12)
+		bmat.roughness = 0.9
+		board.material_override = bmat
+		add_child(board)
+	# 看台（两层，安静的中性色，带观众点）
+	for sx in [-1.0, 1.0]:
+		for tier in 2:
+			var stand := MeshInstance3D.new()
+			var sm := BoxMesh.new()
+			sm.size = Vector3(2.2, 0.9 + tier * 0.9, H * 0.88)
+			stand.mesh = sm
+			stand.position = Vector3(sx * (W * 0.5 + 3.0 + tier * 1.8), (0.9 + tier * 0.9) * 0.5, 0)
+			var stm := StandardMaterial3D.new()
+			stm.albedo_color = Color(0.12, 0.13, 0.16) if tier == 0 else Color(0.16, 0.16, 0.19)
+			stm.roughness = 1.0
+			stand.material_override = stm
+			add_child(stand)
+		# 观众小点
+		var rng := RandomNumberGenerator.new()
+		rng.seed = 1234
+		for i in 70:
+			var crowd := MeshInstance3D.new()
+			var cmm := BoxMesh.new()
+			cmm.size = Vector3(0.22, 0.22, 0.22)
+			crowd.mesh = cmm
+			crowd.position = Vector3(
+				sx * (W * 0.5 + 2.4 + rng.randf_range(0.0, 3.4)),
+				rng.randf_range(0.9, 1.9),
+				z0 + rng.randf_range(H * 0.06, H * 0.94))
+			var cmat := StandardMaterial3D.new()
+			var ccol := Color.from_hsv(rng.randf(), 0.25, 0.55)
+			cmat.albedo_color = ccol
+			crowd.material_override = cmat
+			add_child(crowd)
+	# 四角灯柱
+	for sx in [-1.0, 1.0]:
+		for sz in [-1.0, 1.0]:
+			var pole := MeshInstance3D.new()
+			var pbm := BoxMesh.new()
+			pbm.size = Vector3(0.18, 7.0, 0.18)
+			pole.mesh = pbm
+			pole.position = Vector3(sx * (W * 0.5 + 2.2), 3.5, z0 + (0.8 if sz < 0 else H - 0.8))
+			var pm := StandardMaterial3D.new()
+			pm.albedo_color = Color(0.32, 0.34, 0.38)
+			pm.roughness = 0.7
+			pole.material_override = pm
+			add_child(pole)
+			var lamp := MeshInstance3D.new()
+			var lbm := BoxMesh.new()
+			lbm.size = Vector3(1.4, 0.35, 0.5)
+			lamp.mesh = lbm
+			lamp.position = pole.position + Vector3(0, 3.5, 0)
+			var lm := StandardMaterial3D.new()
+			lm.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+			lm.albedo_color = Color(1.0, 0.98, 0.85)
+			lamp.material_override = lm
+			add_child(lamp)
+
+
+func _apply_touchdown_camera() -> void:
+	var cam := get_viewport().get_camera_3d()
+	if cam == null:
+		return
+	cam.size = 72.0
+	cam.position = Vector3(0.0, 30.0, 18.0)
+	cam.near = 8.0
+	cam.far = 400.0
+
+
+func _apply_football_theme() -> void:
+	th_grass = Color(0.16, 0.48, 0.20)
+	th_grass2 = Color(0.23, 0.60, 0.26)
+	th_path = Color(0.95, 0.95, 0.95)
+	th_stone = Color(0.85, 0.87, 0.85)
+	th_wood = Color(0.55, 0.42, 0.28)
+	th_water = Color(0.22, 0.52, 0.72)
+	th_sky = Color(0.48, 0.74, 0.95)
+	th_accent = Color(0.95, 0.80, 0.35)
+
+
+func _football_line(center: Vector3, size: Vector3, y := 0.02) -> void:
+	var mi := MeshInstance3D.new()
+	var bm := BoxMesh.new()
+	bm.size = Vector3(size.x, 0.02, size.z)
+	mi.mesh = bm
+	mi.position = Vector3(center.x, y, center.z)
+	var mat := StandardMaterial3D.new()
+	mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	mat.albedo_color = Color(0.95, 0.96, 0.94)
+	mi.material_override = mat
+	add_child(mi)
+
+
+func _generate_touchdown_field() -> void:
+	var W: float = Config.ARENA_WIDTH
+	var H: float = Config.ARENA_HEIGHT
+	var z0: float = Config.ARENA_ORIGIN.z
+	# 碰撞体（BattleManager 依赖 GroundPlane）
+	if ground_body:
+		remove_child(ground_body)
+	ground_body = StaticBody3D.new()
+	ground_body.name = "GroundPlane"
+	var col_shape := CollisionShape3D.new()
+	var box := BoxShape3D.new()
+	box.size = Vector3(W, 0.1, H)
+	col_shape.shape = box
+	ground_body.add_child(col_shape)
+	ground_body.position = Vector3(0, -0.05, 0)
+	add_child(ground_body)
+	# 外围草地
+	var outer := MeshInstance3D.new()
+	var opm := PlaneMesh.new()
+	opm.size = Vector2(W + 46.0, H + 40.0)
+	outer.mesh = opm
+	outer.position = Vector3(0, -0.015, 0)
+	var omat := StandardMaterial3D.new()
+	omat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	omat.albedo_color = Color(0.06, 0.15, 0.08)
+	omat.roughness = 1.0
+	outer.material_override = omat
+	add_child(outer)
+	# 草皮底色 + 修剪条纹（每 5 米一条）
+	var base := MeshInstance3D.new()
+	var bpm := PlaneMesh.new()
+	bpm.size = Vector2(W, H)
+	base.mesh = bpm
+	base.position = Vector3(0, 0.0, 0)
+	var bmat := StandardMaterial3D.new()
+	bmat.albedo_texture = _grass_tex
+	bmat.uv1_scale = Vector3(Config.ARENA_WIDTH * 0.9, Config.ARENA_HEIGHT * 0.9, 1)
+	bmat.albedo_color = Color(0.42, 0.66, 0.42)
+	bmat.roughness = 1.0
+	base.material_override = bmat
+	add_child(base)
+	var stripes := 16
+	var stripe_h: float = H / float(stripes)
+	for i in stripes:
+		if i % 2 == 0:
+			continue
+		var st := MeshInstance3D.new()
+		var spm := PlaneMesh.new()
+		spm.size = Vector2(W, stripe_h)
+		st.mesh = spm
+		st.position = Vector3(0, 0.006, z0 + stripe_h * (float(i) + 0.5))
+		var smat := StandardMaterial3D.new()
+		smat.albedo_texture = _grass_tex
+		smat.uv1_scale = Vector3(Config.ARENA_WIDTH * 0.9, Config.ARENA_HEIGHT * 0.9, 1)
+		smat.albedo_color = Color(0.34, 0.56, 0.34)
+		smat.roughness = 1.0
+		st.material_override = smat
+		add_child(st)
+	# 白色场地线
+	var m := 1.0
+	_football_line(Vector3(-W * 0.5 + m, 0, 0), Vector3(0.14, 0.02, H - m * 2.0))
+	_football_line(Vector3(W * 0.5 - m, 0, 0), Vector3(0.14, 0.02, H - m * 2.0))
+	_football_line(Vector3(0, 0, z0 + m), Vector3(W - m * 2.0, 0.02, 0.14))
+	_football_line(Vector3(0, 0, z0 + H - m), Vector3(W - m * 2.0, 0.02, 0.14))
+	_football_line(Vector3(0, 0, 0), Vector3(W - m * 2.0, 0.02, 0.14))
+	# 中圈
+	for i in 40:
+		var a := TAU * float(i) / 40.0
+		var seg := MeshInstance3D.new()
+		var sbm := BoxMesh.new()
+		sbm.size = Vector3(0.55, 0.02, 0.14)
+		seg.mesh = sbm
+		seg.position = Vector3(cos(a) * 6.0, 0.02, sin(a) * 6.0)
+		seg.rotation.y = -a
+		var wm := StandardMaterial3D.new()
+		wm.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+		wm.albedo_color = Color(0.95, 0.96, 0.94)
+		seg.material_override = wm
+		add_child(seg)
+	# 中圈点
+	var spot := MeshInstance3D.new()
+	var cm := CylinderMesh.new()
+	cm.top_radius = 0.18
+	cm.bottom_radius = 0.18
+	cm.height = 0.02
+	spot.mesh = cm
+	spot.position = Vector3(0, 0.03, 0)
+	var sm := StandardMaterial3D.new()
+	sm.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	sm.albedo_color = Color(0.95, 0.96, 0.94)
+	spot.material_override = sm
+	add_child(spot)
+	# 两端禁区 + 小禁区 + 点球点 + 球门
+	for end in [-1.0, 1.0]:
+		var goal_z: float = z0 + (m if end < 0 else H - m)
+		var dir: float = 1.0 if end < 0 else -1.0
+		var pa_depth := 14.0
+		var pa_w := W * 0.58
+		var pa_front: float = goal_z + dir * pa_depth
+		_football_line(Vector3(0, 0, pa_front), Vector3(pa_w, 0.02, 0.14))
+		_football_line(Vector3(-pa_w * 0.5, 0, (goal_z + pa_front) * 0.5), Vector3(0.14, 0.02, pa_depth))
+		_football_line(Vector3(pa_w * 0.5, 0, (goal_z + pa_front) * 0.5), Vector3(0.14, 0.02, pa_depth))
+		var ga_depth := 6.0
+		var ga_w := W * 0.30
+		var ga_front: float = goal_z + dir * ga_depth
+		_football_line(Vector3(0, 0, ga_front), Vector3(ga_w, 0.02, 0.14))
+		_football_line(Vector3(-ga_w * 0.5, 0, (goal_z + ga_front) * 0.5), Vector3(0.14, 0.02, ga_depth))
+		_football_line(Vector3(ga_w * 0.5, 0, (goal_z + ga_front) * 0.5), Vector3(0.14, 0.02, ga_depth))
+		# 点球点
+		var ps := MeshInstance3D.new()
+		var pcm := CylinderMesh.new()
+		pcm.top_radius = 0.15
+		pcm.bottom_radius = 0.15
+		pcm.height = 0.02
+		ps.mesh = pcm
+		ps.position = Vector3(0, 0.03, goal_z + dir * 10.0)
+		var psm := StandardMaterial3D.new()
+		psm.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+		psm.albedo_color = Color(0.95, 0.96, 0.94)
+		ps.material_override = psm
+		add_child(ps)
+		# 球门柱 + 横梁 + 球网
+		for gx in [-W * 0.09, W * 0.09]:
+			var post := MeshInstance3D.new()
+			var pbm := BoxMesh.new()
+			pbm.size = Vector3(0.16, 2.4, 0.16)
+			post.mesh = pbm
+			post.position = Vector3(gx, 1.2, goal_z)
+			var pm := StandardMaterial3D.new()
+			pm.albedo_color = Color(0.97, 0.97, 0.95)
+			pm.roughness = 0.6
+			post.material_override = pm
+			add_child(post)
+		var bar := MeshInstance3D.new()
+		var bbm := BoxMesh.new()
+		bbm.size = Vector3(W * 0.18, 0.16, 0.16)
+		bar.mesh = bbm
+		bar.position = Vector3(0, 2.4, goal_z)
+		bar.material_override = StandardMaterial3D.new()
+		bar.material_override.albedo_color = Color(0.97, 0.97, 0.95)
+		add_child(bar)
+		var net := MeshInstance3D.new()
+		var nbm := BoxMesh.new()
+		nbm.size = Vector3(W * 0.18, 2.3, 2.2 * dir)
+		net.mesh = nbm
+		net.position = Vector3(0, 1.15, goal_z + dir * 0.8)
+		var nm := StandardMaterial3D.new()
+		nm.albedo_color = Color(1, 1, 1, 0.12)
+		nm.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+		net.material_override = nm
+		add_child(net)
+	# 角旗
+	for sx in [-1.0, 1.0]:
+		for sz in [-1.0, 1.0]:
+			var pole := MeshInstance3D.new()
+			var plbm := BoxMesh.new()
+			plbm.size = Vector3(0.06, 1.2, 0.06)
+			pole.mesh = plbm
+			pole.position = Vector3(sx * (W * 0.5 - m), 0.6, z0 + (m if sz < 0 else H - m))
+			pole.material_override = StandardMaterial3D.new()
+			pole.material_override.albedo_color = Color(0.95, 0.95, 0.95)
+			add_child(pole)
 
 # ============================================================
 # 光照 / 环境
@@ -235,12 +525,12 @@ func _add_half_tint(center_z: float, col: Color) -> void:
 func _generate_outer_ground() -> void:
 	var outer := MeshInstance3D.new()
 	var pm := PlaneMesh.new()
-	pm.size = Vector2(64, 74)
+	pm.size = Vector2(64, maxf(74.0, Config.ARENA_HEIGHT + 42.0))
 	outer.mesh = pm
 	outer.position = Vector3(0, -0.05, 0)
 	var mat := StandardMaterial3D.new()
 	mat.albedo_texture = _grass_tex
-	mat.uv1_scale = Vector3(20, 22, 1)
+	mat.uv1_scale = Vector3(20, maxf(22.0, Config.ARENA_HEIGHT * 0.69), 1)
 	mat.albedo_color = th_grass2.lightened(0.20)
 	mat.roughness = 1.0
 	outer.material_override = mat

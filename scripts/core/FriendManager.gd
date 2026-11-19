@@ -26,6 +26,7 @@ var _request_sent_at: Dictionary = {}  # id -> ts
 var _recv: PacketPeerUDP
 var _send: PacketPeerUDP
 var _invite_layer: CanvasLayer
+var _request_layer: CanvasLayer
 
 
 func _ready() -> void:
@@ -33,6 +34,7 @@ func _ready() -> void:
 	load_friends()
 	_init_udp()
 	invite_received.connect(_on_invite_received)
+	friend_request_received.connect(_on_friend_request_received)
 	# 切换账号后好友列表按账号重新加载
 	if AccountManager and not AccountManager.session_changed.is_connected(_on_session_changed):
 		AccountManager.session_changed.connect(_on_session_changed)
@@ -410,6 +412,67 @@ func _on_reject_invite() -> void:
 	if _invite_layer != null:
 		_invite_layer.queue_free()
 		_invite_layer = null
+
+func _on_friend_request_received(request: Dictionary) -> void:
+	if _request_layer != null and is_instance_valid(_request_layer):
+		return
+	var prof: Dictionary = Dictionary(request.get("profile", {})).duplicate(true)
+	var pid := String(request.get("id", prof.get("player_id", "")))
+	var name := String(prof.get("name", prof.get("player_name", "玩家")))
+	_request_layer = CanvasLayer.new()
+	_request_layer.layer = 250
+	add_child(_request_layer)
+	var root := Control.new()
+	root.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	root.mouse_filter = Control.MOUSE_FILTER_STOP
+	_request_layer.add_child(root)
+	var dim := ColorRect.new()
+	dim.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	dim.color = Color(0, 0, 0, 0.62)
+	root.add_child(dim)
+	var panel := Panel.new()
+	panel.position = Vector2(90, 520)
+	panel.size = Vector2(620, 360)
+	var sb := StyleBoxFlat.new()
+	sb.bg_color = Color(0.055, 0.075, 0.15, 0.98)
+	sb.border_color = Color(0.55, 0.80, 1.0, 0.95)
+	sb.set_border_width_all(2)
+	sb.set_corner_radius_all(22)
+	panel.add_theme_stylebox_override("panel", sb)
+	root.add_child(panel)
+	var v := VBoxContainer.new()
+	v.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	v.offset_left = 24; v.offset_top = 22; v.offset_right = -24; v.offset_bottom = -22
+	v.add_theme_constant_override("separation", 14)
+	panel.add_child(v)
+	var title := Label.new()
+	title.text = "好友申请"
+	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	title.add_theme_font_size_override("font_size", 28)
+	title.add_theme_color_override("font_color", Color(0.68, 0.88, 1.0))
+	v.add_child(title)
+	var info := Label.new()
+	info.text = "%s 请求加你为好友" % name
+	info.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	info.add_theme_font_size_override("font_size", 19)
+	info.add_theme_color_override("font_color", Color(0.90, 0.95, 1.0))
+	v.add_child(info)
+	var accept := UiComponents.make_primary_button("同意", Callable(), Vector2(0, 56))
+	accept.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	accept.pressed.connect(func():
+		accept_request(pid)
+		if _request_layer != null:
+			_request_layer.queue_free()
+			_request_layer = null)
+	v.add_child(accept)
+	var reject := UiComponents.make_secondary_button("拒绝", Callable(), Vector2(0, 48))
+	reject.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	reject.pressed.connect(func():
+		reject_request(pid)
+		if _request_layer != null:
+			_request_layer.queue_free()
+			_request_layer = null)
+	v.add_child(reject)
 
 func handle_friend_packet(data: Dictionary) -> void:
 	var my_id := str(ClanManager.get_player_id())

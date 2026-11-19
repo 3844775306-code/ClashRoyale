@@ -7,12 +7,24 @@ const GRID_SIZE: float = 1.0
 const GRID_COLS: int = 18
 const GRID_ROWS: int = 32
 
-# 战场尺寸
-const ARENA_WIDTH: float = GRID_COLS * GRID_SIZE  # 18 米
-const ARENA_HEIGHT: float = GRID_ROWS * GRID_SIZE # 31 米
+# 战场尺寸（运行时按模式切换；标准 18x32，冲线 40x80 足球场）
+const ARENA_BASE_WIDTH: float = GRID_COLS * GRID_SIZE  # 18 米
+const ARENA_BASE_HEIGHT: float = GRID_ROWS * GRID_SIZE  # 32 米
+const ARENA_TOUCHDOWN_WIDTH: float = 30.0                # 30 格宽
+const ARENA_TOUCHDOWN_HEIGHT: float = 60.0               # 60 米长
+static var ARENA_WIDTH: float = ARENA_BASE_WIDTH
+static var ARENA_HEIGHT: float = ARENA_BASE_HEIGHT
+static var ARENA_ORIGIN: Vector3 = Vector3(-ARENA_BASE_WIDTH / 2.0, 0.0, -ARENA_BASE_HEIGHT / 2.0)
 
-# 战场原点（左下角）
-const ARENA_ORIGIN: Vector3 = Vector3(-ARENA_WIDTH/2, 0.0, -ARENA_HEIGHT/2)
+
+static func set_arena_size(w: float, h: float) -> void:
+	ARENA_WIDTH = maxf(8.0, w)
+	ARENA_HEIGHT = maxf(8.0, h)
+	ARENA_ORIGIN = Vector3(-ARENA_WIDTH / 2.0, 0.0, -ARENA_HEIGHT / 2.0)
+
+
+static func set_arena_height(h: float) -> void:
+	set_arena_size(ARENA_WIDTH, h)
 
 # 游戏时间限制（毫秒）
 const GAME_TIME_LIMIT: int = 180000

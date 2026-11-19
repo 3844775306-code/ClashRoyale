@@ -150,7 +150,7 @@ func _challenge_card(d: Dictionary, active: Dictionary) -> Control:
 	right.alignment = BoxContainer.ALIGNMENT_CENTER
 	right.add_theme_constant_override("separation", 6)
 	h.add_child(right)
-	var cost := _label("💎 %d 进入" % int(d.get("entry_gems", 0)), 13, Color(0.62, 0.80, 1.0))
+	var cost := _label("宝石 %d 进入" % int(d.get("entry_gems", 0)), 13, Color(0.62, 0.80, 1.0))
 	cost.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	right.add_child(cost)
 	var btn := Button.new()
@@ -180,11 +180,38 @@ func _start_challenge(id: String) -> void:
 
 
 func _continue_mode(mode_id: String) -> void:
-	BATTLE_MODES.set_mode(BATTLE_MODES.get_by_id(mode_id))
-	if mode_id == "draft":
+	var mode: Dictionary = BATTLE_MODES.get_by_id(mode_id)
+	BATTLE_MODES.set_mode(mode)
+	if String(mode.get("win_condition", "")) == "duel" or String(mode.get("deck", "")) == "duel":
+		BATTLE_MODES.start_duel(_duel_player_decks(), _duel_enemy_decks())
+	var deck := String(mode.get("deck", ""))
+	if deck == "draft" or deck == "swap_draft":
 		get_tree().change_scene_to_file("res://scenes/draft_select.tscn")
 	else:
 		get_tree().change_scene_to_file("res://scenes/battle.tscn")
+
+
+func _duel_player_decks() -> Array:
+	var out: Array = []
+	for d in PlayerData.custom_decks:
+		var arr: Array = []
+		for cid in Array(d):
+			if int(cid) > 0:
+				arr.append(int(cid))
+		if arr.size() >= 8:
+			out.append(arr)
+	while out.size() < 3:
+		out.append([4, 8, 11, 9, 44, 10, 17, 71])
+	return out.slice(0, 3)
+
+
+func _duel_enemy_decks() -> Array:
+	var classics: Array = BATTLE_MODES.classic_decks()
+	classics.shuffle()
+	var out: Array = []
+	for i in range(3):
+		out.append(Array(classics[i % classics.size()]).duplicate())
+	return out
 
 
 func _on_back() -> void:

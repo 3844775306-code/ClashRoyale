@@ -194,8 +194,12 @@ func _on_confirm() -> void:
 	if name.length() > 12:
 		_hint.text = "名字最多 12 个字符"
 		return
+	var old_name := PlayerData.player_name
 	PlayerData.player_name = name
 	PlayerData.name_chosen = true
 	PlayerData.save_data()
+	if old_name != name:
+		LeaderboardAPI.submit_trophies(PlayerData.trophies, PlayerData.player_name)
+		ClanManager.sync_my_profile()
 	UiComponents.refresh_topbar()
 	queue_free()

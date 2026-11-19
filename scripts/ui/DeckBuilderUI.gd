@@ -17,6 +17,7 @@ const CLASSIC_DECKS := {
 
 var _all_cards: Array = []
 var _cfgs: Dictionary = {}
+var _party_edit := false
 var _spell_ids: Array = []
 var _decks: Array = []
 var _idx: int = 0
@@ -49,14 +50,22 @@ var _tower_btns: Array = []
 var _data_stamp: String = ""
 
 func _ready():
+	_party_edit = bool(get_meta("party_edit", false))
+	TILE.party_preview = _party_edit
 	_data_stamp = _csv_stamp()
 	_apply_text_theme()
 	UiComponents.add_background(self)
 	_load_cards()
-	_decks = PlayerData.custom_decks.duplicate(true)
-	while _decks.size() < 5:
-		_decks.append([])
-	_idx = clampi(PlayerData.active_deck_index, 0, 4)
+	if _party_edit:
+		_decks = [PlayerData.party_deck.duplicate()]
+		while _decks.size() < 5:
+			_decks.append([])
+		_idx = 0
+	else:
+		_decks = PlayerData.custom_decks.duplicate(true)
+		while _decks.size() < 5:
+			_decks.append([])
+		_idx = clampi(PlayerData.active_deck_index, 0, 4)
 	_slots = _pad_deck(_decks[_idx])
 	_sort_mode = String(PlayerData.deck_sort_mode)
 	if _sort_mode not in ["level", "rarity", "default"]:
@@ -94,6 +103,12 @@ func _apply_text_theme() -> void:
 	th.set_constant("outline_size", "Button", 3)
 	theme = th
 
+func _is_available(cid: int) -> bool:
+	if _party_edit:
+		return true
+	return PlayerData.is_card_owned(cid)
+
+
 func _load_cards():
 	var bm = preload("res://scripts/core/BattleManager.gd").new()
 	bm.load_card_configs()
@@ -112,7 +127,7 @@ func _pad_deck(src: Array) -> Array:
 	var out: Array = []
 	for cid in src:
 		var c: int = int(cid)
-		if _cfgs.has(c) and PlayerData.is_card_owned(c) and not out.has(c):
+		if _cfgs.has(c) and _is_available(c) and not out.has(c):
 			out.append(c)
 		if out.size() >= 8:
 			break
@@ -122,7 +137,7 @@ func _pad_deck(src: Array) -> Array:
 
 func _build_ui():
 	# 统一顶部栏
-	UiComponents.make_header(self, "卡组配置", _on_back, true)
+	UiComponents.make_header(self, "派对卡组" if _party_edit else "卡组配置", _on_back, true)
 	_top_info = Label.new()
 	_top_info.visible = false
 	_update_top_info()
@@ -134,7 +149,7 @@ func _build_ui():
 	top.add_theme_constant_override("separation", 8)
 	add_child(top)
 	var mode_lbl := Label.new()
-	mode_lbl.text = "🧪 测试模式：随机全卡 · 固定 11 级" if PlayerData.test_mode else "对战时使用当前卡组"
+	mode_lbl.text = "派对模式使用此卡组（全卡 · 固定 11 级）" if _party_edit else ("🧪 测试模式：随机全卡 · 固定 11 级" if PlayerData.test_mode else "对战时使用当前卡组")
 	mode_lbl.add_theme_font_size_override("font_size", 16)
 	mode_lbl.add_theme_color_override("font_color", Color(1.0, 0.72, 0.35) if PlayerData.test_mode else ThemeHelper.COLORS.text_muted)
 	top.add_child(mode_lbl)
@@ -165,6 +180,7 @@ func _build_ui():
 	tabs.position = Vector2(30, 114)
 	tabs.size = Vector2(740, 50)
 	tabs.add_theme_constant_override("separation", 8)
+	tabs.visible = not _party_edit
 	add_child(tabs)
 	_tab_buttons.clear()
 	for i in range(5):
@@ -324,7 +340,7 @@ func _build_ui():
 		tile.setup(cfg, "pool")
 		tile.clicked.connect(_on_tile_clicked)
 		_tile_map[cfg.card_id] = tile
-		if PlayerData.is_card_owned(cfg.card_id):
+		if _is_available(cfg.card_id):
 			_owned_grid.add_child(tile)
 		else:
 			_locked_grid.add_child(tile)
@@ -551,7 +567,7 @@ func _upgrade_action_btn(cid: int) -> Button:
 	b.custom_minimum_size = Vector2(0, 34)
 	b.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	_color_btn(b, Color(0.88, 0.68, 0.26))
-	if not PlayerData.is_card_owned(cid):
+	if not _is_available(cid):
 		b.text = "🔒 未解锁"
 		b.disabled = true
 		return b
@@ -603,7 +619,7 @@ func _close_actions():
 	_action_tile = null
 
 func _on_pool_use(cid: int):
-	if not PlayerData.is_card_owned(cid):
+	if not _is_available(cid):
 		_set_status("该卡尚未解锁，需要先获得")
 		return
 	if _slots.has(cid):
@@ -821,7 +837,7 @@ func _apply_filters():
 		_lock_divider.visible = any_locked
 	var owned_total: int = 0
 	for c in _all_cards:
-		if PlayerData.is_card_owned(c.card_id):
+		if _is_available(c.card_id):
 			owned_total += 1
 	_pool_count.text = "卡牌库 · 已解锁 %d/%d%s" % [owned_total, _all_cards.size(), (" · 筛选 %d" % shown) if shown != _all_cards.size() else ""]
 	for key in _filter_buttons.keys():
@@ -866,7 +882,7 @@ func _on_clear():
 func _on_random():
 	var pool: Array = []
 	for cfg in _all_cards:
-		if cfg.card_id != 123 and PlayerData.is_card_owned(cfg.card_id):
+		if cfg.card_id != 123 and _is_available(cfg.card_id):
 			pool.append(cfg.card_id)
 	pool.shuffle()
 	_slots = [-1, -1, -1, -1, -1, -1, -1, -1]
@@ -919,7 +935,7 @@ func _apply_sort():
 	var owned_order: Array = []
 	var locked_order: Array = []
 	for cfg in order:
-		if PlayerData.is_card_owned(cfg.card_id):
+		if _is_available(cfg.card_id):
 			owned_order.append(cfg)
 		else:
 			locked_order.append(cfg)
@@ -948,7 +964,7 @@ func _on_classic_selected(id: int):
 	var out: Array = []
 	for cid in preset:
 		var c: int = int(cid)
-		if _cfgs.has(c) and PlayerData.is_card_owned(c) and not out.has(c):
+		if _cfgs.has(c) and _is_available(c) and not out.has(c):
 			out.append(c)
 	while out.size() < 8:
 		out.append(-1)
@@ -966,6 +982,15 @@ func _on_tower_choice(choice: int):
 	_set_status("皇家塔已切换为%s" % ("公主塔" if PlayerData.tower_choice == 1 else "王子塔"))
 
 func _on_save():
+	if _party_edit:
+		var saved: Array = []
+		for cid in _slots:
+			if int(cid) >= 0:
+				saved.append(int(cid))
+		PlayerData.party_deck = saved
+		PlayerData.save_data()
+		get_tree().change_scene_to_file("res://scenes/party_select.tscn")
+		return
 	_decks[_idx] = _slots.duplicate()
 	PlayerData.custom_decks = _decks.duplicate(true)
 	PlayerData.active_deck_index = _idx
@@ -975,6 +1000,15 @@ func _on_save():
 	_set_status("已保存卡组 %d（%s）" % [_idx + 1, "使用配置卡组" if PlayerData.use_custom_deck else "随机卡组"])
 
 func _on_back():
+	if _party_edit:
+		var saved: Array = []
+		for cid in _slots:
+			if int(cid) >= 0:
+				saved.append(int(cid))
+		PlayerData.party_deck = saved
+		PlayerData.save_data()
+		get_tree().change_scene_to_file("res://scenes/party_select.tscn")
+		return
 	_decks[_idx] = _slots.duplicate()
 	PlayerData.custom_decks = _decks.duplicate(true)
 	PlayerData.active_deck_index = _idx

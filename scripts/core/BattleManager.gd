@@ -74,6 +74,7 @@ var touchdown_resetting: bool = false
 var touchdown_round: int = 1
 var touchdown_scorer: Unit = null
 var _deny_selected_spell: bool = false
+var _crash_acc: float = 0.0
 # 决斗 Duel
 var duel_round: int = 1
 var duel_wins: Array = [0, 0]
@@ -977,6 +978,7 @@ func _touchdown_round_break(scorer: Unit = null) -> void:
 
 func _ready():
 	add_to_group("battle_manager")
+	_apply_mobile_safe_rendering()
 	tutorial_battle = PlayerData.tutorial_practice or OS.get_environment("CR_TUTORIAL_BATTLE") != ""
 	PlayerData.tutorial_practice = false
 	network_host_mode = NetworkManager.role == NetworkManager.Role.HOST and NetworkManager.consume_host_match()
@@ -1031,6 +1033,51 @@ func _ready():
 	if not network_host_mode:
 		entry_intro_active = true
 		call_deferred("play_entry_intro")
+
+func _apply_mobile_safe_rendering() -> void:
+	# 手机端稳定性：Compatibility + Android 驱动对 MSAA/SSAO/辉光/阴影较敏感。
+	# 关闭这些高风险的 3D 后处理，并降低 3D 渲染分辨率；菜单/2D UI 不受影响。
+	if not OS.has_feature("mobile") and OS.get_environment("CR_MOBILE_SAFE") != "1":
+		return
+	var vp := get_viewport()
+	if vp:
+		vp.scaling_3d_scale = 0.72
+	var we := get_node_or_null("WorldEnvironment") as WorldEnvironment
+	if we and we.environment:
+		we.environment.ssao_enabled = false
+		we.environment.glow_enabled = false
+		we.environment.background_mode = Environment.BG_COLOR
+		we.environment.background_color = Color(0.08, 0.13, 0.22)
+	var dl := get_node_or_null("DirectionalLight3D") as DirectionalLight3D
+	if dl:
+		dl.shadow_enabled = false
+
+
+func _crash_state() -> Dictionary:
+	var cam := get_viewport().get_camera_3d() if is_inside_tree() else null
+	return {
+		"mode": String(mode_id),
+		"win_condition": String(win_condition),
+		"game_time": float(game_time / 1000.0),
+		"units": units.get_child_count() if units else 0,
+		"bullets": bullets.get_child_count() if bullets else 0,
+		"spells": spells.get_child_count() if spells else 0,
+		"player_elixir": float(player_elixir),
+		"enemy_elixir": float(enemy_elixir),
+		"crowns": [int(player_crowns), int(enemy_crowns)],
+		"touchdown": [int(touchdown_score[0]), int(touchdown_score[1])],
+		"touchdown_round": int(touchdown_round),
+		"network": bool(network_host_mode or network_guest_mode),
+		"network_host": bool(network_host_mode),
+		"network_guest": bool(network_guest_mode),
+		"team_sizes": [int(team_size(0)), int(team_size(1))],
+		"selected_card": String(selected_card.config.card_name) if selected_card and selected_card.config else "",
+		"game_over": bool(game_over),
+		"camera": [float(cam.global_position.x), float(cam.global_position.y), float(cam.global_position.z)] if cam else [],
+	}
+
+
+
 
 func _setup_network_team_sizes() -> void:
 	network_team_sizes.clear()
@@ -1716,6 +1763,8 @@ func spawn_unit(config: CardData, team: int, pos: Vector3, override_num: int = -
 		_spawn_effect(unit.global_position)
 		if i == 0:
 			first_unit = unit
+	if first_unit:
+		pass
 	var deploy_sfx = load("res://assets/audio/sfx/deploy.wav")
 	if deploy_sfx:
 		AudioManager.play_sfx(deploy_sfx, first_unit.global_position)

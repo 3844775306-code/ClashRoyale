@@ -32,6 +32,7 @@ var _hook_rope: Node3D = null
 var _special_color: Color = Color(0.70, 0.40, 1.0)
 var _prev_z: float = 0.0
 var _river_jumping: bool = false
+var celebrating: bool = false
 var _river_jump_from: Vector3 = Vector3.ZERO
 var _river_jump_to: Vector3 = Vector3.ZERO
 var _river_jump_t: float = 0.0
@@ -420,7 +421,7 @@ func _physics_process(delta):
 		if target and target.has_method("is_tesla_buried") and target.is_tesla_buried():
 			target = null
 		var _keep_demolisher_tower: bool = config.card_id == 105 and health <= 0.5 * max_health
-		if target and (target.health <= 0 or target.hid ==1 or (distance_to(target) > config.horizon and not _keep_demolisher_tower)) :
+		if target and (target.health <= 0 or target.hid ==1 or (distance_to(target) > _vision_range() and not _keep_demolisher_tower)) :
 			# 目标死亡/丢失：保留当前攻击冷却，不重置（这里刻意不改 attack_cooldown）
 			target = null
 		if not target:
@@ -957,6 +958,12 @@ func _create_status_particles():
 			tween.tween_property(shard, "rotation", shard.rotation + Vector3(0, 2, 0), 1.0)
 			tween.tween_property(shard, "position:y", shard.position.y + 0.4, 0.4)
 			tween.tween_property(shard, "position:y", shard.position.y - 0.4, 0.4)# ----- 目标选择 -----
+func _vision_range() -> float:
+	if battle != null:
+		return config.horizon * battle.mode_vision_mult
+	return config.horizon
+
+
 func find_target(origin):
 	accumulate = 1.0
 	var potential = []
@@ -973,7 +980,7 @@ func find_target(origin):
 			continue
 		var dist =  sqrt((origin.global_position.x-obj.global_position.x)**2+(origin.global_position.z-obj.global_position.z)**2) - (obj.config.size + origin.config.size)
 		if self == origin:
-			if dist > config.horizon:
+			if dist > _vision_range():
 				continue
 		else:
 			if dist > 2:
@@ -1011,6 +1018,19 @@ func _move_towards(pos: Vector3, delta):
 	if config.type == Config.UnitType.BUILDING:
 		return
 	if Time.get_ticks_msec()-shock_timer<=500:
+		return
+	# 冲线模式：没有河/桥，直线奔跑
+	if battle != null and String(battle.win_condition) == "touchdown":
+		var tdir := Vector2(pos.x - global_position.x, pos.z - global_position.z)
+		if tdir.length() > 0.01:
+			move_direction = tdir.normalized()
+			var step0: float = speed * floor(accelerate) * delta / slow_factor
+			step0 *= 1.0 + quick * 0.01
+			step0 /= fix_factor
+			global_position.x += move_direction.x * step0
+			global_position.z += move_direction.y * step0
+		global_position.x = clampf(global_position.x, Config.ARENA_ORIGIN.x + 1.0, Config.ARENA_ORIGIN.x + Config.ARENA_WIDTH - 1.0)
+		global_position.z = clampf(global_position.z, Config.ARENA_ORIGIN.z + 1.0, Config.ARENA_ORIGIN.z + Config.ARENA_HEIGHT - 1.0)
 		return
 	# 过桥逻辑修正
 	var target_pos = pos
@@ -1050,6 +1070,10 @@ func _move_towards(pos: Vector3, delta):
 		global_position.z = front_z
 func _move_forward(delta):
 	if config.type == Config.UnitType.BUILDING:
+		return
+	if battle != null and String(battle.win_condition) == "touchdown":
+		var goal_z: float = Config.ARENA_ORIGIN.z + (1.0 if team == Config.Team.PLAYER else Config.ARENA_HEIGHT - 1.0)
+		_move_towards(Vector3(global_position.x, global_position.y, goal_z), delta)
 		return
 	var target_pos = global_position
 	if team == Config.Team.PLAYER:
@@ -2144,7 +2168,70 @@ func _play_special_land() -> void:
 			tw3.tween_property(ghost, "scale", Vector3(1.6, 1.6, 1.6), 0.4)
 			tw3.tween_property(m2, "albedo_color:a", 0.0, 0.4)
 			tw3.chain().tween_callback(ghost.queue_free)# 跨河跳跃动画（野猪骑士/王子/黑暗王子/皇家野猪/蛮羊骑士等）
+func play_touchdown_cheer() -> void:
+	if celebrating:
+		return
+	celebrating = true
+	set_physics_process(false)
+	set_process(false)
+	if visual_root:
+		visual_root.position.y = 0.0
+		var hop := create_tween()
+		hop.set_loops(4)
+		hop.tween_property(visual_root, "position:y", 0.55, 0.22).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+		hop.tween_property(visual_root, "position:y", 0.0, 0.18).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN)
+		var spin := create_tween()
+		spin.tween_property(visual_root, "rotation:y", TAU, 0.9)
+	# 欢呼文字
+	var tag := Label3D.new()
+	tag.text = "GOAL!"
+	tag.font_size = 64
+	tag.pixel_size = 0.005
+	tag.billboard = BaseMaterial3D.BILLBOARD_ENABLED
+	tag.no_depth_test = true
+	tag.modulate = Color(1.0, 0.86, 0.25)
+	tag.outline_modulate = Color(0.10, 0.06, 0.02)
+	tag.outline_size = 12
+	tag.position = Vector3(0, 2.2, 0)
+	add_child(tag)
+	var tag_tw := create_tween()
+	tag_tw.set_parallel(true)
+	tag_tw.tween_property(tag, "position:y", 3.2, 1.5)
+	tag_tw.tween_property(tag, "modulate:a", 0.0, 0.6).set_delay(1.1)
+	tag_tw.chain().tween_callback(tag.queue_free)
+	# 彩带/纸屑
+	var colors := [Color(1.0, 0.35, 0.30), Color(1.0, 0.82, 0.25), Color(0.35, 0.75, 1.0),
+		Color(0.45, 0.95, 0.45), Color(0.95, 0.55, 1.0)]
+	for i in 24:
+		var bit := MeshInstance3D.new()
+		var bm := BoxMesh.new()
+		bm.size = Vector3(0.12, 0.04, 0.18)
+		bit.mesh = bm
+		var mat := StandardMaterial3D.new()
+		mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+		mat.albedo_color = colors[i % colors.size()]
+		mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+		bit.material_override = mat
+		bit.position = Vector3(randf_range(-0.4, 0.4), randf_range(0.3, 1.2), randf_range(-0.4, 0.4))
+		bit.rotation = Vector3(randf_range(0, TAU), randf_range(0, TAU), randf_range(0, TAU))
+		add_child(bit)
+		var spread := Vector3(randf_range(-1.6, 1.6), randf_range(1.0, 2.4), randf_range(-1.6, 1.6))
+		var tw := create_tween()
+		tw.set_parallel(true)
+		tw.tween_property(bit, "position", bit.position + spread, 1.1).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+		tw.tween_property(bit, "rotation", bit.rotation + Vector3(randf_range(-6, 6), randf_range(-6, 6), randf_range(-6, 6)), 1.1)
+		tw.tween_property(mat, "albedo_color:a", 0.0, 0.4).set_delay(0.8)
+		tw.chain().tween_callback(bit.queue_free)
+
+
 func _update_river_jump(delta: float) -> void:
+	if battle != null and String(battle.win_condition) == "touchdown":
+		# 足球场没有河/桥，跳过所有过河限制（中间线可自由通过）
+		_river_jumping = false
+		if visual_root != null:
+			visual_root.position.y = 0.0
+		_prev_z = global_position.z
+		return
 	if config.type != Config.UnitType.GROUND or visual_root == null:
 		_prev_z = global_position.z
 		return
@@ -2268,7 +2355,8 @@ func _spawn_counter_bolt(src: Unit) -> void:
 		var t: float = (float(i) + 0.5) / float(n)
 		mi.position = from + d * t + Vector3(randf_range(-0.12, 0.12), randf_range(-0.12, 0.12), randf_range(-0.12, 0.12))
 		root.add_child(mi)
-		mi.look_at(to, Vector3.UP)
+		if root.is_inside_tree():
+			mi.look_at(to, Vector3.UP)
 	var tw := root.create_tween()
 	tw.tween_interval(0.28)
 	tw.tween_callback(root.queue_free)# 特斯拉电磁塔：脱战 1 秒后遁入地下（不可被锁定、免疫法术，地震除外）

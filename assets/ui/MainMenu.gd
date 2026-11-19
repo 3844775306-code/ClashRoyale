@@ -66,6 +66,7 @@ func _ready():
 		get_tree().create_timer(3.4).timeout.connect(_on_intro_failsafe)
 
 
+
 func _on_friend_invite(invite: Dictionary) -> void:
 	var dlg := AcceptDialog.new()
 	dlg.title = "联机邀请"

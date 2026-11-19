@@ -46,12 +46,13 @@ func _ready():
 	# 程序化法术特效（按卡牌区分）
 	vfx = SpellVFX.build(card_id, damage_range, team, attack_type)
 	add_child(vfx)
-	# 点光源颜色随法术变化
-	var light = OmniLight3D.new()
-	light.light_color = _light_color()
-	light.omni_range = damage_range * 1.4
-	light.light_energy = 1.6
-	add_child(light)
+	# 点光源颜色随法术变化；手机端关闭，避免大量动态光源压垮 GLES 驱动
+	if not OS.has_feature("mobile"):
+		var light = OmniLight3D.new()
+		light.light_color = _light_color()
+		light.omni_range = damage_range * 1.4
+		light.light_energy = 1.6
+		add_child(light)
 
 func _light_color() -> Color:
 	match card_id:
