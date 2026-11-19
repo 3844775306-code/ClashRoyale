@@ -73,6 +73,12 @@ func _boot() -> void:
 	account_id = String(sess.get("id", _make_id(account_email)))
 	_session_online = bool(sess.get("online", false))
 	_player_load_account(false)
+	# 有本机最近账号时先显示登录选择，不再直接跳过登录界面。
+	if not recent_accounts().is_empty():
+		is_authenticated = false
+		auto_login_pending = false
+		session_changed.emit()
+		return
 	if _session_online and not offline_only:
 		await _restore_online_session()
 	# 先完成云端同步再放开登录态，避免主菜单先渲染旧数据
@@ -99,6 +105,43 @@ func _account_save_path(acct_id: String) -> String:
 	var root := PlayerData._data_root().trim_suffix("/")
 	return root + "/accounts/" + acct_id + "/player_data.cfg"
 
+
+func recent_accounts(days: int = 30) -> Array:
+	var now := int(Time.get_unix_time_from_system())
+	var out: Array = []
+	var cfg := _load_index()
+	for section in cfg.get_sections():
+		var email := String(section)
+		if email == "" or email == "session":
+			continue
+		var last := int(cfg.get_value(email, "last_login", cfg.get_value(email, "created", 0)))
+		if last <= 0 or now - last > days * 86400:
+			continue
+		out.append({
+			"email": email,
+			"id": String(cfg.get_value(email, "id", _make_id(email))),
+			"last_login": last,
+			"days_ago": int((now - last) / 86400),
+		})
+	out.sort_custom(func(a, b): return int(a.last_login) > int(b.last_login))
+	return out
+
+func login_recent(email: String) -> Dictionary:
+	email = email.strip_edges().to_lower()
+	if not _local_has(email):
+		return {"ok": false, "error": "本机没有该账号"}
+	account_email = email
+	account_id = _make_id(email)
+	_session_online = false
+	_player_load_account(false)
+	_save_session(false)
+	_upsert_local(email, "")
+	is_authenticated = true
+	auto_login_pending = false
+	cloud_status = "本机账号已登录（云端未连接）"
+	cloud_status_changed.emit()
+	session_changed.emit()
+	return {"ok": true, "online": false}
 
 func login(email: String, password: String) -> Dictionary:
 	if _busy:
@@ -242,8 +285,11 @@ func _upsert_local(email: String, password: String) -> void:
 	_ensure_data_dir()
 	var cfg := _load_index()
 	cfg.set_value(email, "id", _make_id(email))
-	cfg.set_value(email, "hash", _hash_password(email, password))
-	cfg.set_value(email, "created", int(Time.get_unix_time_from_system()))
+	var old_hash := String(cfg.get_value(email, "hash", ""))
+	cfg.set_value(email, "hash", _hash_password(email, password) if password != "" else old_hash)
+	cfg.set_value(email, "last_login", int(Time.get_unix_time_from_system()))
+	if not cfg.has_section_key(email, "created"):
+		cfg.set_value(email, "created", int(Time.get_unix_time_from_system()))
 	cfg.save(index_path())
 
 
