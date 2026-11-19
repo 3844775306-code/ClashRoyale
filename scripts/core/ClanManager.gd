@@ -1,5 +1,6 @@
 # scripts/core/ClanManager.gd
 extends Node
+const CARD_RARITY = preload("res://scripts/data/CardRarity.gd")
 
 ## LootLocker 部落管理系统 - 基于通用排行榜 + Metadata
 ## 原理：每个部落作为一条通用排行榜条目，部落名称作为 member_id，
@@ -64,6 +65,10 @@ func get_player_id() -> int:
 	return LL_StateData.GetCachedPlayerLegacyID()
 
 func get_player_name() -> String:
+	# 优先使用游戏内的实际玩家名（排行榜/部落/聊天一致）
+	var pname := PlayerData.player_name.strip_edges()
+	if pname != "":
+		return pname
 	var name = LL_StateData.GetCachedPlayerName()
 	return name if name != "" else "玩家"
 
@@ -216,6 +221,31 @@ func _recalc_total(clan: Dictionary) -> void:
 	for mid in members.keys():
 		total += int(members[mid].get("trophies", 0))
 	clan["total_trophies"] = total
+
+## 玩家改名后同步自己在部落成员信息里的名字/奖杯/头像
+func sync_my_profile(callback: Callable = Callable()) -> void:
+	get_my_clan(func(success, clan):
+		if not success or clan == null:
+			if callback.is_valid():
+				callback.call(false, "未加入部落")
+			return
+		var mid := str(get_player_id())
+		var members: Dictionary = clan.get("members", {})
+		if not members.has(mid):
+			if callback.is_valid():
+				callback.call(false, "成员不存在")
+			return
+		var m: Dictionary = members[mid]
+		m["player_name"] = get_player_name()
+		m["trophies"] = PlayerData.trophies
+		m["avatar_seed"] = PlayerData.avatar_seed
+		m["avatar_index"] = PlayerData.avatar_index
+		members[mid] = m
+		clan["members"] = members
+		invalidate_cache()
+		_update_clan_on_leaderboard(clan, callback)
+	)
+
 
 func invalidate_cache() -> void:
 	_cache_at = 0.0
@@ -488,16 +518,40 @@ func get_chat_history(callback: Callable):
 
 # ---------- 卡牌请求与捐赠 ----------
 ## 请求卡牌
+func _request_amount_for(card_id: int) -> int:
+	var rar: String = CARD_RARITY.rarity_of_id(card_id)
+	if rar == "common":
+		return 40
+	if rar == "rare" or rar == "epic":
+		return 4
+	return 0
+
+func _donation_step_for(card_id: int) -> int:
+	var rar: String = CARD_RARITY.rarity_of_id(card_id)
+	return 10 if rar == "common" else 1
+
+func _is_sunday() -> bool:
+	return int(Time.get_date_dict_from_system().weekday) == 0
+
 func request_card(card_id: int, amount: int, callback: Callable):
 	if not PlayerData.can_request_card():
 		callback.call(false, "卡牌请求冷却中")
 		return
+	var rar: String = CARD_RARITY.rarity_of_id(card_id)
+	if rar == "legendary":
+		callback.call(false, "无法请求传奇卡")
+		return
+	var fixed_amount: int = _request_amount_for(card_id)
+	if fixed_amount <= 0:
+		callback.call(false, "该卡牌无法请求")
+		return
+	amount = fixed_amount
 	get_my_clan(func(success, clan):
 		if not success or clan == null:
 			callback.call(false, "获取部落信息失败")
 			return
-		if PlayerData.get_card_quantity(card_id) < amount:
-			callback.call(false, "你拥有的该卡牌数量不足，无法发出请求")
+		if PlayerData.get_card_quantity(card_id) <= 0:
+			callback.call(false, "你还没有这张卡，无法请求")
 			return
 		var bm = get_tree().get_first_node_in_group("battle_manager")
 		if not bm:
@@ -515,6 +569,9 @@ func request_card(card_id: int, amount: int, callback: Callable):
 			"card_id": card_id,
 			"card_name": cfg.card_name,
 			"amount": amount,
+			"donated": 0,
+			"donors": [],
+			"request_key": "%d_%d_%d" % [get_player_id(), card_id, Time.get_unix_time_from_system()],
 			"avatar_seed": PlayerData.avatar_seed,
 			"avatar_index": PlayerData.avatar_index
 		})
@@ -524,58 +581,77 @@ func request_card(card_id: int, amount: int, callback: Callable):
 		_update_clan_on_leaderboard(clan, callback)
 	)
 
-func donate_card(to_player_id: int, card_id: int, amount: int, callback: Callable):
+func donate_card(to_player_id: int, card_id: int, amount: int, request_key: String, callback: Callable):
 	if to_player_id == get_player_id():
 		callback.call(false, "不能捐赠给自己")
 		return
-	if PlayerData.get_card_quantity(card_id) < amount:
+	var rar: String = CARD_RARITY.rarity_of_id(card_id)
+	if rar == "epic" and not _is_sunday():
+		callback.call(false, "史诗卡只有周日才能捐赠")
+		return
+	var step: int = _donation_step_for(card_id)
+	if PlayerData.get_card_quantity(card_id) < step:
 		callback.call(false, "你拥有的该卡牌数量不足")
 		return
-	if PlayerData.donations_used + amount > 8:
+	if PlayerData.donations_used + 1 > 8:
 		callback.call(false, "今日捐赠次数已用完")
 		return
-
-	# 扣除捐赠者本地库存
-	PlayerData.remove_card(card_id, amount)
-	PlayerData.donations_used += amount
-	PlayerData.save_data()
 
 	get_my_clan(func(success, clan):
 		if not success or clan == null:
 			callback.call(false, "获取部落信息失败")
 			return
-
-		# 更新捐赠者捐赠计数
-		if clan.members.has(str(get_player_id())):
-			clan.members[str(get_player_id())].donations += amount
-
-		# 从聊天中移除第一条匹配的请求（按时间顺序最早的一条）
-		var chat_list = clan.get("chat", [])
-		var removed = false
-		for i in range(chat_list.size() - 1, -1, -1):  # 从后往前找，因为新消息在头部
-			var msg = chat_list[i]
-			if msg.get("type", "") == "request" and msg.get("player_id", -1) == to_player_id and msg.get("card_id", -1) == card_id:
-				chat_list.remove_at(i)
-				removed = true
+		var chat_list: Array = clan.get("chat", [])
+		var msg_index := -1
+		for i in range(chat_list.size()):
+			var msg: Dictionary = chat_list[i]
+			if msg.get("type", "") != "request":
+				continue
+			var key_ok: bool = request_key == "" or String(msg.get("request_key", "")) == request_key
+			if key_ok and int(msg.get("player_id", -1)) == to_player_id and int(msg.get("card_id", -1)) == card_id:
+				msg_index = i
 				break
-		# 即使没有找到请求消息也不影响捐赠（可能已被他人捐掉）
-
-		# 保存部落数据（成员捐赠计数 + 聊天更新）
+		if msg_index < 0:
+			callback.call(false, "该请求已完成或不存在")
+			return
+		var msg: Dictionary = chat_list[msg_index]
+		var target: int = int(msg.get("amount", amount))
+		var donated: int = int(msg.get("donated", 0))
+		if donated >= target:
+			callback.call(false, "该请求已完成")
+			return
+		var donors: Array = Array(msg.get("donors", []))
+		if donors.has(get_player_id()) or donors.has(str(get_player_id())):
+			callback.call(false, "你已经捐赠过这张请求")
+			return
+		var contribute: int = mini(step, target - donated)
+		if PlayerData.get_card_quantity(card_id) < contribute:
+			callback.call(false, "你拥有的该卡牌数量不足")
+			return
+		PlayerData.remove_card(card_id, contribute)
+		PlayerData.donations_used += 1
+		PlayerData.save_data()
+		if clan.members.has(str(get_player_id())):
+			clan.members[str(get_player_id())].donations += contribute
+		msg["donated"] = donated + contribute
+		donors.append(get_player_id())
+		msg["donors"] = donors
+		chat_list[msg_index] = msg
+		clan["chat"] = chat_list
 		_update_clan_on_leaderboard(clan, func(ok, err):
-			if ok:
-				# 同步接收者库存
-				get_player_inventory(to_player_id, func(inv_ok, inventory):
-					if not inv_ok:
-						inventory = {}
-					inventory[str(card_id)] = inventory.get(str(card_id), 0) + amount
-					save_player_inventory(to_player_id, inventory, func(wok, werr):
-						if wok:
-							callback.call(true, null)
-						else:
-							callback.call(false, "接收者库存更新失败，但请求已处理")
-					)
-				)
-			else:
+			if not ok:
 				callback.call(false, "保存部落失败")
+				return
+			get_player_inventory(to_player_id, func(inv_ok, inventory):
+				if not inv_ok:
+					inventory = {}
+				inventory[str(card_id)] = inventory.get(str(card_id), 0) + contribute
+				save_player_inventory(to_player_id, inventory, func(wok, werr):
+					if wok:
+						callback.call(true, null)
+					else:
+						callback.call(false, "接收者库存更新失败，但请求已处理")
+				)
+			)
 		)
 	)

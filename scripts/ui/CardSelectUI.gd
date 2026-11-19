@@ -2,6 +2,7 @@
 # 选卡弹窗（模态）：从拥有的卡牌中选择并指定数量，用于部落请求卡牌。
 # 通过外部设置的 callback(card_id, amount) 返回结果；点击遮罩或取消关闭。
 extends Control
+const CARD_RARITY = preload("res://scripts/data/CardRarity.gd")
 
 # 回调函数 (card_id, amount)
 var callback: Callable = Callable()
@@ -121,17 +122,72 @@ func _build_card_rows():
 	for cfg in card_configs:
 		if cfg.card_id <= 3:
 			continue
+		if CARD_RARITY.rarity_of_id(cfg.card_id) == "legendary":
+			continue
 		var own_count = owned_cards.get(cfg.card_id, 0)
 		if own_count <= 0:
 			continue
 		var btn := Button.new()
-		btn.text = "%s  x%d" % [cfg.card_name, own_count]
-		btn.alignment = HORIZONTAL_ALIGNMENT_LEFT
-		btn.custom_minimum_size = Vector2(0, 52)
+		btn.text = ""
+		btn.focus_mode = Control.FOCUS_NONE
+		btn.custom_minimum_size = Vector2(0, 88)
+		btn.add_theme_stylebox_override("normal", _card_row_style(false))
+		btn.add_theme_stylebox_override("hover", _card_row_style(false, true))
+		btn.add_theme_stylebox_override("pressed", _card_row_style(true))
+		btn.add_theme_stylebox_override("focus", _card_row_style(false))
 		btn.pressed.connect(_on_card_row_pressed.bind(cfg.card_id))
-		ThemeHelper.apply_muted_button(btn)
 		list_box.add_child(btn)
 		row_buttons[cfg.card_id] = btn
+
+		var hbox := HBoxContainer.new()
+		hbox.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+		hbox.offset_left = 10
+		hbox.offset_right = -12
+		hbox.add_theme_constant_override("separation", 12)
+		hbox.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		btn.add_child(hbox)
+
+		var art_path := "res://assets/cards_rendered/%s.png" % String(cfg.card_name)
+		var tex := TextureRect.new()
+		tex.custom_minimum_size = Vector2(68, 68)
+		tex.size = Vector2(68, 68)
+		if ResourceLoader.exists(art_path):
+			tex.texture = load(art_path)
+		tex.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+		tex.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+		tex.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		hbox.add_child(tex)
+
+		var info := VBoxContainer.new()
+		info.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		info.alignment = BoxContainer.ALIGNMENT_CENTER
+		info.add_theme_constant_override("separation", 2)
+		info.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		hbox.add_child(info)
+		var nm := Label.new()
+		nm.text = String(cfg.card_name)
+		nm.add_theme_font_size_override("font_size", 17)
+		nm.add_theme_color_override("font_color", ThemeHelper.COLORS.text)
+		nm.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		info.add_child(nm)
+		var sub := Label.new()
+		sub.text = "Lv.%d · 拥有 %d 张" % [PlayerData.get_card_level(cfg.card_id), own_count]
+		sub.add_theme_font_size_override("font_size", 12)
+		sub.add_theme_color_override("font_color", ThemeHelper.COLORS.text_muted)
+		sub.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		info.add_child(sub)
+
+		var marker := Label.new()
+		marker.text = "✓"
+		marker.visible = false
+		marker.custom_minimum_size = Vector2(30, 0)
+		marker.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+		marker.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+		marker.add_theme_font_size_override("font_size", 24)
+		marker.add_theme_color_override("font_color", ThemeHelper.COLORS.gold)
+		marker.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		hbox.add_child(marker)
+		btn.set_meta("marker", marker)
 
 	# 空状态：没有可请求的卡牌
 	if row_buttons.is_empty():
@@ -151,7 +207,8 @@ func _build_card_rows():
 
 func _on_card_row_pressed(card_id: int):
 	selected_card_id = card_id
-	request_amount = min(1, owned_cards.get(card_id, 1))
+	var rar: String = CARD_RARITY.rarity_of_id(card_id)
+	request_amount = 40 if rar == "common" else 4
 	_highlight_selected()
 	_update_quantity_display()
 	_update_buttons_state()
@@ -160,43 +217,32 @@ func _on_card_row_pressed(card_id: int):
 func _highlight_selected():
 	for cid in row_buttons.keys():
 		var btn: Button = row_buttons[cid]
-		if cid == selected_card_id:
-			ThemeHelper.apply_tab_active(btn)
-		else:
-			ThemeHelper.apply_muted_button(btn)
+		var marker = btn.get_meta("marker", null)
+		if marker != null:
+			marker.visible = int(cid) == selected_card_id
+		btn.add_theme_stylebox_override("normal", _card_row_style(int(cid) == selected_card_id))
 
 
 func _on_increase():
-	if selected_card_id == -1:
-		return
-	var own_count = owned_cards.get(selected_card_id, 0)
-	var max_allow = min(max_request, own_count)
-	request_amount = clampi(request_amount + 1, 1, max_allow)
-	_update_quantity_display()
-	_update_buttons_state()
+	pass
 
 
 func _on_decrease():
-	if selected_card_id == -1:
-		return
-	request_amount = maxi(request_amount - 1, 1)
-	_update_quantity_display()
-	_update_buttons_state()
+	pass
 
 
 func _update_quantity_display():
-	quantity_label.text = "请求 %d 张" % request_amount
+	if selected_card_id == -1:
+		quantity_label.text = "请选择卡牌"
+	else:
+		quantity_label.text = "请求 %d 张（固定）" % request_amount
 
 
 func _update_buttons_state():
 	var has_selection := selected_card_id != -1
-	decrease_btn.disabled = not has_selection or request_amount <= 1
-	if has_selection:
-		var max_allow = min(max_request, owned_cards.get(selected_card_id, 0))
-		increase_btn.disabled = request_amount >= max_allow
-	else:
-		increase_btn.disabled = true
-	confirm_btn.disabled = not has_selection or request_amount == 0
+	decrease_btn.disabled = true
+	increase_btn.disabled = true
+	confirm_btn.disabled = not has_selection or request_amount <= 0
 
 
 func _on_confirm():
@@ -207,6 +253,15 @@ func _on_confirm():
 
 func _on_cancel():
 	queue_free()
+
+
+func _card_row_style(selected: bool, hover := false) -> StyleBoxFlat:
+	var sb := StyleBoxFlat.new()
+	sb.bg_color = Color(0.10, 0.075, 0.035, 0.96) if selected else (Color(0.07, 0.10, 0.18, 0.94) if not hover else Color(0.10, 0.14, 0.24, 0.96))
+	sb.set_corner_radius_all(12)
+	sb.set_border_width_all(2 if selected else 1)
+	sb.border_color = ThemeHelper.COLORS.gold if selected else Color(1, 1, 1, 0.12)
+	return sb
 
 
 func _on_overlay_gui_input(event: InputEvent):

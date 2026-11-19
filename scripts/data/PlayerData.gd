@@ -889,29 +889,55 @@ func ensure_daily_shop_offers() -> void:
 				qty += 5 * rng.randi_range(0, 3)
 			shop_offers.append({"card_id": cid, "qty": qty, "unit": unit, "price": unit * qty, "sold": false})
 		shop_day = today
-	# 确保每天恰好一个免费卡牌（原价 < 2000 金币）
-	var has_free := false
-	for o in shop_offers:
-		if bool(o.get("free", false)):
-			has_free = true
-			break
-	if not has_free:
-		var candidates: Array = []
+	# 确保每天恰好一个免费卡牌。周日固定为价值 5000 金币的史诗卡。
+	var sunday: bool = int(d.weekday) == 0
+	if sunday:
+		var epic_idx := -1
 		for i in range(shop_offers.size()):
-			var o: Dictionary = shop_offers[i]
-			if bool(o.get("sold", false)):
-				continue
-			if int(o.get("price", 999999)) < 2000:
-				candidates.append(i)
-		if not candidates.is_empty():
-			var rng2 := RandomNumberGenerator.new()
-			rng2.seed = today.hash() + 991
-			var pick: int = int(candidates[rng2.randi_range(0, candidates.size() - 1)])
-			var chosen: Dictionary = shop_offers[pick]
-			chosen["original_price"] = int(chosen.get("price", 0))
-			chosen["price"] = 0
-			chosen["free"] = true
-			shop_offers[pick] = chosen
+			if CARD_RARITY.rarity_of_id(int(shop_offers[i].get("card_id", 0))) == "epic":
+				epic_idx = i
+				break
+		if epic_idx < 0:
+			shop_offers[0] = {"card_id": 15, "qty": 25, "unit": 200, "price": 5000, "sold": false}
+			epic_idx = 0
+		# 清掉旧的免费标记/恢复原价，再固定史诗免费卡
+		for o in shop_offers:
+			if bool(o.get("free", false)):
+				if o.has("original_price"):
+					o["price"] = int(o.get("original_price", o.get("price", 0)))
+				o["free"] = false
+		var eo: Dictionary = shop_offers[epic_idx]
+		eo["card_id"] = int(eo.get("card_id", 15))
+		eo["qty"] = 25
+		eo["unit"] = 200
+		eo["original_price"] = 5000
+		eo["price"] = 0
+		eo["free"] = true
+		eo["sunday_epic"] = true
+		shop_offers[epic_idx] = eo
+	else:
+		var has_free := false
+		for o in shop_offers:
+			if bool(o.get("free", false)):
+				has_free = true
+				break
+		if not has_free:
+			var candidates: Array = []
+			for i in range(shop_offers.size()):
+				var o: Dictionary = shop_offers[i]
+				if bool(o.get("sold", false)):
+					continue
+				if int(o.get("price", 999999)) < 2000:
+					candidates.append(i)
+			if not candidates.is_empty():
+				var rng2 := RandomNumberGenerator.new()
+				rng2.seed = today.hash() + 991
+				var pick: int = int(candidates[rng2.randi_range(0, candidates.size() - 1)])
+				var chosen: Dictionary = shop_offers[pick]
+				chosen["original_price"] = int(chosen.get("price", 0))
+				chosen["price"] = 0
+				chosen["free"] = true
+				shop_offers[pick] = chosen
 	shop_day = today
 	save_data()
 

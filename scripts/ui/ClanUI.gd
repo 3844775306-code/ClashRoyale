@@ -3,6 +3,7 @@
 extends Control
 const AVATAR_ICON = preload("res://scripts/ui/AvatarIcon.gd")
 const REWARD_ICON = preload("res://scripts/ui/RewardIcon.gd")
+const CARD_RARITY = preload("res://scripts/data/CardRarity.gd")
 
 # 分节
 var tab_buttons: Array = []
@@ -592,7 +593,7 @@ func _format_chat_time(ts: float) -> String:
 	if ts <= 0.0:
 		return ""
 	var d := Time.get_datetime_dict_from_unix_time(int(ts))
-	return "%02d:%02d" % [int(d.hour), int(d.minute)]
+	return "%d月%d日 %02d:%02d" % [int(d.month), int(d.day), int(d.hour), int(d.minute)]
 
 func _create_chat_node(msg: Dictionary) -> Control:
 	var sender_name := String(msg.get("player_name", "玩家"))
@@ -663,23 +664,62 @@ func _create_chat_node(msg: Dictionary) -> Control:
 		var cid := int(msg.get("card_id", 0))
 		var cname := String(msg.get("card_name", "卡牌"))
 		var amt := int(msg.get("amount", 1))
+		var donated := int(msg.get("donated", 0))
+		var donors: Array = Array(msg.get("donors", []))
+		var key := String(msg.get("request_key", ""))
+		var local_id := ClanManager.get_player_id()
+		var already: bool = donors.has(local_id) or donors.has(str(local_id))
+		var completed: bool = donated >= amt
+		var rarity: String = CARD_RARITY.rarity_of_id(cid)
+		var sunday: bool = int(Time.get_date_dict_from_system().weekday) == 0
+		var step: int = 10 if rarity == "common" else 1
 		var card_icon = REWARD_ICON.new()
 		card_icon.custom_minimum_size = Vector2(46, 60)
 		card_icon.setup("card", amt, cname, cid)
 		body.add_child(card_icon)
+		var req_col := VBoxContainer.new()
+		req_col.add_theme_constant_override("separation", 4)
+		body.add_child(req_col)
 		var req_text := Label.new()
-		req_text.text = "请求 %d 张\n%s" % [amt, cname]
+		req_text.text = "请求 %s ×%d" % [cname, amt]
 		req_text.add_theme_font_size_override("font_size", 13)
 		req_text.add_theme_color_override("font_color", Color(0.96, 0.95, 0.92))
-		req_text.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-		req_text.custom_minimum_size = Vector2(132, 0)
-		body.add_child(req_text)
-		if pid != ClanManager.get_player_id():
-			var can_donate: bool = (PlayerData.get_card_quantity(cid) >= amt and (8 - PlayerData.donations_used) >= amt)
-			var donate_btn := UiComponents.make_primary_button("捐赠", Callable(), Vector2(70, 34))
-			donate_btn.disabled = not can_donate
-			donate_btn.pressed.connect(_donate_card.bind(pid, cid, amt))
-			body.add_child(donate_btn)
+		req_col.add_child(req_text)
+		var prog_row := HBoxContainer.new()
+		prog_row.add_theme_constant_override("separation", 6)
+		var bar := ProgressBar.new()
+		bar.custom_minimum_size = Vector2(128, 10)
+		bar.show_percentage = false
+		bar.max_value = maxf(1.0, float(amt))
+		bar.value = minf(float(donated), float(amt))
+		ThemeHelper.apply_progress_gold(bar)
+		prog_row.add_child(bar)
+		var prog_lbl := Label.new()
+		prog_lbl.text = "%d/%d" % [donated, amt]
+		prog_lbl.add_theme_font_size_override("font_size", 11)
+		prog_lbl.add_theme_color_override("font_color", Color(0.72, 0.84, 1.0))
+		prog_row.add_child(prog_lbl)
+		req_col.add_child(prog_row)
+		var donate_btn := UiComponents.make_primary_button("捐赠", Callable(), Vector2(82, 34))
+		if pid == local_id:
+			donate_btn.text = "自己的请求"
+			donate_btn.disabled = true
+		elif completed:
+			donate_btn.text = "已完成"
+			donate_btn.disabled = true
+		elif already:
+			donate_btn.text = "已捐赠"
+			donate_btn.disabled = true
+		elif rarity == "epic" and not sunday:
+			donate_btn.text = "周日可捐"
+			donate_btn.disabled = true
+		elif PlayerData.donations_used >= 8:
+			donate_btn.text = "今日已满"
+			donate_btn.disabled = true
+		else:
+			donate_btn.disabled = PlayerData.get_card_quantity(cid) < step
+			donate_btn.pressed.connect(_donate_card.bind(pid, cid, key))
+		req_col.add_child(donate_btn)
 	else:
 		var content := Label.new()
 		content.text = String(msg.get("message", ""))
@@ -700,9 +740,13 @@ func _on_send_chat():
 			_toast("发送失败：%s" % str(_data))
 			return
 		current_chat.push_front({
+			"player_id": ClanManager.get_player_id(),
 			"player_name": ClanManager.get_player_name(),
 			"message": msg,
 			"timestamp": Time.get_unix_time_from_system(),
+			"type": "chat",
+			"avatar_seed": PlayerData.avatar_seed,
+			"avatar_index": PlayerData.avatar_index,
 		})
 		_update_chat_display()
 		chat_input.clear()
@@ -723,8 +767,8 @@ func _on_request_card():
 	add_child(card_select)
 
 
-func _donate_card(target_id: int, card_id: int, amount: int):
-	ClanManager.donate_card(target_id, card_id, amount, func(succ, data):
+func _donate_card(target_id: int, card_id: int, request_key: String):
+	ClanManager.donate_card(target_id, card_id, 0, request_key, func(succ, data):
 		if succ:
 			_refresh_my_clan()
 			PlayerData.save_data()
