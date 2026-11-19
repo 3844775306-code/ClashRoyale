@@ -96,7 +96,7 @@ func submit_trophies(score: int, player_name: String):
 func _decode_metadata(raw) -> Dictionary:
 	if raw == null:
 		return {}
-	var s := str(raw)
+	var s := str(raw).strip_edges().trim_prefix("\"").trim_suffix("\"")
 	if s.strip_edges() == "":
 		return {}
 	if s.begins_with("{"):
@@ -129,7 +129,11 @@ func get_leaderboard(callback: Callable):
 			var meta := _decode_metadata(item.get("metadata") if item.has_method("get") else item.metadata)
 			var shown: String = String(meta.get("player_name", ""))
 			if shown.strip_edges() == "":
-				shown = "玩家 #" + member_id.substr(maxi(0, member_id.length() - 4))
+				var pl0 = item.get("player") if item.has_method("get") else item.player
+				if pl0 != null:
+					shown = String(pl0.get("name", "") if pl0.has_method("get") else pl0.name)
+			if shown.strip_edges() == "":
+				shown = "玩家"
 			entries.append({
 				"rank": int(item.get("rank") if item.has_method("get") else item.rank),
 				"name": shown,

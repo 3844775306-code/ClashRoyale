@@ -1,108 +1,83 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512">
   <defs>
     <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
-      <stop offset="0" stop-color="#1b2440"/>
-      <stop offset="0.55" stop-color="#111a30"/>
-      <stop offset="1" stop-color="#080d18"/>
+      <stop offset="0" stop-color="#14264d"/>
+      <stop offset="0.55" stop-color="#0b1630"/>
+      <stop offset="1" stop-color="#050a18"/>
     </linearGradient>
-    <linearGradient id="gold" x1="0" y1="0" x2="1" y2="1">
-      <stop offset="0" stop-color="#ffe9a0"/>
-      <stop offset="0.45" stop-color="#f7c94b"/>
-      <stop offset="1" stop-color="#b97912"/>
+    <linearGradient id="gold" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#fff0b0"/>
+      <stop offset="0.42" stop-color="#ffd15a"/>
+      <stop offset="1" stop-color="#b8730e"/>
     </linearGradient>
-    <linearGradient id="stone" x1="0" y1="0" x2="0" y2="1">
-      <stop offset="0" stop-color="#eee5cf"/>
-      <stop offset="1" stop-color="#b7aa91"/>
+    <linearGradient id="gold2" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#ffe28a"/>
+      <stop offset="1" stop-color="#d8951d"/>
     </linearGradient>
-    <linearGradient id="blue" x1="0" y1="0" x2="1" y2="1">
-      <stop offset="0" stop-color="#7dc4ff"/>
-      <stop offset="1" stop-color="#2c6fe0"/>
+    <linearGradient id="blue" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#2d6fe8"/>
+      <stop offset="1" stop-color="#66c4ff"/>
     </linearGradient>
-    <linearGradient id="red" x1="0" y1="0" x2="1" y2="1">
-      <stop offset="0" stop-color="#ff9b8e"/>
-      <stop offset="1" stop-color="#bd2e35"/>
+    <linearGradient id="red" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#ff8b4d"/>
+      <stop offset="1" stop-color="#d02b45"/>
     </linearGradient>
-    <radialGradient id="glow" cx="0.5" cy="0.45" r="0.62">
-      <stop offset="0" stop-color="#f6c85a" stop-opacity="0.28"/>
-      <stop offset="1" stop-color="#f6c85a" stop-opacity="0"/>
+    <radialGradient id="glow" cx="0.5" cy="0.32" r="0.62">
+      <stop offset="0" stop-color="#5c86d8" stop-opacity="0.55"/>
+      <stop offset="0.55" stop-color="#1d376c" stop-opacity="0.25"/>
+      <stop offset="1" stop-color="#0a1226" stop-opacity="0"/>
     </radialGradient>
   </defs>
-  <rect x="8" y="8" width="496" height="496" rx="112" fill="url(#bg)" stroke="#070b13" stroke-width="16"/>
-  <rect x="18" y="18" width="476" height="476" rx="104" fill="none" stroke="#d9a734" stroke-opacity="0.5" stroke-width="3"/>
-  <circle cx="256" cy="250" r="190" fill="url(#glow)"/>
 
-  <!-- diorama floor -->
-  <path d="M256 272 L438 364 L256 456 L74 364 Z" fill="#202c49" stroke="#0a1020" stroke-width="10" stroke-linejoin="round"/>
-  <path d="M256 284 L406 360 L256 436 L106 360 Z" fill="#2a3a5d"/>
-  <path d="M256 284 L256 436" stroke="#89b7e8" stroke-opacity="0.42" stroke-width="5" stroke-dasharray="9 9"/>
-  <path d="M106 360 L256 436 L406 360" fill="none" stroke="#f1c85a" stroke-opacity="0.28" stroke-width="3"/>
-  <g opacity="0.55" stroke="#8fb8e8" stroke-width="2">
-    <path d="M170 329 L256 371 L342 329"/>
-    <path d="M142 344 L256 400 L370 344"/>
-    <path d="M194 314 L256 345 L318 314"/>
+  <rect x="0" y="0" width="512" height="512" rx="112" fill="url(#bg)"/>
+  <rect x="10" y="10" width="492" height="492" rx="104" fill="none" stroke="#ffd15a" stroke-width="5" opacity="0.9"/>
+  <rect x="24" y="24" width="464" height="464" rx="92" fill="none" stroke="#ffecad" stroke-width="2" opacity="0.32"/>
+  <circle cx="256" cy="205" r="210" fill="url(#glow)"/>
+
+  <!-- 竞技场地面 -->
+  <path d="M40 398 L472 398 L512 512 L0 512 Z" fill="#07101f"/>
+  <path d="M40 398 L256 398 L256 512 L0 512 Z" fill="url(#blue)" opacity="0.88"/>
+  <path d="M256 398 L472 398 L512 512 L256 512 Z" fill="url(#red)" opacity="0.88"/>
+  <path d="M40 398 L472 398" stroke="#ffe6a0" stroke-width="7" opacity="0.95"/>
+  <path d="M256 398 L256 512" stroke="#ffe6a0" stroke-width="6" opacity="0.9"/>
+  <path d="M118 452 L196 452 M316 452 L394 452" stroke="#ffffff" stroke-width="5" opacity="0.55"/>
+  <path d="M148 482 L174 482 M338 482 L364 482" stroke="#ffffff" stroke-width="4" opacity="0.35"/>
+
+  <!-- 交叉双剑 -->
+  <g transform="translate(256 282)">
+    <g transform="rotate(43)">
+      <rect x="-15" y="-196" width="30" height="250" rx="14" fill="url(#gold2)" stroke="#6b3a08" stroke-width="4"/>
+      <path d="M-15 -196 L0 -236 L15 -196 Z" fill="#fff4c8" stroke="#8f5410" stroke-width="3"/>
+      <rect x="-58" y="44" width="116" height="18" rx="9" fill="#ffcf5c" stroke="#6b3a08" stroke-width="3"/>
+      <rect x="-12" y="56" width="24" height="72" rx="10" fill="#a56512"/>
+      <circle cx="0" cy="132" r="19" fill="#ffdc76" stroke="#6b3a08" stroke-width="4"/>
+    </g>
+    <g transform="rotate(-43)">
+      <rect x="-15" y="-196" width="30" height="250" rx="14" fill="url(#gold2)" stroke="#6b3a08" stroke-width="4"/>
+      <path d="M-15 -196 L0 -236 L15 -196 Z" fill="#fff4c8" stroke="#8f5410" stroke-width="3"/>
+      <rect x="-58" y="44" width="116" height="18" rx="9" fill="#ffcf5c" stroke="#6b3a08" stroke-width="3"/>
+      <rect x="-12" y="56" width="24" height="72" rx="10" fill="#a56512"/>
+      <circle cx="0" cy="132" r="19" fill="#ffdc76" stroke="#6b3a08" stroke-width="4"/>
+    </g>
   </g>
 
-  <!-- left blue princess tower -->
-  <g stroke="#080d18" stroke-linejoin="round" stroke-width="9">
-    <path d="M102 300 L150 276 L196 300 L196 368 L150 392 L102 368 Z" fill="#253a5a"/>
-    <path d="M108 324 L150 346 L192 324 L192 352 L150 374 L108 352 Z" fill="url(#blue)"/>
-    <path d="M112 294 L150 314 L188 294 L188 316 L150 336 L112 316 Z" fill="#e9dcc1"/>
-    <path d="M126 255 L150 240 L174 255 L150 270 Z" fill="url(#blue)"/>
-    <path d="M121 252 L150 234 L179 252" fill="none" stroke="#0a1020" stroke-width="8"/>
-    <path d="M126 240 L150 220 L174 240" fill="url(#blue)"/>
-    <path d="M145 218 L150 200 L155 218" fill="#f7c94b" stroke-width="4"/>
-  </g>
-  <circle cx="150" cy="306" r="5" fill="#d9f1ff"/>
-
-  <!-- right red prince tower -->
-  <g stroke="#080d18" stroke-linejoin="round" stroke-width="9">
-    <path d="M316 300 L362 276 L410 300 L410 368 L362 392 L316 368 Z" fill="#4a2a35"/>
-    <path d="M322 324 L362 346 L404 324 L404 352 L362 374 L322 352 Z" fill="url(#red)"/>
-    <path d="M326 294 L362 314 L398 294 L398 316 L362 336 L326 316 Z" fill="#e9dcc1"/>
-    <path d="M338 255 L362 240 L386 255 L362 270 Z" fill="url(#red)"/>
-    <path d="M333 252 L362 234 L391 252" fill="none" stroke="#0a1020" stroke-width="8"/>
-    <path d="M338 240 L362 220 L386 240" fill="url(#red)"/>
-    <path d="M357 218 L362 200 L367 218" fill="#f7c94b" stroke-width="4"/>
-  </g>
-  <circle cx="362" cy="306" r="5" fill="#ffe8dc"/>
-
-  <!-- central king tower -->
-  <g stroke="#080d18" stroke-linejoin="round" stroke-width="11">
-    <path d="M196 288 L256 256 L316 288 L316 394 L256 428 L196 394 Z" fill="#2b3550"/>
-    <path d="M204 316 L256 344 L308 316 L308 368 L256 400 L204 368 Z" fill="#d7c9aa"/>
-    <path d="M208 286 L256 310 L304 286 L304 314 L256 338 L208 314 Z" fill="url(#stone)"/>
-    <path d="M216 276 L256 296 L296 276 L296 292 L256 312 L216 292 Z" fill="#f7e9c7"/>
-    <path d="M222 254 L256 272 L290 254 L290 278 L256 296 L222 278 Z" fill="#c9b990"/>
-    <path d="M232 234 L256 246 L280 234 L280 248 L256 260 L232 248 Z" fill="#9a7a45"/>
+  <!-- 皇冠 -->
+  <g transform="translate(256 264)">
+    <path d="M-158 34 L-128 -118 L-52 -38 L0 -154 L52 -38 L128 -118 L158 34 Z"
+          fill="url(#gold)" stroke="#5a3005" stroke-width="9" stroke-linejoin="round"/>
+    <path d="M-124 20 L-104 -64 L-42 2 L0 -94 L42 2 L104 -64 L124 20 Z"
+          fill="#fff0ad" opacity="0.34"/>
+    <rect x="-160" y="20" width="320" height="72" rx="18" fill="url(#gold)" stroke="#5a3005" stroke-width="9"/>
+    <rect x="-132" y="36" width="264" height="16" rx="8" fill="#fff5c9" opacity="0.55"/>
+    <circle cx="-158" cy="-118" r="17" fill="#66c4ff" stroke="#5a3005" stroke-width="6"/>
+    <circle cx="0" cy="-154" r="19" fill="#ff8b4d" stroke="#5a3005" stroke-width="6"/>
+    <circle cx="158" cy="-118" r="17" fill="#66c4ff" stroke="#5a3005" stroke-width="6"/>
+    <circle cx="0" cy="56" r="15" fill="#ff5b6e" stroke="#5a3005" stroke-width="5"/>
+    <circle cx="-72" cy="56" r="10" fill="#66c4ff" stroke="#5a3005" stroke-width="4"/>
+    <circle cx="72" cy="56" r="10" fill="#66c4ff" stroke="#5a3005" stroke-width="4"/>
   </g>
 
-  <!-- chibi king -->
-  <g stroke="#080d18" stroke-linejoin="round" stroke-width="8">
-    <path d="M216 232 L256 212 L296 232 L256 252 Z" fill="#6d4b2d"/>
-    <ellipse cx="256" cy="178" rx="52" ry="48" fill="#f2c9a0"/>
-    <path d="M204 172 C204 128 224 112 256 112 C288 112 308 128 308 172 C296 158 282 150 256 150 C230 150 216 158 204 172 Z" fill="#f5f0e6"/>
-    <path d="M208 174 C208 144 230 128 256 128 C282 128 304 144 304 174" fill="none" stroke="#d8cbb8" stroke-width="5"/>
-    <ellipse cx="236" cy="180" rx="6" ry="8" fill="#202330" stroke="none"/>
-    <ellipse cx="276" cy="180" rx="6" ry="8" fill="#202330" stroke="none"/>
-    <path d="M248 202 Q256 208 264 202" fill="none" stroke="#9c5a48" stroke-width="4"/>
-    <ellipse cx="222" cy="194" rx="9" ry="5" fill="#ef8d7d" opacity="0.55" stroke="none"/>
-    <ellipse cx="290" cy="194" rx="9" ry="5" fill="#ef8d7d" opacity="0.55" stroke="none"/>
-    <path d="M226 130 L256 96 L286 130 L274 140 L256 122 L238 140 Z" fill="url(#gold)" stroke-width="6"/>
-    <circle cx="256" cy="116" r="8" fill="#e84848" stroke="#7a1616" stroke-width="4"/>
-    <path d="M236 260 Q256 278 276 260 L276 288 Q256 304 236 288 Z" fill="#b93f42"/>
-  </g>
-
-  <!-- front gold crest -->
-  <g transform="translate(256 454)">
-    <path d="M-62 10 L-46 -18 L-20 4 L0 -26 L20 4 L46 -18 L62 10 L0 28 Z" fill="url(#gold)" stroke="#4a2b08" stroke-width="5" stroke-linejoin="round"/>
-    <circle cx="0" cy="8" r="7" fill="#b93838" stroke="#4a2b08" stroke-width="4"/>
-  </g>
-
-  <!-- sparkle accents -->
-  <g fill="#ffe9a0">
-    <circle cx="86" cy="132" r="4"/>
-    <circle cx="430" cy="152" r="3"/>
-    <circle cx="408" cy="96" r="2"/>
-    <circle cx="112" cy="214" r="2"/>
-  </g>
+  <!-- 高光 -->
+  <path d="M64 90 Q140 42 230 42" stroke="#ffffff" stroke-width="8" fill="none" opacity="0.22" stroke-linecap="round"/>
+  <path d="M282 58 Q366 44 448 116" stroke="#ffffff" stroke-width="6" fill="none" opacity="0.15" stroke-linecap="round"/>
 </svg>

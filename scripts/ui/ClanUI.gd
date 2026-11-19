@@ -664,7 +664,7 @@ func _card_name_for_id(card_id: int) -> String:
 func _create_chat_node(msg: Dictionary) -> Control:
 	var sender_name := String(msg.get("player_name", "玩家"))
 	var pid := int(msg.get("player_id", 0))
-	var is_me: bool = pid == ClanManager.get_player_id() or (pid == 0 and sender_name == PlayerData.player_name)
+	var is_me: bool = pid == ClanManager.get_player_id() or sender_name == PlayerData.player_name
 	var row := HBoxContainer.new()
 	row.add_theme_constant_override("separation", 9)
 	row.alignment = BoxContainer.ALIGNMENT_BEGIN
@@ -844,8 +844,10 @@ func _on_request_card():
 	card_select.callback = func(card_id, amount):
 		ClanManager.request_card(card_id, amount, func(succ, data):
 			if succ:
+				_toast("卡牌请求已发送")
 				ClanManager.invalidate_cache()
 				_refresh_my_clan()
+				ClanManager.get_chat_history(_on_chat_history)
 			else:
 				_toast("请求失败：%s" % str(data))
 		)
@@ -932,6 +934,8 @@ func _join_clan(clan_id: String):
 		if success:
 			if str(data) == "applied":
 				_toast("已提交入部申请，等待首领审批")
+				ClanManager.invalidate_cache()
+				_refresh_my_clan()
 			else:
 				ClanManager.invalidate_cache()
 				_switch_tab(0)
