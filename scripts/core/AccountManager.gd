@@ -15,6 +15,7 @@ const SUPABASE_KEY := "sb_publishable_ppeyEdIwDfUDkcrmTFBVjQ_6P8i64F3"
 var is_authenticated: bool = false
 var auto_login_pending: bool = false
 var account_email: String = ""
+var account_username: String = ""
 var account_id: String = ""
 var cloud_status: String = "未连接"
 var last_error: String = ""
@@ -105,6 +106,20 @@ func _boot() -> void:
 		_sync_public_profile()
 
 
+func recent_supabase_accounts(days: int = 30) -> Array:
+	var out: Array = []
+	var idx := _load_index()
+	for acct in recent_accounts(days):
+		var email := String(acct.get("email", ""))
+		var online := bool(idx.get_value(email, "supabase_online", false))
+		var refresh := String(idx.get_value(email, "supabase_refresh", ""))
+		if not online and refresh == "":
+			continue
+		acct["online"] = online
+		acct["username"] = String(idx.get_value(email, "username", ""))
+		out.append(acct)
+	return out
+
 func _player_load_account(migrate_legacy := true) -> void:
 	_fresh_account = not FileAccess.file_exists(_account_save_path(account_id))
 	PlayerData.use_account(account_id, migrate_legacy)
@@ -148,6 +163,7 @@ func login_recent(email: String) -> Dictionary:
 	var saved_user := String(idx.get_value(email, "supabase_user", ""))
 	await _end_cloud_session()
 	account_email = email
+	account_username = String(idx.get_value(email, "username", ""))
 	account_id = _make_id(email)
 	_supabase_refresh_token = saved_refresh
 	_supabase_user_id = saved_user
@@ -512,6 +528,7 @@ func _save_session(online: bool) -> void:
 		idx.set_value(account_email, "supabase_refresh", _supabase_refresh_token)
 		idx.set_value(account_email, "supabase_user", _supabase_user_id)
 		idx.set_value(account_email, "supabase_online", _session_online)
+		idx.set_value(account_email, "username", account_username)
 		idx.save(index_path())
 
 
@@ -551,6 +568,7 @@ func _supabase_login(email: String, password: String) -> Dictionary:
 	_supabase_refresh_token = String(d.get("refresh_token", ""))
 	var user: Dictionary = Dictionary(d.get("user", {}))
 	_supabase_user_id = String(user.get("id", ""))
+	account_username = String(Dictionary(user.get("user_metadata", {})).get("username", ""))
 	return {"ok": _supabase_access_token != "", "error": "" if _supabase_access_token != "" else "未获取到会话"}
 
 func _supabase_signup(email: String, password: String) -> Dictionary:
@@ -605,7 +623,10 @@ func _supabase_update_metadata(meta: Dictionary) -> bool:
 	if int(res[1]) == 401 and await _supabase_refresh():
 		res = await _http_request(HTTPClient.METHOD_PUT,
 			SUPABASE_URL + "/auth/v1/user", _supabase_headers(_supabase_access_token), body)
-	return int(res[1]) >= 200 and int(res[1]) < 300
+	var ok_meta := int(res[1]) >= 200 and int(res[1]) < 300
+	if not ok_meta:
+		last_error = _supabase_error(res)
+	return ok_meta
 
 func _supabase_logout() -> void:
 	if _supabase_access_token == "":
@@ -648,6 +669,7 @@ func _supabase_upload_cloud() -> bool:
 	var path := PlayerData.current_save_path()
 	var text := FileAccess.get_file_as_string(path)
 	if text == "":
+		last_error = "本地存档为空：%s" % path
 		return false
 	var meta := {
 		"cr_save": Marshalls.utf8_to_base64(text),
@@ -745,7 +767,7 @@ func _sync_cloud_after_login() -> void:
 			cloud_status = "已上传云端存档" if up else "云端上传失败"
 	elif bool(remote.get("not_found", false)) or int(remote.get("code", 0)) == 404:
 		var up2 := await _upload_cloud()
-		cloud_status = "已上传云端存档" if up2 else "云端上传失败"
+		cloud_status = "已上传云端存档" if up2 else ("云端上传失败：" + last_error)
 	else:
 		cloud_status = "云端不可用，使用本地存档"
 	_fresh_account = false
@@ -784,7 +806,7 @@ func _upload_cloud_async() -> void:
 		# 网络失败后保留 dirty，30 秒后自动重试
 		_dirty = true
 		_upload_retry_at = Time.get_ticks_msec() + 30000
-		cloud_status = "云端上传失败，稍后重试"
+		cloud_status = "云端上传失败，稍后重试：" + last_error
 		cloud_status_changed.emit()
 
 

@@ -89,18 +89,20 @@ func _build() -> void:
 	tip.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	_form.add_child(tip)
 
-	var recent: Array = AccountManager.recent_accounts(30)
+	var recent: Array = AccountManager.recent_supabase_accounts(30)
 	if not recent.is_empty():
-		var recent_title := _label("最近 30 天登录过的本机账号", 13, GOLD)
+		var recent_title := _label("最近登录的 Supabase 账号", 13, GOLD)
 		_form.add_child(recent_title)
-		var recent_note := _label("本机账号只读取本机存档；查看/同步云端请用邮箱密码登录", 11, MUTED)
+		var recent_note := _label("点击将恢复该账号的 Supabase 云存档", 11, MUTED)
 		recent_note.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 		_form.add_child(recent_note)
 		for acct in recent.slice(0, 8):
 			var email := String(acct.get("email", ""))
+			var uname := String(acct.get("username", ""))
+			var label := uname if uname != "" else email
 			var days := int(acct.get("days_ago", 0))
 			var rb := Button.new()
-			rb.text = "%s   ·   %s" % [email, "今天登录" if days <= 0 else "%d 天前登录" % days]
+			rb.text = "%s   ·   %s" % [label, "今天登录" if days <= 0 else "%d 天前登录" % days]
 			rb.focus_mode = Control.FOCUS_NONE
 			rb.custom_minimum_size = Vector2(0, 44)
 			_style_secondary(rb)
