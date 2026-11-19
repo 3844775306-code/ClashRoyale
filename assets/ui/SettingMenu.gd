@@ -104,7 +104,14 @@ func _build_ui():
 	vbox.add_child(_row_label("👤 账号"))
 	var acct_lbl := Label.new()
 	var email_txt := AccountManager.account_email if AccountManager.account_email != "" else "本机账号"
-	acct_lbl.text = "%s\n云存档：%s\n构建：%s" % [email_txt, AccountManager.cloud_status, Config.BUILD_TAG]
+	var _local_path := PlayerData.current_save_path()
+	var _local_ok := FileAccess.file_exists(_local_path)
+	acct_lbl.text = "%s\n本地存档：%s\n云存档：%s\n构建：%s" % [
+		email_txt,
+		("存在（%d 字节）" % FileAccess.get_file_as_string(_local_path).length()) if _local_ok else "不存在",
+		AccountManager.cloud_status,
+		Config.BUILD_TAG,
+	]
 	acct_lbl.add_theme_font_size_override("font_size", 13)
 	acct_lbl.add_theme_color_override("font_color", Color(0.72, 0.78, 0.88))
 	acct_lbl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
