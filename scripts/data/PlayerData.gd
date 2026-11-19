@@ -124,9 +124,16 @@ func use_account(acct_id: String, migrate_legacy := true) -> void:
 		account_id = "default"
 		account_save_path = _default_save_path()
 	else:
-		account_save_path = "%s/accounts/%s/player_data.cfg" % [_data_root().trim_suffix("/"), acct_id]
+		var normal_path := "%s/accounts/%s/player_data.cfg" % [_data_root().trim_suffix("/"), acct_id]
 		var fb_path := fallback_save_path(acct_id)
-		if not FileAccess.file_exists(account_save_path) and FileAccess.file_exists(fb_path):
+		if FileAccess.file_exists(normal_path):
+			account_save_path = normal_path
+		elif FileAccess.file_exists(fb_path):
+			account_save_path = fb_path
+		elif migrate_legacy and FileAccess.file_exists(_default_save_path()):
+			account_save_path = normal_path
+		else:
+			# 新账号直接使用 user:// 根目录的单文件，避免子目录创建失败
 			account_save_path = fb_path
 	ensure_save_dir(account_save_path)
 	if migrate_legacy and acct_id != "default" and not FileAccess.file_exists(account_save_path) \

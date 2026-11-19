@@ -123,7 +123,8 @@ func recent_supabase_accounts(days: int = 30) -> Array:
 	return out
 
 func _player_load_account(migrate_legacy := true) -> void:
-	_fresh_account = not FileAccess.file_exists(_account_save_path(account_id))
+	_fresh_account = not FileAccess.file_exists(_account_save_path(account_id)) \
+		and not FileAccess.file_exists(PlayerData.fallback_save_path(account_id))
 	PlayerData.use_account(account_id, migrate_legacy)
 	if _fresh_account:
 		PlayerData.save_data()
