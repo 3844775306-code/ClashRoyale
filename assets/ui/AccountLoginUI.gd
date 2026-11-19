@@ -160,7 +160,7 @@ func _build() -> void:
 	_status.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	_form.add_child(_status)
 
-	var hint := _label("用户名+密码登录；登录后可绑定邮箱领取奖励。云端存档由 Supabase 提供", 11, Color(0.5, 0.56, 0.66))
+	var hint := _label("用户名+密码登录；登录后可绑定邮箱领取奖励。云端存档由 Supabase 提供\n构建：%s" % Config.BUILD_TAG, 11, Color(0.5, 0.56, 0.66))
 	hint.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	hint.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	_form.add_child(hint)
