@@ -534,6 +534,11 @@ func _refresh_members():
 		var member_snapshot := {
 			"player_id": str(member_id), "name": an,
 			"trophies": int(m.get("trophies", 0)),
+			"highest_trophies": int(m.get("highest_trophies", m.get("trophies", 0))),
+			"arena": PlayerData._arena_index_for_trophies(int(m.get("trophies", 0))),
+			"donations": int(m.get("donations", 0)),
+			"joined": int(m.get("joined", 0)),
+			"bio": String(m.get("bio", "")),
 			"avatar_seed": aseed, "avatar_index": aidx,
 			"role": String(m.get("role", "")),
 			"clan": String(my_clan_data.get("name", "")),
@@ -619,10 +624,6 @@ func _update_chat_display():
 	ordered.sort_custom(func(a, b): return float(a.get("timestamp", 0.0)) < float(b.get("timestamp", 0.0)))
 	for msg in ordered:
 		chat_list.add_child(_create_chat_node(msg))
-	var sc = get_meta("chat_scroll", null)
-	if sc:
-		await get_tree().process_frame
-		sc.scroll_vertical = int(sc.get_v_scroll_bar().max_value)
 
 func _merge_pending_chat(server_chat: Array) -> Array:
 	var merged: Array = server_chat.duplicate()
@@ -674,7 +675,17 @@ func _create_chat_node(msg: Dictionary) -> Control:
 		av.setup(sender_name, seed_value, avatar_index)
 	row.add_child(av)
 	av.mouse_filter = Control.MOUSE_FILTER_STOP
-	var chat_profile := {"player_id": str(pid), "name": sender_name, "avatar_seed": seed_value, "avatar_index": avatar_index, "clan": String(my_clan_data.get("name", ""))}
+	var chat_profile := {"player_id": str(pid), "name": sender_name, "avatar_seed": seed_value, "avatar_index": avatar_index, "clan": String(my_clan_data.get("name", "")), "trophies": 0, "role": ""}
+	for mid in my_clan_data.get("members", {}).keys():
+		if str(mid) == str(pid):
+			var mm: Dictionary = my_clan_data.members[mid]
+			chat_profile["trophies"] = int(mm.get("trophies", 0))
+			chat_profile["highest_trophies"] = int(mm.get("highest_trophies", mm.get("trophies", 0)))
+			chat_profile["arena"] = PlayerData._arena_index_for_trophies(int(mm.get("trophies", 0)))
+			chat_profile["donations"] = int(mm.get("donations", 0))
+			chat_profile["joined"] = int(mm.get("joined", 0))
+			chat_profile["role"] = String(mm.get("role", ""))
+			break
 	av.gui_input.connect(func(e):
 		if e is InputEventMouseButton and e.pressed:
 			_open_player_profile(chat_profile))

@@ -121,8 +121,8 @@ func save_player_inventory(player_id: int, inventory: Dictionary, callback: Call
 	var metadata = _encode(JSON.stringify(inventory))
 	var request = LL_Leaderboards.SubmitScore.new(leaderboard_key, 0, member_id, metadata)
 	var response = await request.send()
-	if callback.is_valid():
-		callback.call(response.success, response.error if not response.success else null)
+	if _cb_valid(callback):
+		callback.call(response.success, "" if response.success else "库存同步失败")
 # ---------- 获取当前玩家所在部落 ----------
 func _cb_valid(cb: Callable) -> bool:
 	if cb == null or not cb.is_valid():
