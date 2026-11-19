@@ -166,7 +166,7 @@ func login_recent(email: String) -> Dictionary:
 	var idx := _load_index()
 	var saved_refresh := String(idx.get_value(email, "supabase_refresh", ""))
 	var saved_user := String(idx.get_value(email, "supabase_user", ""))
-	await _end_cloud_session()
+	await _end_cloud_session(false)
 	account_email = email
 	account_username = String(idx.get_value(email, "username", ""))
 	account_id = _make_id(email)
@@ -191,8 +191,8 @@ func login_recent(email: String) -> Dictionary:
 	session_changed.emit()
 	return {"ok": true, "online": _session_online}
 
-func _end_cloud_session() -> void:
-	if _supabase_access_token != "":
+func _end_cloud_session(revoke := true) -> void:
+	if revoke and _supabase_access_token != "":
 		await _supabase_logout()
 	_supabase_access_token = ""
 	_supabase_refresh_token = ""
