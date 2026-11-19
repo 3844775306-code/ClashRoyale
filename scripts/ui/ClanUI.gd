@@ -43,6 +43,7 @@ var toast_label: Label
 # 数据缓存
 var my_clan_data: Dictionary = {}
 var current_chat: Array = []
+var _last_search_clans: Array = []
 
 
 func _ready():
@@ -443,6 +444,8 @@ func _show_no_clan():
 
 func _show_clan_home(clan: Dictionary):
 	my_clan_data = clan
+	if not _last_search_clans.is_empty() and clan_list != null:
+		_show_clan_list(_last_search_clans)
 	no_clan_box.hide()
 	clan_home_box.show()
 
@@ -636,7 +639,7 @@ func _create_chat_node(msg: Dictionary) -> Control:
 	bubble_row.alignment = BoxContainer.ALIGNMENT_END if is_me else BoxContainer.ALIGNMENT_BEGIN
 	bubble_row.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	col.add_child(bubble_row)
-	var bubble := Panel.new()
+	var bubble := PanelContainer.new()
 	var bs := StyleBoxFlat.new()
 	bs.bg_color = Color(0.16, 0.38, 0.66, 0.98) if is_me else Color(0.075, 0.105, 0.18, 0.98)
 	bs.border_color = Color(0.46, 0.80, 1.0, 0.45) if is_me else Color(1, 1, 1, 0.10)
@@ -741,14 +744,19 @@ func _on_search_clans():
 
 
 func _show_clan_list(clans: Array):
+	_last_search_clans = clans.duplicate()
 	for child in clan_list.get_children():
 		child.queue_free()
 	if clans.is_empty():
 		clan_list.add_child(UiComponents.make_empty_state("🔍", "没有找到部落", ""))
 		return
 	var keyword := search_input.text.strip_edges()
+	var my_clan_id := str(my_clan_data.get("clan_id", ""))
+	var my_clan_name := String(my_clan_data.get("name", ""))
 	for clan in clans:
 		var name: String = clan.get("name", "")
+		var cid := str(clan.get("clan_id", ""))
+		var already_joined: bool = (my_clan_id != "" and cid == my_clan_id) or (my_clan_name != "" and name == my_clan_name)
 		if keyword != "" and not name.contains(keyword):
 			continue
 		var row := UiComponents.make_list_row(ThemeHelper.COLORS.gold, 68)
@@ -776,8 +784,11 @@ func _show_clan_list(clans: Array):
 		hbox.add_child(info)
 
 		var join_btn := UiComponents.make_primary_button("加入" if clan.get("is_open", false) else "申请", Callable(), Vector2(96, 44))
-		var cid := str(clan.get("clan_id", ""))
-		join_btn.pressed.connect(_join_clan.bind(cid))
+		if already_joined:
+			join_btn.text = "已加入"
+			join_btn.disabled = true
+		else:
+			join_btn.pressed.connect(_join_clan.bind(cid))
 		hbox.add_child(join_btn)
 
 		clan_list.add_child(row)
