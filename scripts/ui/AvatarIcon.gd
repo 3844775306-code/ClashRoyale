@@ -6,6 +6,9 @@ var avatar_seed: int = 0
 var avatar_index: int = 0
 var custom_texture: Texture2D = null
 var team_color: Color = Color(0.95, 0.76, 0.32)
+var profile: Dictionary = {}
+
+signal clicked
 
 func setup(name: String, seed_value: int, index: int, texture: Texture2D = null) -> void:
 	player_name = name
@@ -18,10 +21,14 @@ func setup_local() -> void:
 	setup(PlayerData.player_name, PlayerData.avatar_seed, PlayerData.avatar_index, PlayerData.get_avatar_texture())
 
 func _ready():
-	mouse_filter = Control.MOUSE_FILTER_IGNORE
+	mouse_filter = Control.MOUSE_FILTER_PASS
 	if custom_minimum_size.x <= 0.0:
 		custom_minimum_size = Vector2(44, 44)
 	queue_redraw()
+
+func _gui_input(event: InputEvent) -> void:
+	if event is InputEventMouseButton and event.pressed and event.button_index == MOUSE_BUTTON_LEFT:
+		clicked.emit()
 
 func _draw():
 	var s: float = minf(size.x, size.y)

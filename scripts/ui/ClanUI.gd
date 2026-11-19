@@ -440,12 +440,15 @@ func _style_tab(btn: Button, active: bool):
 # ==================== 我的部落数据 ====================
 
 func _refresh_my_clan():
-	ClanManager.get_my_clan(func(success, clan):
-		if success and clan != null:
-			_show_clan_home(clan)
-		else:
-			_show_no_clan()
-	)
+	ClanManager.get_my_clan(_on_refresh_my_clan)
+
+func _on_refresh_my_clan(success, clan) -> void:
+	if not is_inside_tree():
+		return
+	if success and clan != null:
+		_show_clan_home(clan)
+	else:
+		_show_no_clan()
 
 
 func _poll_clan() -> void:
@@ -453,16 +456,17 @@ func _poll_clan() -> void:
 		return
 	_polling = true
 	ClanManager.invalidate_cache()
-	ClanManager.get_my_clan(func(success, clan):
-		_polling = false
-		if not is_inside_tree() or not success:
-			return
-		if clan == null:
-			_show_no_clan()
-		else:
-			_show_clan_home(clan)
-		ClanManager.sync_my_inventory(_on_inventory_synced)
-	)
+	ClanManager.get_my_clan(_on_poll_clan)
+
+func _on_poll_clan(success, clan) -> void:
+	_polling = false
+	if not is_inside_tree() or not success:
+		return
+	if clan == null:
+		_show_no_clan()
+	else:
+		_show_clan_home(clan)
+	ClanManager.sync_my_inventory(_on_inventory_synced)
 
 func _show_no_clan():
 	no_clan_box.show()
@@ -497,11 +501,14 @@ func _show_clan_home(clan: Dictionary):
 
 	_refresh_members()
 
-	ClanManager.get_chat_history(func(success, chat):
-		if success and chat is Array:
-			current_chat = _merge_pending_chat(chat)
-			_update_chat_display()
-	)
+	ClanManager.get_chat_history(_on_chat_history)
+
+func _on_chat_history(success, chat) -> void:
+	if not is_inside_tree():
+		return
+	if success and chat is Array:
+		current_chat = _merge_pending_chat(chat)
+		_update_chat_display()
 
 
 func _refresh_members():
@@ -845,14 +852,17 @@ func _on_request_card():
 
 
 func _donate_card(target_id: int, card_id: int, request_key: String):
-	ClanManager.donate_card(target_id, card_id, 0, request_key, func(succ, data):
-		if succ:
-			ClanManager.invalidate_cache()
-			_refresh_my_clan()
-			PlayerData.save_data()
-		else:
-			_toast("捐赠失败：%s" % str(data))
-	)
+	ClanManager.donate_card(target_id, card_id, 0, request_key, _on_donate_result)
+
+func _on_donate_result(succ, data) -> void:
+	if not is_inside_tree():
+		return
+	if succ:
+		ClanManager.invalidate_cache()
+		_refresh_my_clan()
+		PlayerData.save_data()
+	else:
+		_toast("捐赠失败：%s" % str(data))
 
 
 func _on_search_clans():

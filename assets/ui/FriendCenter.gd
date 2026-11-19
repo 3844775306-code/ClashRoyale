@@ -221,6 +221,8 @@ func _result_row(e: Dictionary) -> Control:
 	av.size = Vector2(44, 44)
 	av.setup(name, int(e.get("avatar_seed", absi(hash(name)))), int(e.get("avatar_index", 0)))
 	h.add_child(av)
+	av.mouse_filter = Control.MOUSE_FILTER_STOP
+	av.clicked.connect(func(): UiComponents.open_player_profile(self, e))
 	var info := VBoxContainer.new()
 	info.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	info.add_theme_constant_override("separation", 2)
@@ -289,6 +291,8 @@ func _refresh_requests() -> void:
 		av.size = Vector2(48, 48)
 		av.setup(name, int(prof.get("avatar_seed", 0)), int(prof.get("avatar_index", 0)))
 		h.add_child(av)
+		av.mouse_filter = Control.MOUSE_FILTER_STOP
+		av.clicked.connect(func(): UiComponents.open_player_profile(self, prof))
 		var info := VBoxContainer.new()
 		info.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		info.add_theme_constant_override("separation", 2)
@@ -352,6 +356,8 @@ func _refresh_friends() -> void:
 		av.size = Vector2(44, 44)
 		av.setup(name, int(f.get("avatar_seed", 0)), int(f.get("avatar_index", 0)))
 		h.add_child(av)
+		av.mouse_filter = Control.MOUSE_FILTER_STOP
+		av.clicked.connect(func(): UiComponents.open_player_profile(self, f))
 		var info := VBoxContainer.new()
 		info.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		info.add_theme_constant_override("separation", 2)

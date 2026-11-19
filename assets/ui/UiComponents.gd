@@ -137,6 +137,9 @@ func make_header(owner: Control, title: String, back_action: Callable = Callable
 	av.add_to_group("topbar_avatar")
 	avatar.add_child(av)
 	av.setup_local()
+	av.mouse_filter = Control.MOUSE_FILTER_STOP
+	av.clicked.connect(func():
+		open_player_profile(owner, {"player_id": str(ClanManager.get_player_id()), "name": PlayerData.player_name, "trophies": PlayerData.trophies, "avatar_seed": PlayerData.avatar_seed, "avatar_index": PlayerData.avatar_index, "clan": ""}))
 
 	var name_lbl := Label.new()
 	name_lbl.text = PlayerData.player_name
@@ -242,6 +245,13 @@ func refresh_topbar() -> void:
 		if n.has_method("setup_local"):
 			n.setup_local()
 
+
+func open_player_profile(host: Control, profile: Dictionary) -> void:
+	if host == null or not is_instance_valid(host):
+		return
+	var dlg = (load("res://scripts/ui/PlayerProfileDialog.gd") as GDScript).new()
+	dlg.profile = profile
+	host.add_child(dlg)
 
 func _open_name_dialog(host: Control) -> void:
 	prompt_player_name(host)

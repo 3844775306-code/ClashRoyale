@@ -181,12 +181,12 @@ func get_my_clan(callback: Callable):
 	# 这里先用遍历方式，适用于小规模测试
 	get_all_clans(func(success, clans):
 		if not success:
-			callback.call(false, "获取部落列表失败")
+			if _cb_valid(callback): callback.call(false, "获取部落列表失败")
 			return
 		var pid = str(get_player_id())
 		for clan in clans:
 			if clan.has("members") and clan.members.has(pid):
-				callback.call(true, clan)
+				if _cb_valid(callback): callback.call(true, clan)
 				return
 		callback.call(true, null)  # 没有加入任何部落
 	)
@@ -383,7 +383,7 @@ func search_clans(callback: Callable, keyword: String = ""):
 func join_clan(clan_id: String, callback: Callable):
 	get_all_clans(func(success, clans):
 		if not success:
-			callback.call(false, "获取部落列表失败")
+			if _cb_valid(callback): callback.call(false, "获取部落列表失败")
 			return
 		var target_clan = null
 		for c in clans:
@@ -441,7 +441,7 @@ func leave_clan(callback: Callable):
 			callback.call(false, "获取部落信息失败")
 			return
 		if clan == null:
-			callback.call(false, "你不在任何部落中")
+			if _cb_valid(callback): callback.call(false, "你不在任何部落中")
 			return
 		if clan.leader_id == get_player_id():
 			callback.call(false, "你是首领，请先转让首领或解散部落")
@@ -455,7 +455,7 @@ func leave_clan(callback: Callable):
 func kick_member(member_id: int, callback: Callable):
 	get_my_clan(func(success, clan):
 		if not success or clan == null:
-			callback.call(false, "获取部落信息失败")
+			if _cb_valid(callback): callback.call(false, "获取部落信息失败")
 			return
 		if clan.leader_id != get_player_id():
 			callback.call(false, "只有首领可以踢人")
@@ -475,7 +475,7 @@ func kick_member(member_id: int, callback: Callable):
 func promote_to_leader(new_leader_id: int, callback: Callable):
 	get_my_clan(func(success, clan):
 		if not success or clan == null:
-			callback.call(false, "获取部落信息失败")
+			if _cb_valid(callback): callback.call(false, "获取部落信息失败")
 			return
 		if clan.leader_id != get_player_id():
 			callback.call(false, "你不是首领")
@@ -492,7 +492,7 @@ func promote_to_leader(new_leader_id: int, callback: Callable):
 func approve_application(applicant_id: int, callback: Callable):
 	get_my_clan(func(success, clan):
 		if not success or clan == null:
-			callback.call(false, "获取部落信息失败")
+			if _cb_valid(callback): callback.call(false, "获取部落信息失败")
 			return
 		if clan.leader_id != get_player_id():
 			callback.call(false, "只有首领可以审批")
@@ -527,7 +527,7 @@ func approve_application(applicant_id: int, callback: Callable):
 func reject_application(applicant_id: int, callback: Callable):
 	get_my_clan(func(success, clan):
 		if not success or clan == null:
-			callback.call(false, "获取部落信息失败")
+			if _cb_valid(callback): callback.call(false, "获取部落信息失败")
 			return
 		if clan.leader_id != get_player_id():
 			callback.call(false, "只有首领可以审批")
@@ -567,7 +567,7 @@ func send_chat_message(message: String, callback: Callable = Callable()):
 func get_chat_history(callback: Callable):
 	get_my_clan(func(success, clan):
 		if not success or clan == null:
-			callback.call(false, "获取部落信息失败")
+			if _cb_valid(callback): callback.call(false, "获取部落信息失败")
 			return
 		callback.call(true, clan.get("chat", []))
 	)
@@ -604,7 +604,7 @@ func request_card(card_id: int, amount: int, callback: Callable):
 	amount = fixed_amount
 	get_my_clan(func(success, clan):
 		if not success or clan == null:
-			callback.call(false, "获取部落信息失败")
+			if _cb_valid(callback): callback.call(false, "获取部落信息失败")
 			return
 		if PlayerData.get_card_quantity(card_id) <= 0:
 			callback.call(false, "你还没有这张卡，无法请求")
@@ -639,19 +639,19 @@ func request_card(card_id: int, amount: int, callback: Callable):
 
 func donate_card(to_player_id: int, card_id: int, amount: int, request_key: String, callback: Callable):
 	if to_player_id == get_player_id():
-		callback.call(false, "不能捐赠给自己")
+		if _cb_valid(callback): callback.call(false, "不能捐赠给自己")
 		return
 	var rar: String = CARD_RARITY.rarity_of_id(card_id)
 	if rar == "epic" and not _is_sunday():
-		callback.call(false, "史诗卡只有周日才能捐赠")
+		if _cb_valid(callback): callback.call(false, "史诗卡只有周日才能捐赠")
 		return
 	var step: int = _donation_step_for(card_id)
 	if PlayerData.get_card_quantity(card_id) < step:
-		callback.call(false, "你拥有的该卡牌数量不足")
+		if _cb_valid(callback): callback.call(false, "你拥有的该卡牌数量不足")
 		return
 	get_my_clan(func(success, clan):
 		if not success or clan == null:
-			callback.call(false, "获取部落信息失败")
+			if _cb_valid(callback): callback.call(false, "获取部落信息失败")
 			return
 		var chat_list: Array = clan.get("chat", [])
 		var msg_index := -1
@@ -664,21 +664,21 @@ func donate_card(to_player_id: int, card_id: int, amount: int, request_key: Stri
 				msg_index = i
 				break
 		if msg_index < 0:
-			callback.call(false, "该请求已完成或不存在")
+			if _cb_valid(callback): callback.call(false, "该请求已完成或不存在")
 			return
 		var msg: Dictionary = chat_list[msg_index]
 		var target: int = int(msg.get("amount", amount))
 		var donated: int = int(msg.get("donated", 0))
 		if donated >= target:
-			callback.call(false, "该请求已完成")
+			if _cb_valid(callback): callback.call(false, "该请求已完成")
 			return
 		var donors: Array = Array(msg.get("donors", []))
 		if donors.has(get_player_id()) or donors.has(str(get_player_id())):
-			callback.call(false, "你已经捐赠过这张请求")
+			if _cb_valid(callback): callback.call(false, "你已经捐赠过这张请求")
 			return
 		var contribute: int = mini(step, target - donated)
 		if PlayerData.get_card_quantity(card_id) < contribute:
-			callback.call(false, "你拥有的该卡牌数量不足")
+			if _cb_valid(callback): callback.call(false, "你拥有的该卡牌数量不足")
 			return
 		PlayerData.remove_card(card_id, contribute)
 		PlayerData.donations_used += 1
@@ -706,18 +706,10 @@ func donate_card(to_player_id: int, card_id: int, amount: int, request_key: Stri
 		clan["pending_card_gifts"] = gifts
 		_update_clan_on_leaderboard(clan, func(ok, err):
 			if not ok:
-				callback.call(false, "保存部落失败")
+				if _cb_valid(callback): callback.call(false, "保存部落失败")
 				return
-			get_player_inventory(to_player_id, func(inv_ok, inventory):
-				if not inv_ok:
-					inventory = {}
-				inventory[str(card_id)] = inventory.get(str(card_id), 0) + contribute
-				save_player_inventory(to_player_id, inventory, func(wok, werr):
-					if wok:
-						callback.call(true, null)
-					else:
-						callback.call(false, "接收者库存更新失败，但请求已处理")
-				)
-			)
+			# 赠卡已经写入部落 pending_card_gifts；接收方通过邮箱领取。
+			# 云端库存写入是尽力而为，失败也不影响捐赠/请求进度。
+			if _cb_valid(callback): callback.call(true, null)
 		)
 	)

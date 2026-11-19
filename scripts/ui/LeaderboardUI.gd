@@ -4,32 +4,50 @@ extends Control
 const AVATAR_ICON = preload("res://scripts/ui/AvatarIcon.gd")
 
 var leader_list: VBoxContainer
+var _scroll: ScrollContainer
+var _refresh_timer: Timer
+var _loading: bool = false
 
 
 func _ready():
 	UiComponents.add_background(self)
 	UiComponents.make_header(self, "全球排行榜", _on_back_pressed, true)
-	var scroll := UiComponents.make_content_scroll(self)
+	_scroll = UiComponents.make_content_scroll(self)
 	leader_list = UiComponents.make_content_vbox()
-	scroll.add_child(leader_list)
+	_scroll.add_child(leader_list)
 	_show_loading_message()
 	load_leaderboard()
+	_refresh_timer = Timer.new()
+	_refresh_timer.wait_time = 5.0
+	_refresh_timer.timeout.connect(load_leaderboard)
+	add_child(_refresh_timer)
+	_refresh_timer.start()
 	UiComponents.fade_in(self)
 
 
 func load_leaderboard():
+	if _loading or not is_inside_tree():
+		return
+	_loading = true
 	print("[LeaderboardUI] 请求排行榜数据...")
-	LeaderboardAPI.get_leaderboard(func(entries):
-		print("[LeaderboardUI] 收到回调, 条目数: ", entries.size() if entries else 0)
-		_clear_list()
-		if entries == null:
+	LeaderboardAPI.get_leaderboard(_on_leaderboard_loaded)
+
+func _on_leaderboard_loaded(entries):
+	_loading = false
+	if not is_inside_tree():
+		return
+	var keep: int = _scroll.scroll_vertical if _scroll else 0
+	_clear_list()
+	if entries == null:
+		if leader_list.get_child_count() == 0:
 			_show_message("加载失败 (网络错误)")
-			return
-		if entries.is_empty():
-			_show_message("加载失败：%s" % LeaderboardAPI.last_error if LeaderboardAPI.last_error != "" else "暂无数据")
-			return
-		_populate_list(entries)
-	)
+		return
+	if entries.is_empty():
+		_show_message("加载失败：%s" % LeaderboardAPI.last_error if LeaderboardAPI.last_error != "" else "暂无数据")
+		return
+	_populate_list(entries)
+	if _scroll:
+		_scroll.scroll_vertical = keep
 
 
 func _clear_list():
@@ -60,6 +78,9 @@ func _populate_list(entries: Array):
 			is_self = true
 		elif str(data.name) == str(PlayerData.player_name):
 			is_self = true
+		var display_name: String = PlayerData.player_name if is_self else String(data.name)
+		if display_name.strip_edges() == "":
+			display_name = "玩家"
 		var accent := ThemeHelper.COLORS.gold if is_self else Color.TRANSPARENT
 		var row := UiComponents.make_list_row(accent, 60)
 		var hbox := HBoxContainer.new()
@@ -96,13 +117,25 @@ func _populate_list(entries: Array):
 		if is_self:
 			av.setup_local()
 		else:
-			var hs: int = absi(hash(String(data.name)))
-			av.setup(String(data.name), hs, hs % 12)
+			var hs: int = int(data.get("avatar_seed", absi(hash(display_name))))
+			var ai: int = int(data.get("avatar_index", hs % 12))
+			av.setup(display_name, hs, ai)
 		hbox.add_child(av)
+		av.mouse_filter = Control.MOUSE_FILTER_STOP
+		var prof := {
+			"player_id": String(data.get("player_id", "")),
+			"name": display_name,
+			"trophies": int(data.get("score", 0)),
+			"rank": int(data.get("rank", 0)),
+			"avatar_seed": int(data.get("avatar_seed", absi(hash(display_name)))),
+			"avatar_index": int(data.get("avatar_index", 0)),
+			"clan": String(data.get("clan", "")),
+		}
+		av.clicked.connect(func(): UiComponents.open_player_profile(self, prof))
 
 		# 玩家名
 		var name_lbl := Label.new()
-		name_lbl.text = data.name
+		name_lbl.text = display_name
 		name_lbl.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		name_lbl.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 		name_lbl.add_theme_font_size_override("font_size", 18)
@@ -120,6 +153,20 @@ func _populate_list(entries: Array):
 		hbox.add_child(score_lbl)
 
 		leader_list.add_child(row)
+
+
+func _open_profile(data: Dictionary, display_name: String) -> void:
+	var dlg = preload("res://scripts/ui/PlayerProfileDialog.gd").new()
+	dlg.profile = {
+		"player_id": String(data.get("player_id", "")),
+		"name": display_name,
+		"trophies": int(data.get("score", 0)),
+		"rank": int(data.get("rank", 0)),
+		"avatar_seed": int(data.get("avatar_seed", absi(hash(display_name)))),
+		"avatar_index": int(data.get("avatar_index", 0)),
+		"clan": String(data.get("clan", "")),
+	}
+	add_child(dlg)
 
 
 func _on_back_pressed():

@@ -1,5 +1,6 @@
 extends Control
 const AVATAR_ICON = preload("res://scripts/ui/AvatarIcon.gd")
+const BATTLE_MODES := preload("res://scripts/core/BattleModes.gd")
 
 var _status: Label
 var _room_status: Label
@@ -16,6 +17,7 @@ var _room_code_label: Label
 var _mode_label: Label
 var _rule_buttons: Array = []
 var _in_room := false
+var _invite_autoclaim := false
 
 func _ready():
 	UiComponents.add_background(self)
@@ -25,8 +27,21 @@ func _ready():
 	NetworkManager.lobby_status.connect(_on_status)
 	NetworkManager.guest_joined.connect(_on_guest_joined)
 	NetworkManager.seats_changed.connect(_refresh_seats)
-	NetworkManager.joined_room.connect(func(): _enter_room(false))
+	NetworkManager.joined_room.connect(func():
+		_enter_room(false)
+		if _invite_autoclaim:
+			_invite_autoclaim = false
+			call_deferred("_auto_claim"))
 	NetworkManager.match_started.connect(_on_match_started)
+	FriendManager.invite_received.connect(_on_friend_invite)
+	# 从主菜单接受好友邀请后直接尝试加入
+	if FriendManager.pending_invite.size() > 0 and NetworkManager.role == NetworkManager.Role.NONE:
+		var inv := FriendManager.pending_invite
+		FriendManager.pending_invite = {}
+		_ip_edit.text = String(inv.get("ip", ""))
+		_code_edit.text = String(inv.get("code", ""))
+		_invite_autoclaim = true
+		call_deferred("_join_pressed")
 	var env_host := OS.get_environment("CR_NET_HOST")
 	if env_host != "":
 		call_deferred("_host_pressed")
@@ -108,7 +123,7 @@ func _build_initial() -> void:
 func _build_room() -> void:
 	var rbg := Panel.new()
 	rbg.position = Vector2(24, 92)
-	rbg.size = Vector2(752, 1050)
+	rbg.size = Vector2(752, 1240)
 	var rsb := StyleBoxFlat.new()
 	rsb.bg_color = Color(0.035, 0.055, 0.11, 0.94)
 	rsb.border_color = Color(0.72, 0.58, 0.30, 0.75)
@@ -122,7 +137,7 @@ func _build_room() -> void:
 	add_child(rbg)
 	_room_box = VBoxContainer.new()
 	_room_box.position = Vector2(42, 120)
-	_room_box.size = Vector2(716, 1400)
+	_room_box.size = Vector2(716, 1300)
 	_room_box.add_theme_constant_override("separation", 10)
 	_room_box.visible = false
 	add_child(_room_box)
@@ -132,29 +147,53 @@ func _build_room() -> void:
 	_room_box.add_child(_mode_label)
 	_uid_label = _label("", 13, Color(0.6,0.72,0.86))
 	_room_box.add_child(_uid_label)
-	# 派对规则（房主可选，双倍/突然死亡等）
-	var rule_row := HBoxContainer.new()
-	rule_row.add_theme_constant_override("separation", 8)
-	var rule_lbl := _label("派对规则", 14, Color(0.86, 0.80, 0.62))
-	rule_lbl.custom_minimum_size = Vector2(88, 0)
+	# 派对规则（房主可选，覆盖全部特殊模式；选卡类联机自动发牌）
+	var rule_lbl := _label("派对规则（房主可选）", 14, Color(0.86, 0.80, 0.62))
 	rule_lbl.size_flags_horizontal = Control.SIZE_SHRINK_BEGIN
-	rule_lbl.size_flags_vertical = Control.SIZE_SHRINK_CENTER
-	rule_row.add_child(rule_lbl)
-	for entry in [["standard", "标准"], ["double_elixir", "双倍圣水"], ["sudden_death", "突然死亡"]]:
+	_room_box.add_child(rule_lbl)
+	var rule_scroll := ScrollContainer.new()
+	rule_scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	rule_scroll.scroll_deadzone = 8
+	rule_scroll.custom_minimum_size = Vector2(716, 150)
+	_room_box.add_child(rule_scroll)
+	var rule_grid := GridContainer.new()
+	rule_grid.columns = 4
+	rule_grid.add_theme_constant_override("h_separation", 8)
+	rule_grid.add_theme_constant_override("v_separation", 8)
+	rule_grid.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	rule_scroll.add_child(rule_grid)
+	var rules := [
+		["standard", "标准"], ["double_elixir", "双倍圣水"], ["triple_elixir", "三倍圣水"],
+		["seven_elixir", "七倍圣水"], ["sudden_death", "突然死亡"], ["touchdown", "冲线"],
+		["classic_deck", "经典卡组"], ["draft", "选卡"], ["triple_draft", "三选一"],
+		["swap_draft", "双向选卡"], ["mirror_deck", "镜像卡组"], ["mega_deck", "18 卡"],
+		["commando", "主题特种兵"],
+	]
+	for entry in rules:
 		var b := Button.new()
 		b.text = String(entry[1])
 		b.focus_mode = Control.FOCUS_NONE
-		b.custom_minimum_size = Vector2(118, 38)
-		b.add_theme_font_size_override("font_size", 14)
+		b.custom_minimum_size = Vector2(166, 34)
+		b.add_theme_font_size_override("font_size", 13)
 		var rid := String(entry[0])
 		b.pressed.connect(func():
 			if NetworkManager.role == NetworkManager.Role.HOST:
 				NetworkManager.party_rule = rid
 				_refresh_rule_buttons()
-				_refresh_seats())
+				_refresh_seats()
+				NetworkManager.sync_room())
 		_rule_buttons.append([b, rid])
-		rule_row.add_child(b)
-	_room_box.add_child(rule_row)
+		rule_grid.add_child(b)
+	# 好友 / 邀请按钮
+	var friend_row := HBoxContainer.new()
+	friend_row.add_theme_constant_override("separation", 10)
+	var friends_btn := UiComponents.make_secondary_button("好友", _show_friend_list, Vector2(150, 42))
+	friends_btn.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	friend_row.add_child(friends_btn)
+	var invite_btn := UiComponents.make_primary_button("邀请好友", _on_invite_friend, Vector2(0, 42))
+	invite_btn.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	friend_row.add_child(invite_btn)
+	_room_box.add_child(friend_row)
 	_seats_box = VBoxContainer.new()
 	_seats_box.add_theme_constant_override("separation", 10)
 	_room_box.add_child(_seats_box)
@@ -203,6 +242,102 @@ func _enter_room(is_host: bool) -> void:
 		if auto_s != "":
 			call_deferred("_auto_claim")
 
+func _on_invite_friend() -> void:
+	if NetworkManager.role != NetworkManager.Role.HOST:
+		_room_status.text = "只有房主可以发送房间邀请"
+		return
+	if NetworkManager.room_code == "":
+		return
+	var ok := FriendManager.send_room_invite(NetworkManager.room_code, NetworkManager.get_local_ip(), PlayerData.player_name)
+	_room_status.text = "已广播邀请：房间码 %s（好友需在同一局域网）" % NetworkManager.room_code if ok else "邀请广播失败"
+
+
+func _on_friend_invite(invite: Dictionary) -> void:
+	if NetworkManager.role != NetworkManager.Role.NONE:
+		return
+	var dlg := AcceptDialog.new()
+	dlg.title = "联机邀请"
+	dlg.dialog_text = "好友 %s 邀请你加入房间 %s\nIP：%s\n\n确定后将进入联机房间。" % [
+		String(invite.get("from", "好友")), String(invite.get("code", "")), String(invite.get("ip", ""))]
+	dlg.confirmed.connect(func():
+		get_tree().change_scene_to_file("res://scenes/network_lobby.tscn"))
+	add_child(dlg)
+	dlg.popup_centered(Vector2i(680, 320))
+
+
+func _show_friend_list() -> void:
+	var layer := Control.new()
+	layer.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	layer.z_index = 210
+	add_child(layer)
+	var overlay := UiComponents.make_overlay(layer)
+	overlay.gui_input.connect(func(e):
+		if e is InputEventMouseButton and e.pressed:
+			layer.queue_free())
+	var panel := UiComponents.make_card(ThemeHelper.COLORS.gold)
+	panel.anchor_left = 0.5
+	panel.anchor_right = 0.5
+	panel.anchor_top = 0.5
+	panel.anchor_bottom = 0.5
+	panel.offset_left = -290
+	panel.offset_right = 290
+	panel.offset_top = -300
+	panel.offset_bottom = 300
+	layer.add_child(panel)
+	var v := VBoxContainer.new()
+	v.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	v.offset_left = 22
+	v.offset_right = -22
+	v.offset_top = 20
+	v.offset_bottom = -20
+	v.add_theme_constant_override("separation", 8)
+	panel.add_child(v)
+	var title := Label.new()
+	title.text = "好友列表"
+	title.add_theme_font_size_override("font_size", 22)
+	title.add_theme_color_override("font_color", ThemeHelper.COLORS.gold)
+	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	v.add_child(title)
+	var scroll := ScrollContainer.new()
+	scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	v.add_child(scroll)
+	var list := VBoxContainer.new()
+	list.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	list.add_theme_constant_override("separation", 6)
+	scroll.add_child(list)
+	var fl := FriendManager.all()
+	if fl.is_empty():
+		var empty := Label.new()
+		empty.text = "暂无好友\n在排行榜或部落点击玩家头像即可添加"
+		empty.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		empty.add_theme_font_size_override("font_size", 14)
+		empty.add_theme_color_override("font_color", ThemeHelper.COLORS.text_muted)
+		list.add_child(empty)
+	for f in fl:
+		var row := HBoxContainer.new()
+		row.add_theme_constant_override("separation", 10)
+		list.add_child(row)
+		var nm := Label.new()
+		nm.text = "%s  %d杯" % [String(f.get("name", "玩家")), int(f.get("trophies", 0))]
+		nm.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		nm.add_theme_font_size_override("font_size", 15)
+		row.add_child(nm)
+		var ib := UiComponents.make_primary_button("邀请", Callable(), Vector2(88, 36))
+		ib.pressed.connect(func():
+			if NetworkManager.role == NetworkManager.Role.HOST and NetworkManager.room_code != "":
+				var ok := FriendManager.send_room_invite(NetworkManager.room_code, NetworkManager.get_local_ip(), PlayerData.player_name)
+				_room_status.text = "已邀请 %s（同一局域网）" % String(f.get("name", "好友")) if ok else "邀请失败"
+			else:
+				_room_status.text = "请先创建房间再邀请好友")
+		row.add_child(ib)
+	var search_btn := UiComponents.make_secondary_button("搜索添加好友", Callable(), Vector2(0, 44))
+	search_btn.pressed.connect(func():
+		layer.queue_free()
+		add_child(preload("res://assets/ui/FriendCenter.gd").new()))
+	v.add_child(search_btn)
+	v.add_child(UiComponents.make_secondary_button("关闭", func(): layer.queue_free(), Vector2(0, 44)))
+
+
 func _refresh_rule_buttons() -> void:
 	for item in _rule_buttons:
 		var b: Button = item[0]
@@ -223,11 +358,7 @@ func _refresh_seats() -> void:
 	if not _in_room:
 		return
 	_room_code_label.text = "房间码 %s    IP %s" % [NetworkManager.room_code, NetworkManager.get_local_ip()]
-	var rule_name := "标准"
-	if NetworkManager.party_rule == "double_elixir":
-		rule_name = "双倍圣水"
-	elif NetworkManager.party_rule == "sudden_death":
-		rule_name = "突然死亡"
+	var rule_name := String(BATTLE_MODES.get_by_id(NetworkManager.party_rule).get("name", "标准"))
 	_mode_label.text = "模式 %s · %s    蓝 %d 席 / 红 %d 席" % [NetworkManager.mode_name(), rule_name, NetworkManager.seats_in_team(0).size(), NetworkManager.seats_in_team(1).size()]
 	_refresh_rule_buttons()
 	_uid_label.text = "你是 %s" % ("房主" if NetworkManager.role == NetworkManager.Role.HOST else "玩家")
@@ -277,6 +408,9 @@ func _make_seat_card(s: Dictionary, team: int) -> Button:
 	else:
 		av.setup(String(s.get("name", "玩家")), int(s.get("avatar_seed", 0)), int(s.get("avatar_index", 0)))
 	b.add_child(av)
+	av.mouse_filter = Control.MOUSE_FILTER_STOP
+	av.clicked.connect(func():
+		UiComponents.open_player_profile(self, {"player_id": str(peer0), "name": String(s.get("name", "玩家")), "avatar_seed": int(s.get("avatar_seed", 0)), "avatar_index": int(s.get("avatar_index", 0)), "trophies": 0, "clan": ""}))
 	var team_col := Color(0.36, 0.66, 1.0) if team == 0 else Color(1.0, 0.45, 0.40)
 	var bg := Color(0.055, 0.09, 0.16, 0.98)
 	var sb := StyleBoxFlat.new()
@@ -340,9 +474,15 @@ func _start_pressed() -> void:
 	if NetworkManager.role != NetworkManager.Role.HOST or not NetworkManager.can_start():
 		return
 	LoadingScreen.show_loading("正在进入 %s 战场…" % NetworkManager.mode_name())
+	BATTLE_MODES.set_mode(BATTLE_MODES.get_by_id(NetworkManager.party_rule))
 	NetworkManager.start_match()
 	await get_tree().create_timer(0.15).timeout
-	get_tree().change_scene_to_file("res://scenes/battle.tscn")
+	var rule_mode := BATTLE_MODES.get_by_id(NetworkManager.party_rule)
+	var deck := String(rule_mode.get("deck", ""))
+	if deck == "draft" or deck == "swap_draft":
+		get_tree().change_scene_to_file("res://scenes/network_draft.tscn")
+	else:
+		get_tree().change_scene_to_file("res://scenes/battle.tscn")
 
 func _on_guest_joined() -> void:
 	if NetworkManager.role == NetworkManager.Role.HOST:
@@ -356,8 +496,14 @@ func _on_status(text: String) -> void:
 	if _room_status:
 		_room_status.text = text
 
-func _on_match_started(_info: Dictionary) -> void:
+func _on_match_started(info: Dictionary) -> void:
 	if NetworkManager.role == NetworkManager.Role.HOST:
 		return
+	BATTLE_MODES.set_mode(BATTLE_MODES.get_by_id(String(info.get("party_rule", "standard"))))
+	var rule_mode := BATTLE_MODES.get_by_id(NetworkManager.party_rule)
+	var deck := String(rule_mode.get("deck", ""))
 	LoadingScreen.show_loading("正在进入战场…")
-	get_tree().change_scene_to_file("res://scenes/network_guest.tscn")
+	if deck == "draft" or deck == "swap_draft":
+		get_tree().change_scene_to_file("res://scenes/network_draft.tscn")
+	else:
+		get_tree().change_scene_to_file("res://scenes/network_guest.tscn")
