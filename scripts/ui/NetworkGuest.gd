@@ -450,13 +450,14 @@ func _make_data(first: Dictionary) -> Dictionary:
 			opp_deck = Array(seat.get("deck", [])).duplicate()
 			opp_levels = Dictionary(seat.get("levels", {})).duplicate()
 	var rule := String(info.get("party_rule", "standard"))
-	var party_fixed := bool(BATTLE_MODES.get_by_id(rule).get("party", false))
+	var rule_mode := BATTLE_MODES.current() if rule == "custom" else BATTLE_MODES.get_by_id(rule)
+	var party_fixed := bool(rule_mode.get("party", false)) or String(rule_mode.get("level", "own")) == "fixed"
 	if party_fixed:
 		for k in own_levels.keys():
 			own_levels[k] = 11
 		for k in opp_levels.keys():
 			opp_levels[k] = 11
-	var is_td := rule == "touchdown"
+	var is_td := String(rule_mode.get("win_condition", "")) == "touchdown" or rule == "touchdown"
 	var meta := {
 		"version": 4,
 		"duration": 360.0,
@@ -474,7 +475,9 @@ func _make_data(first: Dictionary) -> Dictionary:
 
 func _guest_towers() -> Array:
 	var o: Vector3 = Config.ARENA_ORIGIN
-	var is_party := bool(BATTLE_MODES.get_by_id(String(NetworkManager.match_info.get("party_rule", "standard"))).get("party", false))
+	var rule_id := String(NetworkManager.match_info.get("party_rule", "standard"))
+	var gm := BATTLE_MODES.current() if rule_id == "custom" else BATTLE_MODES.get_by_id(rule_id)
+	var is_party := bool(gm.get("party", false)) or String(gm.get("level", "own")) == "fixed"
 	var w: float = Config.ARENA_WIDTH
 	var h: float = Config.ARENA_HEIGHT
 	var lv: int = 11 if is_party else PlayerData.get_tower_level()

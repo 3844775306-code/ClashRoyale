@@ -595,7 +595,9 @@ func _resolve_battle_mode() -> void:
 		var rule := "standard"
 		if not NetworkManager.match_info.is_empty():
 			rule = String(NetworkManager.match_info.get("party_rule", "standard"))
-		battle_mode = BATTLE_MODES.get_by_id(rule)
+			if rule == "custom" and NetworkManager.match_info.get("custom_config", {}) is Dictionary:
+				BATTLE_MODES.set_custom_config(Dictionary(NetworkManager.match_info.get("custom_config", {})))
+		battle_mode = BATTLE_MODES.current() if rule == "custom" else BATTLE_MODES.get_by_id(rule)
 	# 开发/自动化测试：CR_MODE_ID=double_elixir 等
 	var env_mode := OS.get_environment("CR_MODE_ID")
 	if env_mode != "" and not replay_mode:
@@ -1613,7 +1615,7 @@ func spawn_initial_towers():
 	if player_type not in [1, 2]:
 		player_type = 1
 	var enemy_type: int = 1 if randi() % 2 == 0 else 2
-	var king_level: int = 11 if party_mode else PlayerData.get_tower_level()
+	var king_level: int = 11 if (party_mode or fixed_level_override > 0) else PlayerData.get_tower_level()
 	var tower_data = []
 	if network_host_mode:
 		tower_data = _network_tower_data()

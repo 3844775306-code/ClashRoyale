@@ -266,7 +266,10 @@ func _picked_mini(cid: int) -> Control:
 func _art(cfg) -> Texture2D:
 	if cfg == null:
 		return null
-	var path := "res://assets/cards_rendered/%s.png" % String(cfg.card_name)
+	# 与战斗卡桌手牌一致，优先使用 cards_web 手牌图像
+	var path := "res://assets/cards_web/%s.png" % String(cfg.card_name)
+	if not ResourceLoader.exists(path):
+		path = "res://assets/cards_rendered/%s.png" % String(cfg.card_name)
 	if ResourceLoader.exists(path):
 		return load(path)
 	return null

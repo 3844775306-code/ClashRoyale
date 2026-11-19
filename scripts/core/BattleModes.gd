@@ -108,7 +108,11 @@ static var _duel: Dictionary = {
 	"active": false, "round": 1, "wins": [0, 0],
 	"player_decks": [], "enemy_decks": [],
 }
-static var _custom: Dictionary = {"elixir": 1.0, "sudden_death": false, "level": "own"}
+static var _custom: Dictionary = {
+	"elixir": 1.0, "sudden_death": false, "level": "own",
+	"deck": "custom", "win_condition": "", "commando": false,
+	"draft_choices": 4, "draft_picks": 8,
+}
 
 
 static func all() -> Array:
@@ -132,9 +136,9 @@ static func current_id() -> String:
 static func current() -> Dictionary:
 	var base := get_by_id(_current_id)
 	if bool(base.get("custom", false)):
-		base["elixir"] = float(_custom.get("elixir", 1.0))
-		base["sudden_death"] = bool(_custom.get("sudden_death", false))
-		base["level"] = String(_custom.get("level", "own"))
+		for k in _custom.keys():
+			base[k] = _custom[k]
+		base["party"] = false
 	return base
 
 
@@ -155,6 +159,11 @@ static func set_custom_config(cfg: Dictionary) -> void:
 	_custom["elixir"] = float(cfg.get("elixir", 1.0))
 	_custom["sudden_death"] = bool(cfg.get("sudden_death", false))
 	_custom["level"] = String(cfg.get("level", "own"))
+	_custom["deck"] = String(cfg.get("deck", "custom"))
+	_custom["win_condition"] = String(cfg.get("win_condition", ""))
+	_custom["commando"] = bool(cfg.get("commando", false))
+	_custom["draft_choices"] = int(cfg.get("draft_choices", 4))
+	_custom["draft_picks"] = int(cfg.get("draft_picks", 8))
 
 
 static func set_draft_decks(player: Array, enemy: Array) -> void:

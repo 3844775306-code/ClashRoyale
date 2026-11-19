@@ -1,6 +1,7 @@
 extends Control
 const AVATAR_ICON = preload("res://scripts/ui/AvatarIcon.gd")
 const BATTLE_MODES := preload("res://scripts/core/BattleModes.gd")
+const CUSTOM_PANEL := preload("res://scripts/ui/CustomModePanel.gd")
 
 var _status: Label
 var _room_status: Label
@@ -16,6 +17,7 @@ var _start_btn: Button
 var _room_code_label: Label
 var _mode_label: Label
 var _rule_buttons: Array = []
+var _custom_box: VBoxContainer
 var _in_room := false
 var _invite_autoclaim := false
 
@@ -167,7 +169,7 @@ func _build_room() -> void:
 		["seven_elixir", "七倍圣水"], ["sudden_death", "突然死亡"], ["touchdown", "冲线"],
 		["classic_deck", "经典卡组"], ["draft", "选卡"], ["triple_draft", "三选一"],
 		["swap_draft", "双向选卡"], ["mirror_deck", "镜像卡组"], ["mega_deck", "18 卡"],
-		["commando", "主题特种兵"],
+		["commando", "主题特种兵"], ["custom", "自定义"],
 	]
 	for entry in rules:
 		var b := Button.new()
@@ -180,10 +182,15 @@ func _build_room() -> void:
 			if NetworkManager.role == NetworkManager.Role.HOST:
 				NetworkManager.party_rule = rid
 				_refresh_rule_buttons()
+				_refresh_custom_panel()
 				_refresh_seats()
 				NetworkManager.sync_room())
 		_rule_buttons.append([b, rid])
 		rule_grid.add_child(b)
+	_custom_box = VBoxContainer.new()
+	_custom_box.add_theme_constant_override("separation", 6)
+	_room_box.add_child(_custom_box)
+	_refresh_custom_panel()
 	# 好友 / 邀请按钮
 	var friend_row := HBoxContainer.new()
 	friend_row.add_theme_constant_override("separation", 10)
@@ -201,6 +208,22 @@ func _build_room() -> void:
 	_room_box.add_child(_start_btn)
 	_room_status = _label("", 15, Color(0.9,0.95,1.0))
 	_room_box.add_child(_room_status)
+
+func _refresh_custom_panel() -> void:
+	if _custom_box == null:
+		return
+	for c in _custom_box.get_children():
+		c.queue_free()
+	if NetworkManager.party_rule != "custom":
+		return
+	var panel = CUSTOM_PANEL.new()
+	panel.editable = NetworkManager.role == NetworkManager.Role.HOST
+	panel.changed.connect(func(cfg):
+		if NetworkManager.role == NetworkManager.Role.HOST:
+			BATTLE_MODES.set_custom_config(cfg)
+			NetworkManager.sync_room()
+			_room_status.text = "自定义规则已同步")
+	_custom_box.add_child(panel)
 
 func _host_pressed() -> void:
 	if NetworkManager.role != NetworkManager.Role.NONE:
@@ -352,6 +375,7 @@ func _refresh_rule_buttons() -> void:
 		b.add_theme_stylebox_override("hover", sb)
 		b.add_theme_stylebox_override("pressed", sb)
 		b.add_theme_color_override("font_color", Color(1.0, 0.93, 0.72) if active else Color(0.72, 0.78, 0.88))
+	_refresh_custom_panel()
 
 
 func _refresh_seats() -> void:
@@ -477,7 +501,7 @@ func _start_pressed() -> void:
 	BATTLE_MODES.set_mode(BATTLE_MODES.get_by_id(NetworkManager.party_rule))
 	NetworkManager.start_match()
 	await get_tree().create_timer(0.15).timeout
-	var rule_mode := BATTLE_MODES.get_by_id(NetworkManager.party_rule)
+	var rule_mode := BATTLE_MODES.current() if NetworkManager.party_rule == "custom" else BATTLE_MODES.get_by_id(NetworkManager.party_rule)
 	var deck := String(rule_mode.get("deck", ""))
 	if deck == "draft" or deck == "swap_draft":
 		get_tree().change_scene_to_file("res://scenes/network_draft.tscn")
@@ -500,7 +524,7 @@ func _on_match_started(info: Dictionary) -> void:
 	if NetworkManager.role == NetworkManager.Role.HOST:
 		return
 	BATTLE_MODES.set_mode(BATTLE_MODES.get_by_id(String(info.get("party_rule", "standard"))))
-	var rule_mode := BATTLE_MODES.get_by_id(NetworkManager.party_rule)
+	var rule_mode := BATTLE_MODES.current() if NetworkManager.party_rule == "custom" else BATTLE_MODES.get_by_id(NetworkManager.party_rule)
 	var deck := String(rule_mode.get("deck", ""))
 	LoadingScreen.show_loading("正在进入战场…")
 	if deck == "draft" or deck == "swap_draft":

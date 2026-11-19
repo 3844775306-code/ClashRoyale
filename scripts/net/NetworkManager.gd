@@ -2,6 +2,8 @@
 # 局域网联机管理器（ENet）：房主内嵌权威服务器。1V1 / 2V2（共享三塔）。
 extends Node
 
+const BATTLE_MODES := preload("res://scripts/core/BattleModes.gd")
+
 signal lobby_status(text: String)
 signal guest_joined
 signal match_started(info: Dictionary)
@@ -23,6 +25,13 @@ const MAX_PLAYERS := 4
 var role: int = Role.NONE
 var room_mode: String = "1v1"
 var party_rule: String = "standard"   # 联机派对规则 id（BattleModes）
+var network_draft_decks: Dictionary = {}   # peer -> 选卡结果（1=房主）
+var network_draft_picks: Dictionary = {}   # peer -> 双向选卡：自己选的 4 张
+var network_draft_rejects: Dictionary = {} # peer -> 双向选卡：不要的 4 张
+var network_draft_swap: bool = false
+signal network_draft_started
+signal touchdown_break_received(round_no: int, score_a: int, score_b: int)
+signal touchdown_break_ended
 var room_code: String = ""
 var peer: ENetMultiplayerPeer = null
 var players: Dictionary = {}          # peer_id -> {name,deck,levels,seated}
@@ -143,13 +152,16 @@ func _broadcast_seats() -> void:
 	var data := _seat_public()
 	for pid in players.keys():
 		if pid != 1:
-			rpc_id(pid, "room_seats", data, room_code, mode_name())
+			rpc_id(pid, "room_seats", data, room_code, mode_name(), party_rule, BATTLE_MODES.custom_config() if party_rule == "custom" else {})
 	lobby_status.emit("席位已更新：%s" % mode_name())
 
 @rpc("authority", "call_remote", "reliable")
-func room_seats(data: Array, code: String, mode: String) -> void:
+func room_seats(data: Array, code: String, mode: String, rule: String = "standard", custom_cfg: Dictionary = {}) -> void:
+	party_rule = rule
 	room_code = code
 	room_mode = mode
+	if rule == "custom" and not custom_cfg.is_empty():
+		BATTLE_MODES.set_custom_config(custom_cfg)
 	seats.clear()
 	for s in data:
 		seats.append(s.duplicate(true))
@@ -217,13 +229,167 @@ func join_host(ip: String, port: int = DEFAULT_PORT, code: String = "") -> bool:
 	return true
 
 
+func submit_local_draft_deck(deck: Array) -> void:
+	var d: Array = []
+	for cid in deck:
+		if d.size() < 8:
+			d.append(int(cid))
+	if role == Role.HOST:
+		network_draft_decks[1] = d
+		if OS.get_environment("CR_MODE_DEBUG") != "":
+			print("[DraftNet] host submit deck=", str(d))
+		_check_network_draft()
+	else:
+		if OS.get_environment("CR_MODE_DEBUG") != "":
+			print("[DraftNet] guest submit deck=", str(d))
+		rpc_id(1, "submit_network_draft_deck", d)
+
+
+func submit_local_swap_draft(picks: Array, rejects: Array) -> void:
+	var p: Array = []
+	for cid in picks:
+		if p.size() < 4:
+			p.append(int(cid))
+	var r: Array = []
+	for cid in rejects:
+		if r.size() < 4:
+			r.append(int(cid))
+	if role == Role.HOST:
+		network_draft_picks[1] = p
+		network_draft_rejects[1] = r
+		if OS.get_environment("CR_MODE_DEBUG") != "":
+			print("[DraftNet] host swap picks=", str(p), " rejects=", str(r))
+		_check_network_draft()
+	else:
+		if OS.get_environment("CR_MODE_DEBUG") != "":
+			print("[DraftNet] guest swap picks=", str(p), " rejects=", str(r))
+		rpc_id(1, "submit_network_swap_draft", p, r)
+
+
+@rpc("any_peer", "call_remote", "reliable")
+func submit_network_swap_draft(picks: Array, rejects: Array) -> void:
+	if role != Role.HOST:
+		return
+	var pid := multiplayer.get_remote_sender_id()
+	var p: Array = []
+	for cid in picks:
+		if p.size() < 4:
+			p.append(int(cid))
+	var r: Array = []
+	for cid in rejects:
+		if r.size() < 4:
+			r.append(int(cid))
+	network_draft_picks[pid] = p
+	network_draft_rejects[pid] = r
+	if OS.get_environment("CR_MODE_DEBUG") != "":
+		print("[DraftNet] host recv swap peer=", pid, " picks=", str(p), " rejects=", str(r))
+	_check_network_draft()
+
+
+func _build_network_swap_decks() -> void:
+	var order: Array = [1]
+	var pids: Array = players.keys()
+	pids.sort()
+	for pid in pids:
+		order.append(int(pid))
+	network_draft_decks.clear()
+	for i in range(order.size()):
+		var cur: int = int(order[i])
+		var nxt: int = int(order[(i + 1) % order.size()])
+		var deck: Array = []
+		for cid in network_draft_picks.get(cur, []):
+			deck.append(int(cid))
+		for cid in network_draft_rejects.get(nxt, []):
+			deck.append(int(cid))
+		network_draft_decks[cur] = deck
+		if OS.get_environment("CR_MODE_DEBUG") != "":
+			print("[DraftNet] swap deck for ", cur, " = picks(", cur, ") + rejects(", nxt, ") = ", str(deck))
+
+
+@rpc("any_peer", "call_remote", "reliable")
+func submit_network_draft_deck(deck: Array) -> void:
+	if role != Role.HOST:
+		return
+	var pid := multiplayer.get_remote_sender_id()
+	var d: Array = []
+	for cid in deck:
+		if d.size() < 8:
+			d.append(int(cid))
+	network_draft_decks[pid] = d
+	if OS.get_environment("CR_MODE_DEBUG") != "":
+		print("[DraftNet] host recv peer=", pid, " deck=", str(d), " have=", str(network_draft_decks.keys()))
+	_check_network_draft()
+
+
+func _check_network_draft() -> void:
+	if role != Role.HOST:
+		return
+	if network_draft_swap:
+		if not network_draft_picks.has(1) or not network_draft_rejects.has(1):
+			return
+		for pid in players.keys():
+			if int(pid) == 1:
+				continue
+			if not network_draft_picks.has(int(pid)) or not network_draft_rejects.has(int(pid)):
+				return
+		_build_network_swap_decks()
+	else:
+		if not network_draft_decks.has(1):
+			return
+		for pid in players.keys():
+			if int(pid) == 1:
+				continue
+			if not network_draft_decks.has(int(pid)):
+				return
+	if OS.get_environment("CR_MODE_DEBUG") != "":
+		print("[DraftNet] all ready, begin")
+	rpc("network_draft_begin")
+	network_draft_started.emit()
+
+
+@rpc("authority", "call_remote", "reliable")
+func network_draft_begin() -> void:
+	network_draft_started.emit()
+
+
+func send_touchdown_break(round_no: int, score_a: int, score_b: int) -> void:
+	if role == Role.HOST:
+		rpc("touchdown_break", round_no, score_a, score_b)
+
+
+@rpc("authority", "call_remote", "reliable")
+func touchdown_break(round_no: int, score_a: int, score_b: int) -> void:
+	touchdown_break_received.emit(round_no, score_a, score_b)
+
+
+func send_touchdown_break_end() -> void:
+	if role == Role.HOST:
+		rpc("touchdown_break_end")
+
+
+@rpc("authority", "call_remote", "reliable")
+func touchdown_break_end() -> void:
+	touchdown_break_ended.emit()
+
+
+func sync_room() -> void:
+	if role == Role.HOST:
+		_broadcast_seats()
+		seats_changed.emit()
+
+
 func start_match() -> void:
 	if role != Role.HOST or not can_start():
 		return
+	network_draft_decks.clear()
+	network_draft_picks.clear()
+	network_draft_rejects.clear()
+	network_draft_swap = party_rule == "swap_draft"
 	room_mode = mode_name()
 	var base := {
 		"mode": room_mode,
 		"party_rule": party_rule,
+		"custom_config": BATTLE_MODES.custom_config() if party_rule == "custom" else {},
 		"room_code": room_code,
 		"seats": _seat_public(),
 		"arena": PlayerData.get_arena(),
@@ -292,6 +458,8 @@ func match_start(info: Dictionary) -> void:
 	local_team = int(info.get("local_team", 0))
 	room_mode = String(info.get("mode", "1v1"))
 	party_rule = String(info.get("party_rule", "standard"))
+	if party_rule == "custom" and info.get("custom_config", {}) is Dictionary:
+		BATTLE_MODES.set_custom_config(Dictionary(info.get("custom_config", {})))
 	match_started.emit(info)
 
 @rpc("any_peer", "call_remote", "reliable")

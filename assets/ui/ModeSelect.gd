@@ -4,6 +4,7 @@ extends Control
 
 const ICON := preload("res://assets/ui/menu/MenuIcon.gd")
 const BATTLE_MODES := preload("res://scripts/core/BattleModes.gd")
+const CUSTOM_PANEL := preload("res://scripts/ui/CustomModePanel.gd")
 
 const INK := Color(0.020, 0.030, 0.062)
 const GOLD := Color(0.945, 0.765, 0.360)
@@ -89,6 +90,8 @@ func _rebuild_list() -> void:
 	for c in _list.get_children():
 		c.queue_free()
 	for m in _modes:
+		if bool(m.get("party", false)):
+			continue
 		_list.add_child(_mode_row(m))
 	if _selected_id == "custom":
 		_custom_box = VBoxContainer.new()
@@ -173,42 +176,13 @@ func _mode_row(m: Dictionary) -> Control:
 
 
 func _build_custom_options(box: VBoxContainer) -> void:
-	var elixir_row := _option_row("圣水倍率")
-	var elixir_buttons := HBoxContainer.new()
-	elixir_buttons.add_theme_constant_override("separation", 8)
-	for v in [1.0, 2.0, 3.0, 7.0]:
-		var b := _toggle_button("%sx" % BATTLE_MODES._num_str(v), is_equal_approx(float(_custom.get("elixir", 1.0)), v))
-		b.pressed.connect(func():
-			_custom["elixir"] = v
-			_rebuild_list())
-		elixir_buttons.add_child(b)
-	elixir_row.add_child(elixir_buttons)
-	box.add_child(elixir_row)
-
-	var sd_row := _option_row("突然死亡")
-	var sd_buttons := HBoxContainer.new()
-	sd_buttons.add_theme_constant_override("separation", 8)
-	for v in [false, true]:
-		var b := _toggle_button("开" if v else "关", bool(_custom.get("sudden_death", false)) == v)
-		b.pressed.connect(func():
-			_custom["sudden_death"] = v
-			_rebuild_list())
-		sd_buttons.add_child(b)
-	sd_row.add_child(sd_buttons)
-	box.add_child(sd_row)
-
-	var lv_row := _option_row("卡牌等级")
-	var lv_buttons := HBoxContainer.new()
-	lv_buttons.add_theme_constant_override("separation", 8)
-	for v in ["own", "fixed"]:
-		var b := _toggle_button("玩家等级" if v == "own" else "固定 11 级", String(_custom.get("level", "own")) == v)
-		b.pressed.connect(func():
-			_custom["level"] = v
-			_rebuild_list())
-		lv_buttons.add_child(b)
-	lv_row.add_child(lv_buttons)
-	box.add_child(lv_row)
-
+	for c in box.get_children():
+		c.queue_free()
+	var panel = CUSTOM_PANEL.new()
+	panel.editable = true
+	panel.changed.connect(func(cfg):
+		_custom = cfg.duplicate(true))
+	box.add_child(panel)
 
 func _option_row(label_text: String) -> HBoxContainer:
 	var row := HBoxContainer.new()
@@ -244,9 +218,8 @@ func _select(id: String) -> void:
 func _on_start() -> void:
 	var mode := BATTLE_MODES.get_by_id(_selected_id)
 	if bool(mode.get("custom", false)):
-		mode["elixir"] = float(_custom.get("elixir", 1.0))
-		mode["sudden_death"] = bool(_custom.get("sudden_death", false))
-		mode["level"] = String(_custom.get("level", "own"))
+		BATTLE_MODES.set_custom_config(_custom)
+		mode = BATTLE_MODES.current()
 	BATTLE_MODES.set_mode(mode)
 	if String(mode.get("win_condition", "")) == "duel":
 		BATTLE_MODES.start_duel(_duel_player_decks(), _duel_enemy_decks())
