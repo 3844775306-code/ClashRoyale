@@ -43,7 +43,10 @@ func _on_leaderboard_loaded(entries):
 			_show_message("加载失败 (网络错误)")
 		return
 	if entries.is_empty():
-		_show_message("加载失败：%s" % LeaderboardAPI.last_error if LeaderboardAPI.last_error != "" else "暂无数据")
+		if not AccountManager.is_supabase_authenticated():
+			_show_message("当前为本机账号，请使用邮箱+密码登录 Supabase 查看云端排行榜")
+		else:
+			_show_message("Supabase 云端暂无排行数据")
 		return
 	_populate_list(entries)
 	if _scroll:

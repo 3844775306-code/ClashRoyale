@@ -93,6 +93,9 @@ func _build() -> void:
 	if not recent.is_empty():
 		var recent_title := _label("最近 30 天登录过的本机账号", 13, GOLD)
 		_form.add_child(recent_title)
+		var recent_note := _label("本机账号只读取本机存档；查看/同步云端请用邮箱密码登录", 11, MUTED)
+		recent_note.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		_form.add_child(recent_note)
 		for acct in recent.slice(0, 8):
 			var email := String(acct.get("email", ""))
 			var days := int(acct.get("days_ago", 0))
