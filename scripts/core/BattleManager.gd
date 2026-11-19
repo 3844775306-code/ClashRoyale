@@ -58,11 +58,21 @@ var sudden_death_enabled: bool = false
 var mode_elixir_rate: float = 1.0
 var fixed_level_override: int = -1
 var mode_player_deck: Array = []
+var party_mode: bool = false
+var mode_vision_mult: float = 1.0
+# 主题特种兵
+var commando_mode: bool = false
+var commando_card_id: int = -1
+var commando_card_name: String = ""
+var commando_timer: float = 0.0
+var commando_side: int = -1
 # 冲线 Touchdown
 var win_condition: String = ""
 var touchdown_score: Array = [0, 0]
 var touchdown_goal: int = 3
 var touchdown_resetting: bool = false
+var touchdown_round: int = 1
+var _deny_selected_spell: bool = false
 # 决斗 Duel
 var duel_round: int = 1
 var duel_wins: Array = [0, 0]
@@ -166,6 +176,18 @@ func _make_deny_plane(mat: StandardMaterial3D) -> MeshInstance3D:
 	return plane
 
 func _update_deny_masks():
+	if win_condition == "touchdown":
+		for m in [deny_left, deny_mid, deny_right, deny_bridge_l, deny_bridge_r]:
+			if m:
+				m.visible = false
+		if _deny_selected_spell or deny_mid == null:
+			return
+		var own_line: float = Config.ARENA_ORIGIN.z + Config.ARENA_HEIGHT * 2.0 / 3.0
+		deny_mid.visible = true
+		_apply_deny_plane(deny_mid, 0.0, Config.ARENA_WIDTH,
+			own_line - Config.ARENA_ORIGIN.z,
+			(Config.ARENA_ORIGIN.z + own_line) * 0.5)
+		return
 	if deny_bridge_l:
 		_apply_deny_plane(deny_bridge_l, -5.5, 3.0, 3.0, 0.0)
 	if deny_bridge_r:
@@ -213,6 +235,8 @@ func _apply_deny_plane(plane: MeshInstance3D, center_x: float, width: float, hei
 	if pmesh:
 		pmesh.size = Vector2(max(width, 0.01), height)
 func create_selection_preview(card_ui: CardUI):
+	_deny_selected_spell = SPELL_IDS.has(card_ui.config.card_id) or card_ui.config.card_id == 110
+	_update_deny_masks()
 	var cfg = card_ui.config
 	# ----- 不可放置区域红色遮罩 -----
 	if not SPELL_IDS.has(cfg.card_id) and cfg.card_id != 109:
@@ -235,6 +259,8 @@ func create_selection_preview(card_ui: CardUI):
 		add_child(selection_range_ring)
 
 func clear_selection_preview():
+	_deny_selected_spell = false
+	_update_deny_masks()
 	
 	if selection_range_ring:
 		selection_range_ring.queue_free()
@@ -339,6 +365,10 @@ func _set_preview_alpha(node: Node, a: float) -> void:
 	for c in node.get_children():
 		_set_preview_alpha(c, a)
 func is_valid_placement(config: CardData, pos: Vector3, team: int) -> bool:
+	if win_condition == "touchdown":
+		if _is_spell_like(config.card_id):
+			return _touchdown_spell_zone_ok(team, pos)
+		return _touchdown_unit_zone_ok(team, pos)
 	if SPELL_IDS.has(config.card_id):
 		return true
 	if config.card_id == 109:
@@ -374,6 +404,26 @@ func is_valid_placement(config: CardData, pos: Vector3, team: int) -> bool:
 			return true
 	return false
 
+func _is_spell_like(card_id: int) -> bool:
+	return SPELL_IDS.has(card_id) or card_id == 110
+
+
+func _touchdown_unit_zone_ok(team: int, pos: Vector3) -> bool:
+	var z0: float = Config.ARENA_ORIGIN.z
+	var h: float = Config.ARENA_HEIGHT
+	if team == Config.Team.PLAYER:
+		return pos.z >= z0 + h * 2.0 / 3.0 and pos.z <= z0 + h
+	return pos.z <= z0 + h / 3.0 and pos.z >= z0
+
+
+func _touchdown_spell_zone_ok(team: int, pos: Vector3) -> bool:
+	var z0: float = Config.ARENA_ORIGIN.z
+	var h: float = Config.ARENA_HEIGHT
+	if team == Config.Team.PLAYER:
+		return pos.z >= z0 + h / 3.0 and pos.z <= z0 + h
+	return pos.z <= z0 + h * 2.0 / 3.0 and pos.z >= z0
+
+
 func _in_extended_zone(pos: Vector3, tower_x: float) -> bool:
 	var mid_z = Config.ARENA_ORIGIN.z + Config.ARENA_HEIGHT / 2   # 桥线
 	return abs(pos.x - tower_x) <= 5.5 and pos.z >= mid_z - 4.5 and pos.z <= mid_z
@@ -402,8 +452,8 @@ func update_drag(screen_pos: Vector2):
 		# 合法性检测
 		var valid = false
 		var cfg = drag_card.config
-		if SPELL_IDS.has(cfg.card_id):
-			valid = true
+		if SPELL_IDS.has(cfg.card_id) or cfg.card_id == 110:
+			valid = _touchdown_spell_zone_ok(Config.Team.PLAYER, p) if win_condition == "touchdown" else true
 			
 			
 		else:
@@ -448,6 +498,9 @@ func update_drag(screen_pos: Vector2):
 		drag_preview.global_position = Vector3(0, -999, 0)
 
 func end_drag(screen_pos: Vector2):
+	if touchdown_resetting:
+		cancel_drag()
+		return
 	if network_host_mode and network_countdown > 0.0:
 		cancel_drag()
 		return
@@ -499,6 +552,8 @@ func end_drag(screen_pos: Vector2):
 		else:
 			spawn_unit(drag_card.config, Config.Team.PLAYER, deploy_pos)
 		_record_tutorial_card(int(drag_card.config.card_id))
+		if not SPELL_IDS.has(int(drag_card.config.card_id)):
+			PlayerData.record_card_use(int(drag_card.config.card_id))
 		if replay_recorder:
 			replay_recorder.record_player_action(drag_card.config, deploy_pos)
 		if match_replay_recorder:
@@ -544,8 +599,18 @@ func _resolve_battle_mode() -> void:
 	sudden_death_enabled = bool(battle_mode.get("sudden_death", false))
 	win_condition = String(battle_mode.get("win_condition", ""))
 	touchdown_goal = int(battle_mode.get("score_to_win", 3))
+	party_mode = bool(battle_mode.get("party", false))
+	mode_vision_mult = 1.5 if win_condition == "touchdown" else 1.0
+	Config.set_arena_size(
+		Config.ARENA_TOUCHDOWN_WIDTH if win_condition == "touchdown" else Config.ARENA_BASE_WIDTH,
+		Config.ARENA_TOUCHDOWN_HEIGHT if win_condition == "touchdown" else Config.ARENA_BASE_HEIGHT)
 	mode_elixir_rate = float(battle_mode.get("elixir", 1.0))
 	fixed_level_override = 11 if String(battle_mode.get("level", "own")) == "fixed" else -1
+	if party_mode:
+		fixed_level_override = 11
+	commando_mode = bool(battle_mode.get("commando", false))
+	if commando_mode:
+		_setup_commando()
 	mode_player_deck.clear()
 	mode_enemy_deck.clear()
 	var deck_src := String(battle_mode.get("deck", "custom"))
@@ -565,6 +630,23 @@ func _resolve_battle_mode() -> void:
 	elif deck_src == "mega":
 		mode_player_deck = _build_mega_deck(Config.Team.PLAYER)
 		mode_enemy_deck = _build_mega_deck(Config.Team.ENEMY)
+	elif deck_src == "mirror":
+		mode_player_deck = _build_party_deck(Config.Team.PLAYER)
+		mode_enemy_deck = mode_player_deck.duplicate()
+	elif deck_src == "swap_draft":
+		if network_host_mode or network_guest_mode:
+			var host_swap: Array = _sanitize_mode_deck(NetworkManager.network_draft_decks.get(1, []))
+			mode_player_deck = host_swap if host_swap.size() >= 8 else _random_draft_deck(4)
+			if OS.get_environment("CR_MODE_DEBUG") != "":
+				print("[DraftNet] battle host swap deck=", str(mode_player_deck), " all=", str(NetworkManager.network_draft_decks))
+			mode_enemy_deck = _random_draft_deck(4)
+		else:
+			var swap: Dictionary = BATTLE_MODES.swap_decks()
+			mode_player_deck = _sanitize_mode_deck(swap.get("player", []))
+			mode_enemy_deck = _sanitize_mode_deck(swap.get("enemy", []))
+			if mode_player_deck.size() < 8 or mode_enemy_deck.size() < 8:
+				mode_player_deck = _random_draft_deck(4)
+				mode_enemy_deck = _random_draft_deck(4)
 	elif deck_src == "duel" or win_condition == "duel":
 		var st: Dictionary = BATTLE_MODES.duel_state()
 		if not bool(st.get("active", false)):
@@ -578,6 +660,11 @@ func _resolve_battle_mode() -> void:
 			mode_player_deck = _sanitize_mode_deck(pds[duel_round - 1])
 		if eds.size() >= duel_round:
 			mode_enemy_deck = _sanitize_mode_deck(eds[duel_round - 1])
+	if party_mode and deck_src == "custom":
+		mode_player_deck = _sanitize_mode_deck(PlayerData.party_deck)
+		if mode_player_deck.size() < 8:
+			mode_player_deck = _build_party_deck(Config.Team.PLAYER)
+		mode_enemy_deck = _build_party_deck(Config.Team.ENEMY)
 	if OS.has_environment("CR_MODE_DEBUG"):
 		print("[Mode] id=%s name=%s elixir=%.1f sudden_death=%s player_deck=%d enemy_deck=%d" % [
 			mode_id, mode_name, mode_elixir_rate, str(sudden_death_enabled),
@@ -589,6 +676,80 @@ func _sanitize_mode_deck(src: Array) -> Array:
 	for cid_v in src:
 		var cid: int = int(cid_v)
 		if get_config(cid) != null and not out.has(cid):
+			out.append(cid)
+	return out
+
+
+func _setup_commando() -> void:
+	var candidates: Array = []
+	for cfg in configs:
+		if cfg.cost <= 0 or cfg.card_id < 4 or cfg.card_id == 123:
+			continue
+		if cfg.type == Config.UnitType.BUILDING:
+			continue
+		if SPELL_IDS.has(cfg.card_id) or cfg.card_id == 110:
+			continue
+		candidates.append(int(cfg.card_id))
+	if candidates.is_empty():
+		return
+	var seed: int = BATTLE_MODES.commando_seed()
+	if seed < 0:
+		commando_card_id = clampi(-seed, 4, 9999)
+		if get_config(commando_card_id) == null:
+			commando_card_id = int(candidates[0])
+	else:
+		var rng := RandomNumberGenerator.new()
+		rng.seed = seed
+		commando_card_id = int(candidates[rng.randi() % candidates.size()])
+	var cfg = get_config(commando_card_id)
+	commando_card_name = cfg.card_name if cfg else ""
+
+
+func _update_commando(delta: float) -> void:
+	if not commando_mode or game_over or commando_card_id < 0:
+		return
+	commando_timer += delta
+	if commando_timer < 15.0:
+		return
+	while commando_timer >= 15.0:
+		commando_timer -= 15.0
+	var count: int = 1 + int(game_time / 60000.0)
+	_spawn_commando_wave(count)
+
+
+func _spawn_commando_wave(count: int) -> void:
+	var cfg = get_config(commando_card_id)
+	if cfg == null:
+		return
+	var cx: float = Config.ARENA_ORIGIN.x + Config.ARENA_WIDTH * 0.5
+	var player_king_z: float = Config.ARENA_ORIGIN.z + Config.ARENA_HEIGHT * 29.0 / 32.0
+	var enemy_king_z: float = Config.ARENA_ORIGIN.z + Config.ARENA_HEIGHT * 3.0 / 32.0
+	var side: int = commando_side
+	for i in count:
+		var dx: float = float(side) * (2.4 + float(i) * 0.9)
+		var pz: float = player_king_z - 3.2
+		var ez: float = enemy_king_z + 3.2
+		var ppos := Vector3(cx + dx, 0.0, pz)
+		var epos := Vector3(cx - dx, 0.0, ez)
+		var lv: int = mode_level(Config.battle_level(PlayerData.get_card_level(commando_card_id)))
+		spawn_unit(cfg, Config.Team.PLAYER, ppos, -1, lv)
+		spawn_unit(cfg, Config.Team.ENEMY, epos, -1, lv)
+	commando_side = -commando_side
+
+
+func _build_party_deck(team: int) -> Array:
+	var out: Array = []
+	if team == Config.Team.PLAYER:
+		out = _sanitize_mode_deck(PlayerData.party_deck)
+	var pool: Array = []
+	for cfg in configs:
+		if cfg.cost > 0 and cfg.card_id >= 4 and cfg.card_id != 123:
+			pool.append(int(cfg.card_id))
+	pool.shuffle()
+	for cid in pool:
+		if out.size() >= 8:
+			break
+		if not out.has(cid):
 			out.append(cid)
 	return out
 
@@ -688,8 +849,8 @@ func _team_tower_total_health(team: int) -> float:
 
 
 func _setup_touchdown_zones() -> void:
-	var top_z: float = Config.ARENA_ORIGIN.z + Config.ARENA_HEIGHT * 4.0 / 32.0
-	var bottom_z: float = Config.ARENA_ORIGIN.z + Config.ARENA_HEIGHT * 28.0 / 32.0
+	var top_z: float = Config.ARENA_ORIGIN.z + 3.0
+	var bottom_z: float = Config.ARENA_ORIGIN.z + Config.ARENA_HEIGHT - 3.0
 	_add_touchdown_zone(Vector3(0, 0.03, top_z), Color(0.30, 0.55, 1.0, 0.28))
 	_add_touchdown_zone(Vector3(0, 0.03, bottom_z), Color(1.0, 0.30, 0.28, 0.28))
 
@@ -697,7 +858,7 @@ func _setup_touchdown_zones() -> void:
 func _add_touchdown_zone(center: Vector3, col: Color) -> void:
 	var mi := MeshInstance3D.new()
 	var box := BoxMesh.new()
-	box.size = Vector3(Config.ARENA_WIDTH * 0.94, 0.03, 2.2)
+	box.size = Vector3(Config.ARENA_WIDTH * 0.94, 0.03, 4.0)
 	mi.mesh = box
 	var mat := StandardMaterial3D.new()
 	mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
@@ -716,20 +877,20 @@ func _add_touchdown_zone(center: Vector3, col: Color) -> void:
 	lm.albedo_color = Color(0.95, 0.78, 0.36, 0.9)
 	lm.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
 	line.material_override = lm
-	line.position = center + Vector3(0, 0.005, 1.1)
+	line.position = center + Vector3(0, 0.005, 2.0)
 	add_child(line)
 	var line2 := MeshInstance3D.new()
 	var lb2 := BoxMesh.new()
 	lb2.size = Vector3(Config.ARENA_WIDTH * 0.94, 0.035, 0.10)
 	line2.mesh = lb2
 	line2.material_override = lm
-	line2.position = center + Vector3(0, 0.005, -1.1)
-	add_child(line)
+	line2.position = center + Vector3(0, 0.005, -2.0)
+	add_child(line2)
 
 
 func _update_touchdown() -> void:
-	var top_z: float = Config.ARENA_ORIGIN.z + Config.ARENA_HEIGHT * 5.0 / 32.0
-	var bottom_z: float = Config.ARENA_ORIGIN.z + Config.ARENA_HEIGHT * 27.0 / 32.0
+	var top_z: float = Config.ARENA_ORIGIN.z + 5.5
+	var bottom_z: float = Config.ARENA_ORIGIN.z + Config.ARENA_HEIGHT - 5.5
 	for u in units.get_children():
 		if not (u is Unit) or u.config == null or u.health <= 0:
 			continue
@@ -737,44 +898,57 @@ func _update_touchdown() -> void:
 			continue
 		var z: float = u.global_position.z
 		if u.team == Config.Team.PLAYER and z <= top_z:
-			_touchdown_score(Config.Team.PLAYER)
+			_touchdown_score(Config.Team.PLAYER, u)
 			return
 		if u.team == Config.Team.ENEMY and z >= bottom_z:
-			_touchdown_score(Config.Team.ENEMY)
+			_touchdown_score(Config.Team.ENEMY, u)
 			return
 
 
-func _touchdown_score(team: int) -> void:
+func _touchdown_score(team: int, scorer: Unit = null) -> void:
 	if touchdown_resetting or game_over:
 		return
 	touchdown_score[team] = int(touchdown_score[team]) + 1
+	touchdown_round += 1
 	if hud and hud.has_method("set_touchdown_score"):
 		hud.set_touchdown_score(int(touchdown_score[0]), int(touchdown_score[1]), touchdown_goal)
 	if int(touchdown_score[team]) >= touchdown_goal:
 		game_over = true
 		winner = team
 		return
-	_touchdown_reset()
+	_touchdown_round_break(scorer)
 
 
-func _touchdown_reset() -> void:
+func _touchdown_round_break(scorer: Unit = null) -> void:
+	# 立即清空场上所有单位/子弹/法术
 	touchdown_resetting = true
 	var victims: Array = []
 	for u in units.get_children():
-		if u is Unit and u.config and int(u.config.card_id) >= 4:
-			u.set_physics_process(false)
-			u.set_process(false)
+		if u is Unit and u != scorer:
 			victims.append(u)
-	await get_tree().create_timer(0.55).timeout
 	for u in victims:
 		if is_instance_valid(u):
 			u.queue_free()
+	if scorer != null and is_instance_valid(scorer):
+		scorer.play_touchdown_cheer()
 	for b in bullets.get_children():
 		b.queue_free()
 	for s in spells.get_children():
 		s.queue_free()
+	if hud and hud.has_method("show_touchdown_round_break"):
+		hud.show_touchdown_round_break(touchdown_round, int(touchdown_score[0]), int(touchdown_score[1]))
+	# 2 秒内不可放牌；结束后双方圣水重置为 5
+	await get_tree().create_timer(2.0).timeout
 	player_elixir = 5.0
 	enemy_elixir = 5.0
+	for sk in remote_players.keys():
+		var rp: Dictionary = remote_players[sk]
+		rp["elixir"] = 5.0
+		remote_players[sk] = rp
+	if scorer != null and is_instance_valid(scorer):
+		scorer.queue_free()
+	if hud and hud.has_method("hide_touchdown_round_break"):
+		hud.hide_touchdown_round_break()
 	touchdown_resetting = false
 
 
@@ -885,6 +1059,7 @@ func _init_network_remote() -> void:
 		}
 		if not bool(remote_players[slot].ai):
 			_ai_timers.erase(slot)
+	_apply_network_party_decks()
 	if remote_players.has(1):
 		remote_hand = remote_players[1].hand.duplicate()
 		remote_deck = remote_players[1].deck.duplicate()
@@ -899,6 +1074,59 @@ func _init_network_remote() -> void:
 		call_deferred("_network_test_deploy")
 	if NetworkManager.guest_count() == 0:
 		call_deferred("_start_host_no_guest")
+
+func _apply_network_party_decks() -> void:
+	var rule := String(NetworkManager.match_info.get("party_rule", "standard"))
+	if rule == "standard" or rule == "":
+		return
+	var mode: Dictionary = BATTLE_MODES.get_by_id(rule)
+	var deck_src := String(mode.get("deck", "custom"))
+	for slot in remote_players.keys():
+		var rp: Dictionary = remote_players[slot]
+		var team: int = int(rp.get("team", Config.Team.ENEMY))
+		var deck: Array = []
+		if deck_src == "mirror":
+			deck = _sanitize_mode_deck(mode_player_deck)
+		elif deck_src == "classic":
+			var classics: Array = BATTLE_MODES.classic_decks()
+			deck = _sanitize_mode_deck(Array(classics[randi() % classics.size()]))
+		elif deck_src == "draft" or deck_src == "swap_draft":
+			var peer_id: int = int(rp.get("peer", 0))
+			var submitted: Array = _sanitize_mode_deck(NetworkManager.network_draft_decks.get(peer_id, []))
+			if submitted.size() >= 8:
+				deck = submitted
+			else:
+				var picks: int = int(mode.get("draft_choices", 4))
+				deck = _random_draft_deck(picks)
+			if OS.get_environment("CR_MODE_DEBUG") != "":
+				print("[DraftNet] remote slot=", slot, " peer=", peer_id, " deck=", str(deck))
+		elif deck_src == "mega":
+			deck = _build_mega_deck(team)
+		else:
+			deck = _sanitize_mode_deck(Array(rp.get("deck", [])))
+			if deck.size() < 8:
+				deck = _build_party_deck(team)
+		if deck_src != "mega" and deck.size() < 8:
+			var pool: Array = []
+			for cfg in configs:
+				if cfg.cost > 0 and cfg.card_id >= 4 and cfg.card_id != 123:
+					pool.append(int(cfg.card_id))
+			pool.shuffle()
+			for cid in pool:
+				if deck.size() >= 8:
+					break
+				if not deck.has(int(cid)):
+					deck.append(int(cid))
+		var hand: Array = []
+		for i in range(4):
+			if deck.is_empty():
+				break
+			hand.append(int(deck.pop_front()))
+		rp["hand"] = hand
+		rp["deck"] = deck
+		rp["levels"] = Dictionary(rp.get("levels", {})).duplicate(true)
+		remote_players[slot] = rp
+
 
 func _network_test_deploy() -> void:
 	await get_tree().create_timer(1.0).timeout
@@ -1105,6 +1333,7 @@ func _process(delta):
 	if win_condition == "touchdown" and not game_over and not touchdown_resetting and not timeout_sequence:
 		_update_touchdown()
 	_update_elixir(delta)
+	_update_commando(delta)
 	_update_network_ai(delta)
 	_update_tutorial_enemy(delta)
 
@@ -1358,7 +1587,7 @@ func spawn_initial_towers():
 	if player_type not in [1, 2]:
 		player_type = 1
 	var enemy_type: int = 1 if randi() % 2 == 0 else 2
-	var king_level: int = PlayerData.get_tower_level()
+	var king_level: int = 11 if party_mode else PlayerData.get_tower_level()
 	var tower_data = []
 	if network_host_mode:
 		tower_data = _network_tower_data()
@@ -1372,6 +1601,9 @@ func spawn_initial_towers():
 		[1, enemy_type, Config.Team.ENEMY, Vector3(Config.ARENA_ORIGIN.x + Config.ARENA_WIDTH * 14.5/18, 0, Config.ARENA_ORIGIN.z + Config.ARENA_HEIGHT * 6.5 / 32.0)],
 		[2, 3, Config.Team.ENEMY, Vector3(Config.ARENA_ORIGIN.x + Config.ARENA_WIDTH * 9/18, 0, Config.ARENA_ORIGIN.z + Config.ARENA_HEIGHT * 3 / 32.0)],
 	]
+	if win_condition == "touchdown":
+		# 冲线模式没有任何皇家塔
+		tower_data = []
 	for data in tower_data:
 		var slot: int = int(data[0])
 		var type: int = int(data[1])
@@ -1463,6 +1695,8 @@ func _spawn_effect(pos: Vector3):
 
 # ============ 圣水系统 ============
 func _update_elixir(delta):
+	if touchdown_resetting and win_condition == "touchdown":
+		return
 	var now = Time.get_ticks_msec() - start_time
 	if mode_elixir_rate != 1.0:
 		elixir_rate = mode_elixir_rate
@@ -1523,7 +1757,7 @@ func network_ai_takeover(slot: int) -> void:
 	_ai_timers[slot] = randf_range(1.0, 2.5)
 
 func _update_network_ai(delta: float) -> void:
-	if not network_host_mode or network_countdown > 0.0:
+	if not network_host_mode or network_countdown > 0.0 or touchdown_resetting:
 		return
 	for slot in remote_players.keys():
 		var rp: Dictionary = remote_players[slot]
@@ -1751,6 +1985,7 @@ func _input(event):
 								_deploy_log_like(cfg, Config.Team.PLAYER, pos)
 							else:
 								spawn_unit(cfg, Config.Team.PLAYER, pos)
+							PlayerData.record_card_use(int(cfg.card_id))
 							if replay_recorder:
 								replay_recorder.record_player_action(cfg, pos)
 							if match_replay_recorder:
@@ -1763,8 +1998,14 @@ func _input(event):
 			return
 
 func deploy_spell(config: CardData, team: int, target_pos: Vector3, level_override: int = -1):
+	if touchdown_resetting and win_condition == "touchdown":
+		return
+	if win_condition == "touchdown" and not _touchdown_spell_zone_ok(team, target_pos):
+		return
 	if team == Config.Team.PLAYER:
 		_record_tutorial_card(int(config.card_id))
+		if not replay_mode:
+			PlayerData.record_card_use(int(config.card_id))
 	if config.card_id == 48:
 		# 雷电法术：不从国王塔飞出，3 道雷电依次从天而降（间隔 0.67s）
 		_lightning_spell_strikes(config, team, target_pos)
@@ -2240,7 +2481,7 @@ func add_crown(tower_team: int, world_pos: Vector3) -> void:
 		hud.update_crown_labels(player_crowns, enemy_crowns)
 	if win_condition == "touchdown":
 		return
-	if sudden_death_enabled and not game_over:
+	if mode_id == "sudden_death" and not game_over:
 		game_over = true
 		winner = scorer
 	elif player_crowns >= 3 or enemy_crowns >= 3:

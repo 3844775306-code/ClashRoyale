@@ -34,7 +34,7 @@ var _chest_count_lbl: Label
 func _ready():
 	if not AccountManager.is_authenticated and OS.get_environment("CR_SKIP_ACCOUNT") == "":
 		print("[Account] 未登录，进入登录界面")
-		get_tree().change_scene_to_file("res://scenes/account_login.tscn")
+		call_deferred("_redirect_account_login")
 		return
 	GameSettings.apply_volumes()
 	_font = load(ThemeHelper.DEFAULT_FONT_PATH)
@@ -56,6 +56,10 @@ func _ready():
 		intro.music_started.connect(_start_bgm, CONNECT_ONE_SHOT)
 		intro.finished.connect(_on_intro_finished, CONNECT_ONE_SHOT)
 		add_child(intro)
+
+
+func _redirect_account_login() -> void:
+	get_tree().change_scene_to_file("res://scenes/account_login.tscn")
 
 
 func _on_intro_finished() -> void:
@@ -538,7 +542,7 @@ func _pending_count_for(title: String) -> int:
 		"宝箱":
 			return PlayerData.chests.size()
 		"收藏":
-			return PlayerData.get_collection_reward_pending_count()
+			return PlayerData.get_collection_reward_pending_count() + PlayerData.get_mastery_claimable_count()
 	return 0
 
 func _add_count_badge(tile: Control, count: int, pos: Vector2, is_chest: bool = false) -> void:

@@ -44,14 +44,16 @@ func _refresh_ui():
 	rh.add_theme_constant_override("separation", 12)
 	reward_panel.add_child(rh)
 	var info := Label.new()
-	info.text = "收藏等级 Lv.%d    待领取奖励 %d 个" % [lv, pending]
+	info.text = "收藏等级 Lv.%d    待领 %d · 大师 %d" % [lv, pending, PlayerData.get_mastery_claimable_count()]
 	info.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	info.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 	info.add_theme_font_size_override("font_size", 17)
 	info.add_theme_color_override("font_color", Color(1.0, 0.88, 0.50))
 	rh.add_child(info)
-	var btn := UiComponents.make_primary_button("收藏奖励", func(): get_tree().change_scene_to_file("res://scenes/collection_rewards.tscn"), Vector2(170, 44))
+	var btn := UiComponents.make_primary_button("收藏奖励", func(): get_tree().change_scene_to_file("res://scenes/collection_rewards.tscn"), Vector2(150, 44))
 	rh.add_child(btn)
+	var mbtn := UiComponents.make_secondary_button("卡牌大师", func(): get_tree().change_scene_to_file("res://scenes/card_mastery.tscn"), Vector2(150, 44))
+	rh.add_child(mbtn)
 	card_list.add_child(reward_panel)
 	for cfg in card_configs:
 		if cfg.card_id <= 3:

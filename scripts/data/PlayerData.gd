@@ -58,6 +58,7 @@ var tutorial_chest_claimed: bool = false
 var starter_cards_v2: bool = false
 var chest_reveal_pending: bool = false
 var collection_rewards_claimed: Array = []
+var card_mastery: Dictionary = {}
 var _collection_rewards_cache: Array = []
 var avatar_seed: int = 0
 var avatar_index: int = 0
@@ -611,6 +612,7 @@ func load_data():
 		avatar_index = int(config.get_value("player", "avatar_index", 0))
 		avatar_custom_path = String(config.get_value("player", "avatar_custom_path", ""))
 		collection_rewards_claimed = config.get_value("player", "collection_rewards_claimed", [])
+		card_mastery = config.get_value("player", "card_mastery", {})
 		experience = config.get_value("player", "experience", 0)
 		trophies = config.get_value("player", "trophies", 0)
 		highest_trophies = config.get_value("player", "highest_trophies", trophies)
@@ -683,6 +685,7 @@ func save_data():
 	config.set_value("player", "avatar_index", avatar_index)
 	config.set_value("player", "avatar_custom_path", avatar_custom_path)
 	config.set_value("player", "collection_rewards_claimed", collection_rewards_claimed)
+	config.set_value("player", "card_mastery", card_mastery)
 	config.set_value("player", "donations_used", donations_used)
 	config.set_value("player", "custom_deck", custom_deck)
 	config.set_value("player", "custom_decks", custom_decks)
@@ -906,6 +909,104 @@ func get_shop_free_pending_count() -> int:
 		if bool(o.get("free", false)) and not bool(o.get("sold", false)):
 			return 1
 	return 0
+
+const MASTERY_USES := [10, 50, 150]
+const MASTERY_TIER_NAMES := ["青铜", "白银", "黄金"]
+
+func _mastery_entry(card_id: int) -> Dictionary:
+	var key := str(card_id)
+	var e = card_mastery.get(key, null)
+	if e == null or not (e is Dictionary):
+		e = {"uses": 0, "claimed": []}
+		card_mastery[key] = e
+		if not e.has("claimed"):
+			e["claimed"] = []
+	return e
+
+func record_card_use(card_id: int) -> void:
+	if card_id <= 3:
+		return
+	var e := _mastery_entry(card_id)
+	e["uses"] = int(e.get("uses", 0)) + 1
+	card_mastery[str(card_id)] = e
+	save_data()
+
+func get_mastery_uses(card_id: int) -> int:
+	return int(_mastery_entry(card_id).get("uses", 0))
+
+func get_mastery_next_tier(card_id: int) -> int:
+	var e := _mastery_entry(card_id)
+	var claimed: Array = Array(e.get("claimed", []))
+	for i in range(MASTERY_USES.size()):
+		if not claimed.has(i + 1) and get_mastery_uses(card_id) >= int(MASTERY_USES[i]):
+			return i + 1
+	return 0
+
+func get_mastery_claimable_count_for(card_id: int) -> int:
+	var e := _mastery_entry(card_id)
+	var uses := int(e.get("uses", 0))
+	var claimed: Array = Array(e.get("claimed", []))
+	var n := 0
+	for i in range(MASTERY_USES.size()):
+		if not claimed.has(i + 1) and uses >= int(MASTERY_USES[i]):
+			n += 1
+	return n
+
+func get_mastery_claimable_count() -> int:
+	var n := 0
+	for key in card_mastery.keys():
+		var e: Dictionary = card_mastery[key]
+		var uses: int = int(e.get("uses", 0))
+		var claimed: Array = Array(e.get("claimed", []))
+		for i in range(MASTERY_USES.size()):
+			if not claimed.has(i + 1) and uses >= int(MASTERY_USES[i]):
+				n += 1
+	return n
+
+func _mastery_reward(card_id: int, tier: int) -> Dictionary:
+	var rar: String = CARD_RARITY.rarity_of_id(card_id)
+	var gold_amt: int = [500, 1500, 3000][tier - 1]
+	var wild_amt: int = [10, 25, 50][tier - 1]
+	return {
+		"gold": gold_amt,
+		"wildcards": {rar: wild_amt},
+		"chest": "magical" if tier == 3 else "",
+		"tier": tier,
+	}
+
+func claim_mastery(card_id: int) -> Dictionary:
+	var e := _mastery_entry(card_id)
+	var claimed: Array = Array(e.get("claimed", []))
+	var uses := get_mastery_uses(card_id)
+	var tier := 0
+	for i in range(MASTERY_USES.size()):
+		if not claimed.has(i + 1) and uses >= int(MASTERY_USES[i]):
+			tier = i + 1
+			break
+	if tier == 0:
+		return {}
+	var rew := _mastery_reward(card_id, tier)
+	gold += int(rew.get("gold", 0))
+	for rar in rew.get("wildcards", {}).keys():
+		add_wildcards(String(rar), int(rew.wildcards[rar]))
+	if String(rew.get("chest", "")) != "":
+		add_chest(String(rew.chest))
+	claimed.append(tier)
+	e["claimed"] = claimed
+	card_mastery[str(card_id)] = e
+	save_data()
+	return rew
+
+func claim_all_mastery() -> Array:
+	var out: Array = []
+	for key in card_mastery.keys():
+		var cid: int = int(key)
+		while get_mastery_next_tier(cid) > 0:
+			var rew := claim_mastery(cid)
+			if rew.is_empty():
+				break
+			out.append({"card_id": cid, "reward": rew})
+	return out
 
 func get_ai_allowed_cards() -> Array:
 	# 常规 AI 只允许：新手六卡 + 皇室征程中当前奖杯已解锁的卡牌。

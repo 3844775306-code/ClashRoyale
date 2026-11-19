@@ -40,13 +40,15 @@ func _ready():
 	rl.add_theme_color_override("font_color", Color(1.0, 0.87, 0.46))
 	rv.add_child(rl)
 	var rs := Label.new()
-	rs.text = "每 10 级一个奖励 · 待领取 %d" % pending
+	rs.text = "收藏奖励待领 %d · 大师奖励待领 %d" % [pending, PlayerData.get_mastery_claimable_count()]
 	rs.add_theme_font_size_override("font_size", 14)
 	rs.add_theme_color_override("font_color", Color(0.78, 0.86, 0.98))
 	rv.add_child(rs)
 	rh.add_child(rv)
-	var rb := UiComponents.make_primary_button("查看奖励", func(): get_tree().change_scene_to_file("res://scenes/collection_rewards.tscn"), Vector2(180, 48))
+	var rb := UiComponents.make_primary_button("收藏奖励", func(): get_tree().change_scene_to_file("res://scenes/collection_rewards.tscn"), Vector2(156, 48))
 	rh.add_child(rb)
+	var mb := UiComponents.make_secondary_button("卡牌大师", func(): get_tree().change_scene_to_file("res://scenes/card_mastery.tscn"), Vector2(156, 48))
+	rh.add_child(mb)
 	vbox.add_child(reward_panel)
 	# 表情
 	vbox.add_child(UiComponents.make_section_title("😀 表情收藏"))
