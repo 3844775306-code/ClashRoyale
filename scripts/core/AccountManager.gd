@@ -775,7 +775,7 @@ func _sync_cloud_after_login() -> void:
 			var path := PlayerData.current_save_path()
 			var data: String = String(remote.get("text", ""))
 			if data != "":
-				DirAccess.make_dir_recursive_absolute(path.get_base_dir())
+				PlayerData.ensure_save_dir(path)
 				var f := FileAccess.open(path, FileAccess.WRITE)
 				if f:
 					f.store_string(data)

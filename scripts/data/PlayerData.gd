@@ -105,6 +105,14 @@ func replay_dir() -> String:
 	return _data_root().trim_suffix("/") + "/replays"
 
 
+func ensure_save_dir(for_path: String) -> bool:
+	var dir := for_path.get_base_dir()
+	if dir == "":
+		return false
+	if dir.begins_with("user://") or dir.begins_with("res://"):
+		return DirAccess.make_dir_recursive_absolute(ProjectSettings.globalize_path(dir)) == OK
+	return DirAccess.make_dir_recursive_absolute(dir) == OK
+
 ## 切换到指定账号的本地存档；首次登录会把旧版单存档迁移到该账号
 func use_account(acct_id: String, migrate_legacy := true) -> void:
 	account_id = acct_id
@@ -113,7 +121,7 @@ func use_account(acct_id: String, migrate_legacy := true) -> void:
 		account_save_path = _default_save_path()
 	else:
 		account_save_path = "%s/accounts/%s/player_data.cfg" % [_data_root().trim_suffix("/"), acct_id]
-	DirAccess.make_dir_recursive_absolute(account_save_path.get_base_dir())
+	ensure_save_dir(account_save_path)
 	if migrate_legacy and acct_id != "default" and not FileAccess.file_exists(account_save_path) \
 			and FileAccess.file_exists(_default_save_path()):
 		var legacy := FileAccess.get_file_as_bytes(_default_save_path())
@@ -804,8 +812,10 @@ func build_save_config() -> ConfigFile:
 func save_data():
 	var config := build_save_config()
 
-	DirAccess.make_dir_recursive_absolute(current_save_path().get_base_dir())
-	config.save(current_save_path())
+	ensure_save_dir(current_save_path())
+	var _save_err := config.save(current_save_path())
+	if _save_err != OK:
+		push_warning("PlayerData save failed: %s (%d)" % [current_save_path(), _save_err])
 	var am = get_node_or_null("/root/AccountManager")
 	if am and am.has_method("notify_local_save"):
 		am.notify_local_save()
