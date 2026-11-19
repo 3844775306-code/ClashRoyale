@@ -15,7 +15,9 @@ var elixir_row: HBoxContainer          # 圣水整行（居中容器）
 var elixir_bar: Control = null
 var timer_label: Label
 var _notice_panel: Panel
-var _notice_flags: Dictionary = {}                 # 计时药丸内的文字
+var _notice_flags: Dictionary = {}
+var _last_r10_sec: int = -1
+var _last_ot10_sec: int = -1                 # 计时药丸内的文字
 var crowns_player_label: Label
 var crowns_enemy_label: Label
 var mode_label: Label                    # 当前对战模式徽标
@@ -304,16 +306,16 @@ func _create_ui_elements():
 	# ========== 暂停按钮（右上角） ==========
 	pause_button = Button.new()
 	pause_button.text = "II"
-	pause_button.position = Vector2(screen_size.x - 56, 22)
-	pause_button.size = Vector2(40, 40)
+	pause_button.position = Vector2(screen_size.x - 72, 12)
+	pause_button.size = Vector2(56, 56)
 	pause_button.pressed.connect(_on_pause_pressed)
 	ThemeHelper.apply_button_style(pause_button)
 	add_child(pause_button)
 	# ========== 表情按钮 ==========
 	emote_button = Button.new()
 	emote_button.text = "表情"
-	emote_button.position = Vector2(screen_size.x - 104, 22)
-	emote_button.size = Vector2(40, 40)
+	emote_button.position = Vector2(screen_size.x - 140, 12)
+	emote_button.size = Vector2(56, 56)
 	ThemeHelper.apply_button_style(emote_button)
 	emote_button.pressed.connect(_on_emote_pressed)
 	add_child(emote_button)
@@ -703,17 +705,21 @@ func _update_timer():
 		if remain3 <= 60.0 and remain3 > 0.0 and not _notice_flags.has("r60"):
 			_notice_flags["r60"] = true
 			show_battle_notice("60 秒", "常规时间剩余 1 分钟", 1.6)
-		if remain3 <= 10.0 and remain3 > 0.0 and not _notice_flags.has("r10"):
-			_notice_flags["r10"] = true
-			show_battle_notice("10 秒", "常规时间即将结束", 1.6)
+		if remain3 <= 10.0 and remain3 > 0.0:
+			var sec10: int = int(ceil(remain3))
+			if sec10 != _last_r10_sec:
+				_last_r10_sec = sec10
+				show_battle_notice(str(sec10), "常规时间倒计时", 0.72)
 	elif battle.overtime and not battle.tower_bleed_active and not battle.game_over:
 		var orr: float = 120.0 - maxf(0.0, elapsed - 180.0)
 		if not _notice_flags.has("ot"):
 			_notice_flags["ot"] = true
 			show_battle_notice("加时赛", "2 分钟内打破平局立即获胜", 2.0)
-		if orr <= 10.0 and orr > 0.0 and not _notice_flags.has("ot10"):
-			_notice_flags["ot10"] = true
-			show_battle_notice("10 秒", "加时赛即将结束", 1.6)
+		if orr <= 10.0 and orr > 0.0:
+			var osec: int = int(ceil(orr))
+			if osec != _last_ot10_sec:
+				_last_ot10_sec = osec
+				show_battle_notice(str(osec), "加时赛倒计时", 0.72)
 	elif battle.tower_bleed_active and not _notice_flags.has("bleed"):
 		_notice_flags["bleed"] = true
 		show_battle_notice("决胜时刻 谁将获胜？", "皇家塔持续损失生命值", 2.6)

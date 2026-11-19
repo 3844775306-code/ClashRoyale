@@ -15,6 +15,8 @@ const AVATAR_ICON = preload("res://scripts/ui/AvatarIcon.gd")
 const HEADER_H := 72          # 统一顶部栏下方内容起始高度
 const TOPBAR_H := 64          # 统一顶部栏高度
 const SIDE_MARGIN := 24       # 左右留白
+const MOBILE_TOUCH := 54.0    # 手机端最小触摸高度
+const MOBILE_BTN_W := 64.0
 
 
 # ==================== 屏幕骨架 ====================
@@ -87,15 +89,15 @@ func make_header(owner: Control, title: String, back_action: Callable = Callable
 		back.add_theme_stylebox_override("pressed", bsb)
 		back.add_theme_stylebox_override("focus", StyleBoxEmpty.new())
 		back.offset_left = x
-		back.offset_top = 14
-		back.offset_right = x + 36
-		back.offset_bottom = 50
+		back.offset_top = 6
+		back.offset_right = x + 52
+		back.offset_bottom = 58
 		back.pressed.connect(back_action)
 		bar.add_child(back)
-		var bi = _ui_icon("back", 20.0, Color(0.86, 0.88, 0.93))
-		bi.position = Vector2(8, 8)
+		var bi = _ui_icon("back", 26.0, Color(0.86, 0.88, 0.93))
+		bi.position = Vector2(13, 13)
 		back.add_child(bi)
-		x += 50.0
+		x += 66.0
 
 	# 玩家名（点击改名）
 	var chip := Button.new()
@@ -529,12 +531,24 @@ func make_badge(text: String) -> Panel:
 
 # ==================== 按钮工厂 ====================
 
+func _apply_mobile_size(btn: Button, min_size: Vector2) -> void:
+	if not OS.has_feature("mobile"):
+		return
+	var w: float = min_size.x
+	var h: float = min_size.y
+	if h > 0.0:
+		h = maxf(h, MOBILE_TOUCH)
+	if w > 0.0:
+		w = maxf(w, MOBILE_BTN_W)
+	btn.custom_minimum_size = Vector2(w, h)
+
 func make_primary_button(text: String, action: Callable = Callable(),
 		min_size: Vector2 = Vector2.ZERO) -> Button:
 	var btn := Button.new()
 	btn.text = text
 	if min_size != Vector2.ZERO:
 		btn.custom_minimum_size = min_size
+	_apply_mobile_size(btn, min_size)
 	ThemeHelper.apply_primary_button(btn)
 	if action.is_valid():
 		btn.pressed.connect(action)
@@ -547,6 +561,7 @@ func make_danger_button(text: String, action: Callable = Callable(),
 	btn.text = text
 	if min_size != Vector2.ZERO:
 		btn.custom_minimum_size = min_size
+	_apply_mobile_size(btn, min_size)
 	ThemeHelper.apply_danger_button(btn)
 	if action.is_valid():
 		btn.pressed.connect(action)
@@ -559,6 +574,7 @@ func make_secondary_button(text: String, action: Callable = Callable(),
 	btn.text = text
 	if min_size != Vector2.ZERO:
 		btn.custom_minimum_size = min_size
+	_apply_mobile_size(btn, min_size)
 	ThemeHelper.apply_muted_button(btn)
 	if action.is_valid():
 		btn.pressed.connect(action)
