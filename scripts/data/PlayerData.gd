@@ -664,6 +664,9 @@ func load_data():
 		collection_rewards_claimed = config.get_value("player", "collection_rewards_claimed", [])
 		card_mastery = config.get_value("player", "card_mastery", {})
 		mailbox = config.get_value("player", "mailbox", [])
+		for _m in mailbox:
+			if _m is Dictionary and String(_m.get("body", "")).contains("\\n"):
+				_m["body"] = String(_m.get("body", "")).replace("\\n", "\n")
 		mail_version_seen = String(config.get_value("player", "mail_version_seen", ""))
 		season_key = String(config.get_value("player", "season_key", ""))
 		season_crowns = int(config.get_value("player", "season_crowns", 0))
@@ -948,9 +951,12 @@ func ensure_daily_shop_offers() -> void:
 	var valid := shop_day == today and shop_offers.size() == 8
 	var arena_now: int = get_arena()
 	var allowed_now: Dictionary = {}
-	for a in range(1, arena_now + 1):
-		for cid in get_cards_unlocked_at(a):
-			allowed_now[int(cid)] = true
+	# 以皇室征程解锁为准，避免 ARENA_UNLOCK 表把新卡误标成 1 阶
+	var max_t: int = get_arena_trophies_at(mini(arena_now + 1, ARENA_DATA.size())) - 1
+	for row in _load_trophy_road():
+		var rid: int = int(row.get("card_id", 0))
+		if rid > 3 and int(row.get("trophies", 0)) <= max_t:
+			allowed_now[rid] = true
 	for cid in STARTER_CARDS:
 		allowed_now[int(cid)] = true
 	if valid:
@@ -999,11 +1005,10 @@ func ensure_daily_shop_offers() -> void:
 				break
 		if epic_idx < 0:
 			var epic_id := 15
-			for a in range(1, arena_now + 1):
-				for cid in get_cards_unlocked_at(a):
-					if CARD_RARITY.rarity_of_id(int(cid)) == "epic":
-						epic_id = int(cid)
-						break
+			for cid in allowed_now.keys():
+				if CARD_RARITY.rarity_of_id(int(cid)) == "epic":
+					epic_id = int(cid)
+					break
 			shop_offers[0] = {"card_id": epic_id, "qty": 25, "unit": 200, "price": 5000, "sold": false}
 			epic_idx = 0
 		# 清掉旧的免费标记/恢复原价，再固定史诗免费卡

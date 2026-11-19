@@ -164,8 +164,8 @@ func _make_chest_card(offer: Dictionary) -> Panel:
 	return p
 
 func _build_cards(vbox: VBoxContainer):
-	vbox.add_child(UiComponents.make_section_title("🃏 今日卡牌 · 8 件 · 每日 1 件免费"))
 	_ensure_daily_offers()
+	vbox.add_child(UiComponents.make_section_title("🃏 今日卡牌 · %d 件 · 每日 1 件免费" % PlayerData.shop_offers.size()))
 	var center := CenterContainer.new()
 	vbox.add_child(center)
 	card_grid = GridContainer.new()

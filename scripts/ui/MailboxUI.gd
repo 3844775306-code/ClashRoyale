@@ -96,7 +96,7 @@ func _mail_row(m: Dictionary) -> Panel:
 	time.add_theme_color_override("font_color", Color(0.55, 0.65, 0.80))
 	top.add_child(time)
 	var body := Label.new()
-	body.text = String(m.get("body", ""))
+	body.text = String(m.get("body", "")).replace("\\n", "\n")
 	body.add_theme_font_size_override("font_size", 13)
 	body.add_theme_color_override("font_color", Color(0.80, 0.88, 1.0))
 	body.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
