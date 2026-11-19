@@ -251,6 +251,9 @@ func build_snapshot() -> Dictionary:
 		"touchdown_scores": [int(battle.touchdown_score[0]), int(battle.touchdown_score[1])],
 		"touchdown_round": int(battle.touchdown_round),
 		"touchdown_resetting": bool(battle.touchdown_resetting),
+		"overtime": bool(battle.overtime),
+		"tower_bleed_active": bool(battle.tower_bleed_active),
+		"match_draw": bool(battle.match_draw),
 	}
 	if battle.get("network_host_mode"):
 		snap["player_hands"] = battle.network_player_hands()

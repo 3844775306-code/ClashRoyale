@@ -191,6 +191,10 @@ func _sync_guest_state(m: Dictionary) -> void:
 	if b == null:
 		return
 	var slot := NetworkManager.local_slot
+	b.game_time = float(m.get("t", 0.0)) * 1000.0
+	b.overtime = bool(m.get("overtime", false))
+	b.tower_bleed_active = bool(m.get("tower_bleed_active", false))
+	b.match_draw = bool(m.get("match_draw", false))
 	var ph: Array = m.get("player_hands", [])
 	var pe: Array = m.get("player_elixirs", [])
 	var ex: Array = m.get("elixir", [5.0, 5.0])

@@ -13,10 +13,20 @@ var elixir_grid: HBoxContainer         # 圣水点容器
 var elixir_icon: Label                 # 💧 圣水图标
 var elixir_row: HBoxContainer          # 圣水整行（居中容器）
 var elixir_bar: Control = null
-var timer_label: Label                 # 计时药丸内的文字
+var timer_label: Label
+var _notice_panel: Panel
+var _notice_flags: Dictionary = {}                 # 计时药丸内的文字
 var crowns_player_label: Label
 var crowns_enemy_label: Label
 var mode_label: Label                    # 当前对战模式徽标
+var touchdown_overlay: Control = null
+var _mini_tray: Control = null
+var _mini_cards: HBoxContainer = null
+var _mini_ids: Array = []
+var _mini_scans: Array = []
+var _mini_elixir: float = 5.0
+var _td_break_left := 0.0
+var _td_break_hint: Label = null
 var double_elixir_label: Label         # ⚡双倍圣水 徽标
 var card_container: HBoxContainer
 const ShieldBadge := preload("res://scripts/ui/ShieldBadge.gd")
@@ -535,6 +545,13 @@ func _build_elixir_grid(grid: HBoxContainer):
 		elixir_cells.append(pip)
 
 func _process(_delta):
+	if battle and battle.network_host_mode and not battle.network_guest_mode:
+		_update_teammate_tray()
+	_update_mini_scans()
+	if _td_break_left > 0.0:
+		_td_break_left = maxf(0.0, _td_break_left - _delta)
+		if _td_break_hint != null:
+			_td_break_hint.text = "第 %d 轮准备…  %d 秒" % [int(round(battle.touchdown_round)) if battle else 0, int(ceil(_td_break_left))]
 	if not battle: return
 	# 结算后：冻结计时与圣水显示，暂停整棵树让所有单位/子弹/计时器停下
 	if battle.game_over:
@@ -569,7 +586,12 @@ func _process(_delta):
 		else:
 			double_elixir_label.text = "双倍圣水"
 	if mode_label:
-		if String(battle.win_condition) == "duel":
+		if bool(battle.get("commando_mode")):
+			var remain: int = int(maxf(0.0, 15.0 - float(battle.commando_timer) + 0.999))
+			mode_label.text = "主题特种兵 · %s · 下次 %d 秒" % [String(battle.commando_card_name), remain]
+		elif String(battle.win_condition) == "touchdown":
+			mode_label.text = "冲线 · 第 %d 轮" % int(battle.touchdown_round)
+		elif String(battle.win_condition) == "duel":
 			mode_label.text = "决斗 · 第 %d 回合 · %d : %d" % [int(battle.duel_round), int(battle.duel_wins[0]), int(battle.duel_wins[1])]
 		else:
 			mode_label.text = battle.mode_name if (battle.mode_name != "" and battle.mode_name != "标准对战") else ""
@@ -583,6 +605,79 @@ func _process(_delta):
 	# 更新所有血条
 	_update_health_bars()
 
+func show_touchdown_round_break(round_no: int, a: int, b: int) -> void:
+	if touchdown_overlay != null:
+		touchdown_overlay.queue_free()
+	var layer := Control.new()
+	layer.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	layer.mouse_filter = Control.MOUSE_FILTER_STOP
+	layer.z_index = 120
+	add_child(layer)
+	touchdown_overlay = layer
+	var panel := Panel.new()
+	panel.anchor_left = 0.5
+	panel.anchor_right = 0.5
+	panel.anchor_top = 0.5
+	panel.anchor_bottom = 0.5
+	panel.offset_left = -300
+	panel.offset_right = 300
+	panel.offset_top = -130
+	panel.offset_bottom = 130
+	var sb := StyleBoxFlat.new()
+	sb.bg_color = Color(0.03, 0.05, 0.10, 0.96)
+	sb.set_corner_radius_all(20)
+	sb.set_border_width_all(2)
+	sb.border_color = Color(0.945, 0.765, 0.36, 0.85)
+	sb.shadow_color = Color(0, 0, 0, 0.6)
+	sb.shadow_size = 16
+	panel.add_theme_stylebox_override("panel", sb)
+	layer.add_child(panel)
+	var font: Font = load(ThemeHelper.DEFAULT_FONT_PATH)
+	var vbox := VBoxContainer.new()
+	vbox.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	vbox.offset_left = 24
+	vbox.offset_right = -24
+	vbox.offset_top = 18
+	vbox.offset_bottom = -18
+	vbox.alignment = BoxContainer.ALIGNMENT_CENTER
+	vbox.add_theme_constant_override("separation", 10)
+	panel.add_child(vbox)
+	var title := Label.new()
+	title.text = "冲线得分！"
+	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	title.add_theme_font_size_override("font_size", 28)
+	title.add_theme_color_override("font_color", Color(0.945, 0.765, 0.36))
+	if font != null:
+		title.add_theme_font_override("font", font)
+	vbox.add_child(title)
+	var score := Label.new()
+	score.text = "%d : %d" % [a, b]
+	score.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	score.add_theme_font_size_override("font_size", 40)
+	score.add_theme_color_override("font_color", Color(0.95, 0.93, 0.85))
+	if font != null:
+		score.add_theme_font_override("font", font)
+	vbox.add_child(score)
+	var hint := Label.new()
+	hint.text = "第 %d 轮准备…（2 秒后双方圣水重置为 5）" % round_no
+	_td_break_left = 2.0
+	_td_break_hint = hint
+	hint.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	hint.add_theme_font_size_override("font_size", 15)
+	hint.add_theme_color_override("font_color", Color(0.70, 0.76, 0.86))
+	if font != null:
+		hint.add_theme_font_override("font", font)
+	vbox.add_child(hint)
+
+
+func hide_touchdown_round_break() -> void:
+	_td_break_left = 0.0
+	_td_break_hint = null
+	if touchdown_overlay != null:
+		touchdown_overlay.queue_free()
+		touchdown_overlay = null
+
+
 func set_touchdown_score(a: int, b: int, goal: int) -> void:
 	if crowns_player_label:
 		crowns_player_label.text = "触地 %d/%d" % [a, goal]
@@ -591,18 +686,91 @@ func set_touchdown_score(a: int, b: int, goal: int) -> void:
 
 
 func _update_timer():
-	var elapsed_ms = battle.game_time
-	var elapsed = elapsed_ms / 1000.0
-	if battle.overtime:
-		timer_label.text = "⏱ 加时"
+	var elapsed: float = maxf(0.0, float(battle.game_time) / 1000.0)
+	if battle.tower_bleed_active:
+		timer_label.text = "⏱ 决胜时刻"
 		timer_label.add_theme_color_override("font_color", ThemeHelper.COLORS.gold_bright)
-	elif elapsed_ms >= Config.GAME_TIME_LIMIT - 30000:
-		var remain = max(0.0, Config.GAME_TIME_LIMIT / 1000.0 - elapsed)
-		timer_label.text = "⏱ %d:%02d" % [int(remain / 60.0), int(remain) % 60]
-		timer_label.add_theme_color_override("font_color", Color(1.0, 0.35, 0.3))
+	elif battle.overtime:
+		var remain: float = maxf(0.0, 120.0 - maxf(0.0, elapsed - 180.0))
+		timer_label.text = "⏱ 加时 %d:%02d" % [int(remain / 60.0), int(remain) % 60]
+		timer_label.add_theme_color_override("font_color", Color(1.0, 0.35, 0.3) if remain <= 10.0 else ThemeHelper.COLORS.gold_bright)
 	else:
-		timer_label.text = "⏱ %d:%02d" % [int(elapsed / 60.0), int(elapsed) % 60]
-		timer_label.add_theme_color_override("font_color", Color.WHITE)
+		var remain2: float = maxf(0.0, 180.0 - elapsed)
+		timer_label.text = "⏱ %d:%02d" % [int(remain2 / 60.0), int(remain2) % 60]
+		timer_label.add_theme_color_override("font_color", Color(1.0, 0.35, 0.3) if remain2 <= 10.0 else Color.WHITE)
+	if not battle.overtime and not battle.tower_bleed_active and not battle.game_over:
+		var remain3: float = 180.0 - elapsed
+		if remain3 <= 60.0 and remain3 > 0.0 and not _notice_flags.has("r60"):
+			_notice_flags["r60"] = true
+			show_battle_notice("60 秒", "常规时间剩余 1 分钟", 1.6)
+		if remain3 <= 10.0 and remain3 > 0.0 and not _notice_flags.has("r10"):
+			_notice_flags["r10"] = true
+			show_battle_notice("10 秒", "常规时间即将结束", 1.6)
+	elif battle.overtime and not battle.tower_bleed_active and not battle.game_over:
+		var orr: float = 120.0 - maxf(0.0, elapsed - 180.0)
+		if not _notice_flags.has("ot"):
+			_notice_flags["ot"] = true
+			show_battle_notice("加时赛", "2 分钟内打破平局立即获胜", 2.0)
+		if orr <= 10.0 and orr > 0.0 and not _notice_flags.has("ot10"):
+			_notice_flags["ot10"] = true
+			show_battle_notice("10 秒", "加时赛即将结束", 1.6)
+	elif battle.tower_bleed_active and not _notice_flags.has("bleed"):
+		_notice_flags["bleed"] = true
+		show_battle_notice("决胜时刻 谁将获胜？", "皇家塔持续损失生命值", 2.6)
+
+func show_battle_notice(title: String, sub: String = "", duration: float = 2.0) -> void:
+	if not is_inside_tree():
+		return
+	if _notice_panel != null and is_instance_valid(_notice_panel):
+		_notice_panel.queue_free()
+	var panel := Panel.new()
+	panel.position = Vector2(100, 210)
+	panel.size = Vector2(600, 118)
+	panel.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	panel.z_index = 90
+	var sb := StyleBoxFlat.new()
+	sb.bg_color = Color(0.035, 0.055, 0.12, 0.94)
+	sb.border_color = Color(1.0, 0.78, 0.32, 0.95)
+	sb.set_border_width_all(2)
+	sb.set_corner_radius_all(18)
+	sb.shadow_color = Color(0, 0, 0, 0.45)
+	sb.shadow_size = 12
+	panel.add_theme_stylebox_override("panel", sb)
+	add_child(panel)
+	var v := VBoxContainer.new()
+	v.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	v.offset_left = 12; v.offset_right = -12; v.offset_top = 10; v.offset_bottom = -10
+	v.alignment = BoxContainer.ALIGNMENT_CENTER
+	v.add_theme_constant_override("separation", 2)
+	panel.add_child(v)
+	var t := Label.new()
+	t.text = title
+	t.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	t.add_theme_font_size_override("font_size", 26)
+	t.add_theme_color_override("font_color", Color(1.0, 0.86, 0.42))
+	v.add_child(t)
+	if sub != "":
+		var s := Label.new()
+		s.text = sub
+		s.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		s.add_theme_font_size_override("font_size", 13)
+		s.add_theme_color_override("font_color", Color(0.78, 0.88, 1.0))
+		v.add_child(s)
+	_notice_panel = panel
+	panel.modulate.a = 0.0
+	var tw := create_tween()
+	tw.tween_property(panel, "modulate:a", 1.0, 0.18)
+	tw.tween_interval(duration)
+	tw.tween_property(panel, "modulate:a", 0.0, 0.25)
+	tw.tween_callback(func():
+		if is_instance_valid(panel):
+			panel.queue_free())
+
+func set_overtime_ui(_active: bool) -> void:
+	pass
+
+func set_tower_bleed_ui(_active: bool) -> void:
+	pass
 
 func _update_elixir_grid():
 	return
@@ -842,6 +1010,114 @@ func update_crown_labels(pc: int, ec: int) -> void:
 	crowns_player_label.text = "你 %d" % pc
 	crowns_enemy_label.text = "敌 %d" % ec
 
+func _update_teammate_tray() -> void:
+	var hands: Array = battle.network_player_hands()
+	var teammate_slot := -1
+	for slot in range(1, 4):
+		if battle.remote_players.has(slot) and int(battle.remote_players[slot].get("team", 1)) == 0:
+			teammate_slot = slot
+			break
+	if teammate_slot < 0 or teammate_slot >= hands.size() or battle.team_size(0) < 2:
+		set_teammate_hand([])
+		return
+	var elixirs: Array = battle.network_player_elixirs()
+	var mate_elixir: float = float(elixirs[teammate_slot]) if teammate_slot < elixirs.size() else 5.0
+	set_teammate_hand(Array(hands[teammate_slot]), mate_elixir)
+
+
+func set_teammate_hand(ids: Array, elixir: float = -1.0) -> void:
+	if elixir >= 0.0:
+		_mini_elixir = elixir
+		_update_mini_scans()
+	if ids == _mini_ids:
+		return
+	_mini_ids = ids.duplicate()
+	_mini_scans.clear()
+	var needed: bool = not ids.is_empty()
+	if not needed:
+		if _mini_tray:
+			_mini_tray.visible = false
+		return
+	if _mini_tray == null:
+		_mini_tray = Control.new()
+		_mini_tray.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		_mini_tray.z_index = 6
+		add_child(_mini_tray)
+		var title := Label.new()
+		title.text = "队友手牌"
+		title.position = Vector2(0, 0)
+		title.add_theme_font_size_override("font_size", 12)
+		title.add_theme_color_override("font_color", Color(0.72, 0.82, 0.95))
+		title.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		_mini_tray.add_child(title)
+		_mini_cards = HBoxContainer.new()
+		_mini_cards.position = Vector2(0, 18)
+		_mini_cards.add_theme_constant_override("separation", 8)
+		_mini_cards.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		_mini_tray.add_child(_mini_cards)
+	_mini_tray.size = Vector2(4 * 64 + 3 * 8, 104)
+	_mini_tray.position = Vector2((get_viewport().get_visible_rect().size.x - _mini_tray.size.x) * 0.5, _tray_top - 112.0)
+	_mini_tray.visible = true
+	for c in _mini_cards.get_children():
+		c.queue_free()
+	for cid in ids:
+		var cfg = battle.get_config(int(cid)) if battle else null
+		if cfg == null:
+			continue
+		var card := Panel.new()
+		card.custom_minimum_size = Vector2(64, 84)
+		card.size = Vector2(64, 84)
+		card.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		var sb := StyleBoxFlat.new()
+		sb.bg_color = Color(0.035, 0.055, 0.11, 0.94)
+		sb.set_corner_radius_all(8)
+		sb.set_border_width_all(1)
+		sb.border_color = Color(0.945, 0.765, 0.36, 0.55)
+		card.add_theme_stylebox_override("panel", sb)
+		var art_path := "res://assets/cards_web/%s.png" % String(cfg.card_name)
+		if not ResourceLoader.exists(art_path):
+			art_path = "res://assets/cards_rendered/%s.png" % String(cfg.card_name)
+		var tex := TextureRect.new()
+		tex.position = Vector2(3, 3)
+		tex.size = Vector2(58, 58)
+		tex.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+		tex.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+		tex.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		if ResourceLoader.exists(art_path):
+			tex.texture = load(art_path)
+		var scan := ShaderMaterial.new()
+		scan.shader = load("res://assets/shaders/card_scan.gdshader")
+		scan.set_shader_parameter("progress", clampf(_mini_elixir / float(maxi(int(cfg.cost), 1)), 0.0, 1.0))
+		tex.material = scan
+		_mini_scans.append({"mat": scan, "cost": maxi(int(cfg.cost), 1)})
+		card.add_child(tex)
+		var cost := Label.new()
+		cost.text = str(int(cfg.cost))
+		cost.position = Vector2(4, 58)
+		cost.add_theme_font_size_override("font_size", 11)
+		cost.add_theme_color_override("font_color", Color(0.90, 0.80, 1.0))
+		cost.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		card.add_child(cost)
+		var nm := Label.new()
+		nm.text = String(cfg.card_name)
+		nm.position = Vector2(0, 68)
+		nm.size = Vector2(64, 16)
+		nm.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		nm.add_theme_font_size_override("font_size", 9)
+		nm.add_theme_color_override("font_color", Color(0.88, 0.84, 0.74))
+		nm.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		card.add_child(nm)
+		_mini_cards.add_child(card)
+	_update_mini_scans()
+
+
+func _update_mini_scans() -> void:
+	for item in _mini_scans:
+		var mat: ShaderMaterial = item.get("mat", null)
+		if mat != null:
+			mat.set_shader_parameter("progress", clampf(_mini_elixir / float(maxi(int(item.get("cost", 1)), 1)), 0.0, 1.0))
+
+
 func hide_card_tray() -> void:
 	if table_bg:
 		table_bg.visible = false
@@ -849,6 +1125,8 @@ func hide_card_tray() -> void:
 		card_container.visible = false
 	if elixir_row:
 		elixir_row.visible = false
+	if _mini_tray:
+		_mini_tray.visible = false
 
 func fly_crown(from_world: Vector3, team: int) -> void:
 	var cam := get_viewport().get_camera_3d()

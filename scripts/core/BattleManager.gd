@@ -90,6 +90,11 @@ var game_over: bool = false
 var king_sequence: bool = false
 var timeout_sequence: bool = false
 var overtime: bool = false
+var timeout_checked: bool = false
+var tower_bleed_active: bool = false
+var tower_bleed_acc: float = 0.0
+var overtime_end_ms: float = 0.0
+var match_draw: bool = false
 const SPELL_IDS = [10, 11, 20, 31, 40, 48, 70, 77, 78, 80, 85, 91, 104, 107, 112, 113, 115, 116, 122, 123]   # 万箭齐发,火球,电击法术,大雪球,哥布林飞桶,雷电法术
 # 塔血量追踪 [左公主, 右公主, 国王] * 2队
 var healths: Array = [0,0,0,0,0,0]
@@ -1354,8 +1359,12 @@ func _process(delta):
 		return
 	game_time += delta * 1000.0
 	var now = game_time
-	if now >= Config.GAME_TIME_LIMIT and not game_over:
+	if not timeout_checked and now >= Config.GAME_TIME_LIMIT and not game_over:
 		_check_timeout()
+	if overtime and not game_over and not tower_bleed_active and not timeout_sequence:
+		_update_overtime()
+	if tower_bleed_active and not game_over and not timeout_sequence:
+		_update_tower_bleed(delta)
 	if win_condition == "touchdown" and not game_over and not touchdown_resetting and not timeout_sequence:
 		_update_touchdown()
 	_update_elixir(delta)
@@ -1824,31 +1833,91 @@ func _update_network_ai(delta: float) -> void:
 			if reason == "":
 				break
 
-func _check_timeout():
+func _score_tied() -> bool:
 	if win_condition == "touchdown":
-		if int(touchdown_score[0]) == int(touchdown_score[1]):
-			overtime = true
-		else:
-			game_over = true
-			winner = Config.Team.PLAYER if int(touchdown_score[0]) > int(touchdown_score[1]) else Config.Team.ENEMY
-			_timeout_game_over()
+		return int(touchdown_score[0]) == int(touchdown_score[1])
+	return player_crowns == enemy_crowns
+
+func _score_winner() -> int:
+	if win_condition == "touchdown":
+		return Config.Team.PLAYER if int(touchdown_score[0]) > int(touchdown_score[1]) else Config.Team.ENEMY
+	return Config.Team.PLAYER if player_crowns > enemy_crowns else Config.Team.ENEMY
+
+func _check_timeout():
+	if timeout_checked or game_over:
 		return
-	if sudden_death_enabled:
-		var hp0: float = _team_tower_total_health(Config.Team.PLAYER)
-		var hp1: float = _team_tower_total_health(Config.Team.ENEMY)
-		if absf(hp0 - hp1) < 0.5:
-			overtime = true
-		else:
-			game_over = true
-			winner = Config.Team.PLAYER if hp0 > hp1 else Config.Team.ENEMY
-			_timeout_game_over()
-		return
-	if player_crowns != enemy_crowns:
-		game_over = true
-		winner = Config.Team.PLAYER if player_crowns > enemy_crowns else Config.Team.ENEMY
-		_timeout_game_over()
+	timeout_checked = true
+	if _score_tied():
+		_start_overtime()
 	else:
-		overtime = true
+		game_over = true
+		winner = _score_winner()
+		_timeout_game_over()
+
+func _start_overtime() -> void:
+	overtime = true
+	overtime_end_ms = game_time + 120000.0
+	if hud and hud.has_method("set_overtime_ui"):
+		hud.set_overtime_ui(true)
+
+func _update_overtime() -> void:
+	if not _score_tied():
+		game_over = true
+		winner = _score_winner()
+		_timeout_game_over()
+		return
+	if game_time >= overtime_end_ms:
+		if win_condition == "touchdown":
+			game_over = true
+			match_draw = true
+			winner = -1
+			if hud and hud.has_method("show_battle_notice"):
+				hud.show_battle_notice("平局", "冲线模式加时结束，双方比分相同", 2.0)
+			_timeout_game_over()
+		else:
+			_begin_tower_bleed()
+
+func _begin_tower_bleed() -> void:
+	tower_bleed_active = true
+	tower_bleed_acc = 0.0
+	# 清空场上所有非皇家塔单位、子弹和法术
+	for u in units.get_children():
+		if u is Unit and u.config and int(u.config.card_id) > 3:
+			u.queue_free()
+	for b in bullets.get_children():
+		b.queue_free()
+	for s in spells.get_children():
+		if s is Spell:
+			s.queue_free()
+	if hud and hud.has_method("set_tower_bleed_ui"):
+		hud.set_tower_bleed_ui(true)
+
+func _update_tower_bleed(delta: float) -> void:
+	tower_bleed_acc += delta
+	while tower_bleed_acc >= 0.01 and not game_over:
+		tower_bleed_acc -= 0.01
+		var dead_team: int = -1
+		for u in units.get_children():
+			if not (u is Unit) or u.config == null or int(u.config.card_id) > 3 or u.health <= 0:
+				continue
+			u.health = maxf(0.0, float(u.health) - 1.0)
+			var idx: int = int(u.id)
+			if idx >= 0 and idx < healths.size():
+				healths[idx] = u.health
+			if u.health <= 0.0 and dead_team < 0:
+				dead_team = int(u.team)
+		if dead_team >= 0:
+			tower_bleed_active = false
+			game_over = true
+			winner = 1 - dead_team
+			# 若双方同时被扣到 0，按剩余总塔血判定
+			var hp0: float = _team_tower_total_health(Config.Team.PLAYER)
+			var hp1: float = _team_tower_total_health(Config.Team.ENEMY)
+			if absf(hp0 - hp1) < 0.5:
+				match_draw = true
+				winner = -1
+			_timeout_game_over()
+			return
 
 func _timeout_game_over() -> void:
 	timeout_sequence = true
@@ -2335,7 +2404,9 @@ func show_network_result(winner_team: int, crowns: Array, local_team: int, durat
 	if not replay_mode and not tutorial_battle:
 		PlayerData.add_season_crowns(my_c)
 	var data := {
-		"win": winner_team == local_team,
+		"win": winner_team == local_team and winner_team >= 0,
+		"custom_title": "平  局" if winner_team < 0 else ("胜  利" if winner_team == local_team else "失  败"),
+		"custom_sub": "D R A W" if winner_team < 0 else ("V I C T O R Y" if winner_team == local_team else "D E F E A T"),
 		"crowns_my": my_c,
 		"crowns_en": en_c,
 		"trophy": 0,
@@ -2473,9 +2544,11 @@ func _show_game_over() -> void:
 		return
 	if hud == null:
 		return
-	var win: bool = winner == Config.Team.PLAYER
+	var win: bool = winner == Config.Team.PLAYER and not match_draw and winner >= 0
 	var trophy_change: int = 0
-	if win:
+	if winner < 0 or match_draw:
+		AudioManager.play_sfx(ProceduralAudio.get_sound("defeat"))
+	elif win:
 		trophy_change = randi_range(25, 35)
 		AudioManager.play_sfx(ProceduralAudio.get_sound("victory"))
 	else:
@@ -2490,7 +2563,8 @@ func _show_game_over() -> void:
 		else:
 			PlayerData.add_chest("magical")
 		_pending_chest_index = PlayerData.chests.size() - 1
-	PlayerData.add_trophies(trophy_change)
+	if trophy_change != 0:
+		PlayerData.add_trophies(trophy_change)
 	if trophy_change != 0:
 		LeaderboardAPI.submit_trophies(PlayerData.trophies, PlayerData.player_name)
 	if not replay_mode and not tutorial_battle:
@@ -2498,6 +2572,8 @@ func _show_game_over() -> void:
 	var dur: String = "%d:%02d" % [int(game_time / 60000.0), int(game_time / 1000.0) % 60]
 	var data := {
 		"win": win,
+		"custom_title": "平  局" if (winner < 0 or match_draw) else ("胜  利" if win else "失  败"),
+		"custom_sub": "D R A W" if (winner < 0 or match_draw) else ("V I C T O R Y" if win else "D E F E A T"),
 		"crowns_my": player_crowns,
 		"crowns_en": enemy_crowns,
 		"trophy": trophy_change,
