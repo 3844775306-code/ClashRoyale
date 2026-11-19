@@ -178,7 +178,8 @@ func _end_cloud_session() -> void:
 	_supabase_user_id = ""
 	_supabase_using = false
 	if LL_StateData.HasSessionToken():
-		await LL_Authentication.EndSession.new().send()
+		# 后台结束旧 LootLocker 会话，不阻塞 Supabase 登录
+		LL_Authentication.EndSession.new().send()
 	# 强制清理，避免下一个账号继承上一个 LootLocker 会话
 	LootLockerInternal_LootLockerCache.current().delete_data("session_token")
 	LootLockerInternal_LootLockerCache.current().delete_data("white_label_session_token")
@@ -246,8 +247,7 @@ func register(email: String, password: String) -> Dictionary:
 		return {"ok": false, "error": "请输入正确的邮箱地址"}
 	if password.length() < 6:
 		return {"ok": false, "error": "密码至少 6 位"}
-	if _local_has(email):
-		return {"ok": false, "error": "该邮箱已在本机注册"}
+	var local_exists := _local_has(email)
 	_busy = true
 	last_error = ""
 	var online := false
@@ -261,7 +261,7 @@ func register(email: String, password: String) -> Dictionary:
 		else:
 			last_error = String(sb.get("error", "注册失败"))
 	# 无论云端是否可用，都创建本机账号（保证离线可进入）
-	var first_account := _load_index().get_sections().is_empty()
+	var first_account := not local_exists and _load_index().get_sections().is_empty()
 	_upsert_local(email, password)
 	account_email = email
 	account_id = _make_id(email)
