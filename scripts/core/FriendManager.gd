@@ -235,11 +235,9 @@ func send_friend_request(profile: Dictionary) -> bool:
 	if pid == "" or pid == str(ClanManager.get_player_id()):
 		return false
 	var now := int(Time.get_unix_time_from_system())
-	if is_friend(pid) or has_outgoing(pid):
+	# 允许重复申请：未成为好友时每次都重新发送（覆盖等待中的申请）
+	if is_friend(pid):
 		return false
-	if _request_sent_at.has(pid) and now - int(_request_sent_at[pid]) < 60:
-		return false
-	_request_sent_at[pid] = now
 	outgoing_requests[pid] = p
 	save_friends()
 	var req_data := {

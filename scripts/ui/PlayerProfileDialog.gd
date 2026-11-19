@@ -138,8 +138,8 @@ func _update_friend_btn(is_self: bool, pid: String) -> void:
 	elif FriendManager.has_incoming(pid):
 		_friend_btn.text = "同意好友请求"
 	elif FriendManager.has_outgoing(pid):
-		_friend_btn.text = "等待对方同意"
-		_friend_btn.disabled = true
+		_friend_btn.text = "再次申请好友"
+		_friend_btn.disabled = false
 	else:
 		_friend_btn.text = "发送好友请求"
 

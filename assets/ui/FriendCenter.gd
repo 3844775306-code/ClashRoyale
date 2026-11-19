@@ -237,8 +237,8 @@ func _result_row(e: Dictionary) -> Control:
 		add.text = "已是好友"
 		add.disabled = true
 	elif FriendManager.has_outgoing(pid):
-		add.text = "等待同意"
-		add.disabled = true
+		add.text = "再次申请"
+		add.disabled = false
 	elif FriendManager.has_incoming(pid):
 		add.text = "同意"
 	add.pressed.connect(func():
@@ -249,9 +249,9 @@ func _result_row(e: Dictionary) -> Control:
 			add.disabled = true
 			_refresh_all()
 		elif FriendManager.send_friend_request(e):
-			_status.text = "好友请求已发送，等待 %s 同意" % name
-			add.text = "等待同意"
-			add.disabled = true
+			_status.text = "好友请求已再次发送，等待 %s 同意" % name
+			add.text = "再次申请"
+			add.disabled = false
 		else:
 			_status.text = "已在好友列表或请求已发送" if not FriendManager.has_outgoing(pid) else "已发送过申请，等待对方同意"
 			if FriendManager.has_outgoing(pid) or FriendManager.is_friend(pid):
