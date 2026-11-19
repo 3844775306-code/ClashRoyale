@@ -72,6 +72,20 @@ Deno.serve(async (req) => {
       if (!r.ok) { const d = await r.json(); return json({ ok: false, error: d.msg ?? d.message ?? "绑定奖励失败" }, 400); }
       return json({ ok: true, already: false });
     }
+    if (action === "provision-email") {
+      const email = String(body.email ?? "").trim().toLowerCase();
+      const password = String(body.password ?? "");
+      if (!email.includes("@") || password.length < 6) return json({ ok: false, error: "邮箱或密码无效" }, 400);
+      const r = await fetch(`${base}/auth/v1/admin/users`, {
+        method: "POST", headers: adminHeaders,
+        body: JSON.stringify({ email, password, email_confirm: true, user_metadata: { email_verified: true } }),
+      });
+      const data = await r.json();
+      if (r.ok) return json({ ok: true, created: true, user_id: data.id ?? "" });
+      const msg = String(data.msg ?? data.message ?? "创建失败");
+      if (msg.toLowerCase().includes("already") || msg.toLowerCase().includes("registered") || r.status === 422) return json({ ok: true, created: false });
+      return json({ ok: false, error: msg }, 400);
+    }
     if (action === "resolve") {
       const key0 = normUsername(body.username);
       if (!key0) return json({ ok: false, error: "用户名格式错误" }, 400);

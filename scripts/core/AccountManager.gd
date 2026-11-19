@@ -225,13 +225,22 @@ func login(email: String, password: String) -> Dictionary:
 			_supabase_using = true
 		else:
 			last_error = String(sb.get("error", "云端登录失败"))
+			# 旧本机账号自动升级为 Supabase 账号，保留本机存档并上传
+			if _verify_local(email, password):
+				var prov := await _edge_request("provision-email", {"email": email, "password": password})
+				if bool(prov.get("ok", false)):
+					var sb2 := await _supabase_login(email, password)
+					if bool(sb2.get("ok", false)):
+						online = true
+						_supabase_using = true
 			# 兼容此前注册的 LootLocker 账号
-			var resp = await _white_label_login(email, password)
-			online = bool(resp.get("ok", false))
-			if online:
-				_supabase_using = false
-			else:
-				last_error = String(resp.get("error", last_error))
+			if not online:
+				var resp = await _white_label_login(email, password)
+				online = bool(resp.get("ok", false))
+				if online:
+					_supabase_using = false
+				else:
+					last_error = String(resp.get("error", last_error))
 	# 云端失败时使用本机账号（同设备离线登录）
 	if not online:
 		if not _verify_local(email, password):

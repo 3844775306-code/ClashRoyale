@@ -1,5 +1,5 @@
 extends Node
-const BUILD_TAG := "2026-11-20 02:45"
+const BUILD_TAG := "2026-11-20 03:00"
 
 # 网格尺寸 (米)
 const GRID_SIZE: float = 1.0
