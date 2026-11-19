@@ -296,6 +296,12 @@ func logout() -> void:
 	cloud_status_changed.emit()
 
 
+func supabase_token() -> String:
+	return _supabase_access_token
+
+func is_supabase_authenticated() -> bool:
+	return _supabase_using and _supabase_access_token != ""
+
 func scoped_player_id() -> int:
 	# 同一设备多账号：用本地账号 id 派生独立玩家 id，避免部落/排行榜互相覆盖
 	if account_id != "" and account_id != "default":
@@ -572,7 +578,7 @@ func _ensure_lootlocker_settings() -> void:
 # 云端存档（LootLocker Player Files）
 # ============================================================
 func _sync_public_profile() -> void:
-	if not _session_online or _supabase_using:
+	if not _session_online:
 		return
 	LeaderboardAPI.submit_trophies(PlayerData.trophies, PlayerData.player_name)
 	ClanManager.sync_my_profile()

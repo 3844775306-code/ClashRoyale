@@ -1,0 +1,485 @@
+{
+  "clans": [
+    {
+      "applications": [],
+      "chat": [
+        {
+          "amount": 4.0,
+          "avatar_index": 2.0,
+          "avatar_seed": 1989918405.0,
+          "card_id": 54.0,
+          "card_name": "飞行机器",
+          "donated": 2,
+          "donors": [
+            1.1125817647735078e+18,
+            1112581764773507869
+          ],
+          "message": "请求 4 张 飞行机器",
+          "player_id": 8.61259056018399e+17,
+          "player_name": "骷髅军团",
+          "request_key": "861259056018399037_54_1795100532",
+          "timestamp": 1795100532.002,
+          "type": "request"
+        },
+        {
+          "amount": 40.0,
+          "avatar_index": 7.0,
+          "avatar_seed": 1793561075773.0,
+          "card_id": 10.0,
+          "card_name": "万箭齐发",
+          "donated": 20.0,
+          "donors": [
+            1.1125817647735078e+18,
+            8.61259056018399e+17
+          ],
+          "message": "请求 40 张 万箭齐发",
+          "player_id": 7.789756202826862e+16,
+          "player_name": "labib",
+          "request_key": "77897562028268619_10_1795092858",
+          "timestamp": 1795092858.21573,
+          "type": "request"
+        },
+        {
+          "amount": 4.0,
+          "avatar_index": 4.0,
+          "avatar_seed": 1792681220256.0,
+          "card_id": 11.0,
+          "card_name": "火球",
+          "donated": 2.0,
+          "donors": [
+            1.1125817647735078e+18,
+            1.1125817647735078e+18
+          ],
+          "message": "请求 4 张 火球",
+          "player_id": 7.789756202826862e+16,
+          "player_name": "labib",
+          "request_key": "77897562028268619_11_1795089410",
+          "timestamp": 1795089410.24075,
+          "type": "request"
+        },
+        {
+          "amount": 40.0,
+          "avatar_index": 2.0,
+          "avatar_seed": 1989918405.0,
+          "card_id": 8.0,
+          "card_name": "亡灵",
+          "donated": 10.0,
+          "donors": [
+            1.1125817647735078e+18
+          ],
+          "message": "请求 40 张 亡灵",
+          "player_id": 1.1125817647735078e+18,
+          "player_name": "星米",
+          "request_key": "1112581764773507869_8_1795079032",
+          "timestamp": 1795079032.614,
+          "type": "request"
+        },
+        {
+          "avatar_index": 2.0,
+          "avatar_seed": 1989918405.0,
+          "message": "你好",
+          "player_id": 1.1125817647735078e+18,
+          "player_name": "星米",
+          "timestamp": 1795078704.228,
+          "type": "chat"
+        },
+        {
+          "avatar_index": 2.0,
+          "avatar_seed": 1989918405.0,
+          "message": "hello",
+          "player_id": 8.61259056018399e+17,
+          "player_name": "骷髅军团",
+          "timestamp": 1795074592.83,
+          "type": "chat"
+        },
+        {
+          "avatar_index": 2.0,
+          "avatar_seed": 1989918405.0,
+          "message": "12345",
+          "player_id": 8.61259056018399e+17,
+          "player_name": "骷髅军团",
+          "timestamp": 1795070810.15,
+          "type": "chat"
+        },
+        {
+          "avatar_index": 2.0,
+          "avatar_seed": 1989918405.0,
+          "message": "你好",
+          "player_id": 8.61259056018399e+17,
+          "player_name": "骷髅军团",
+          "timestamp": 1795070683.385,
+          "type": "chat"
+        },
+        {
+          "amount": 40.0,
+          "avatar_index": 2.0,
+          "avatar_seed": 1989918405.0,
+          "card_id": 4.0,
+          "card_name": "骑士",
+          "donated": 40.0,
+          "donors": [
+            1.1125817647735078e+18,
+            1.1125817647735078e+18,
+            1.1125817647735078e+18,
+            1.1125817647735078e+18
+          ],
+          "message": "请求 40 张 骑士",
+          "player_id": 8.61259056018399e+17,
+          "player_name": "骷髅军团",
+          "request_key": "861259056018399037_4_1795069462",
+          "timestamp": 1795069462.589,
+          "type": "request"
+        }
+      ],
+      "clan_id": "clan_1795069373634_880",
+      "description": "",
+      "is_open": true,
+      "leader_id": 1.1125817647735078e+18,
+      "members": {
+        "1112581764773507869": {
+          "avatar_index": 2.0,
+          "avatar_seed": 1989918405.0,
+          "donations": 64.0,
+          "joined": 1795069373.634,
+          "player_name": "星米",
+          "role": "leader",
+          "trophies": 5466.0
+        },
+        "77897562028268619": {
+          "avatar_index": 4.0,
+          "avatar_seed": 1792681220256.0,
+          "donations": 0.0,
+          "joined": 1795089366.60721,
+          "player_name": "labib",
+          "role": "member",
+          "trophies": 0.0
+        },
+        "861259056018399037": {
+          "avatar_index": 2.0,
+          "avatar_seed": 1989918405.0,
+          "donations": 10.0,
+          "joined": 1795069443.318,
+          "player_name": "骷髅军团",
+          "role": "member",
+          "trophies": 0.0
+        }
+      },
+      "min_trophies": 0.0,
+      "name": "星米",
+      "pending_card_gifts": {
+        "1112581764773507840": [
+          {
+            "amount": 10.0,
+            "card_id": 8.0,
+            "sender": "星米"
+          }
+        ],
+        "77897562028268624": [
+          {
+            "amount": 10.0,
+            "card_id": 10.0,
+            "sender": "星米"
+          },
+          {
+            "amount": 1.0,
+            "card_id": 11.0,
+            "sender": "星米"
+          },
+          {
+            "amount": 10.0,
+            "card_id": 10.0,
+            "sender": "骷髅军团"
+          },
+          {
+            "amount": 1.0,
+            "card_id": 11.0,
+            "sender": "星米"
+          }
+        ],
+        "861259056018398976": [
+          {
+            "amount": 10.0,
+            "card_id": 4.0,
+            "sender": "星米"
+          },
+          {
+            "amount": 10.0,
+            "card_id": 4.0,
+            "sender": "星米"
+          },
+          {
+            "amount": 1.0,
+            "card_id": 54.0,
+            "sender": "星米"
+          },
+          {
+            "amount": 1,
+            "card_id": 54,
+            "sender": "星米"
+          }
+        ]
+      },
+      "total_trophies": 5466
+    },
+    {
+      "applications": [
+        {
+          "player_id": 8.61259056018399e+17,
+          "player_name": "骷髅军团",
+          "time": 1795068658.967,
+          "trophies": 0.0
+        },
+        {
+          "player_id": 1112581764773507869,
+          "player_name": "星米",
+          "time": 1795069395.533,
+          "trophies": 5466
+        }
+      ],
+      "chat": [
+        {
+          "avatar_index": 2.0,
+          "avatar_seed": 1989918405.0,
+          "message": "你好",
+          "player_id": 60699432.0,
+          "player_name": "星米",
+          "timestamp": 1795064166.872,
+          "type": "chat"
+        },
+        {
+          "avatar_index": 2.0,
+          "avatar_seed": 1989918405.0,
+          "message": "123",
+          "player_id": 60699432.0,
+          "player_name": "星米",
+          "timestamp": 1795059275.243,
+          "type": "chat"
+        },
+        {
+          "amount": 4.0,
+          "card_id": 22.0,
+          "message": "请求 4 张 蝙蝠",
+          "player_id": 60699432.0,
+          "player_name": "玩家",
+          "timestamp": 1788216020.122,
+          "type": "request"
+        },
+        {
+          "amount": 1.0,
+          "card_id": 50.0,
+          "message": "请求 1 张 烈焰精灵",
+          "player_id": 60699432.0,
+          "player_name": "玩家",
+          "timestamp": 1779690998.235,
+          "type": "request"
+        },
+        {
+          "amount": 1.0,
+          "card_id": 13.0,
+          "message": "请求 1 张 迷你皮卡",
+          "player_id": 60699432.0,
+          "player_name": "玩家",
+          "timestamp": 1777999705.804,
+          "type": "request"
+        },
+        {
+          "amount": 4.0,
+          "card_id": 35.0,
+          "message": "请求 4 张 冰冻精灵",
+          "player_id": 60699432.0,
+          "player_name": "玩家",
+          "timestamp": 1777776607.432,
+          "type": "request"
+        },
+        {
+          "amount": 3.0,
+          "card_id": 57.0,
+          "message": "请求 3 张 野蛮人",
+          "player_id": 60699432.0,
+          "player_name": "玩家",
+          "timestamp": 1777775857.007,
+          "type": "request"
+        },
+        {
+          "amount": 2.0,
+          "card_id": 34.0,
+          "message": "请求 2 张 皇家巨人",
+          "player_id": 60699432.0,
+          "player_name": "玩家",
+          "timestamp": 1777774927.307,
+          "type": "request"
+        },
+        {
+          "amount": 1.0,
+          "card_id": 44.0,
+          "message": "请求 1 张 弓箭手",
+          "player_id": 60699432.0,
+          "player_name": "玩家",
+          "timestamp": 1777774904.566,
+          "type": "request"
+        },
+        {
+          "message": "你好",
+          "player_id": 60699432.0,
+          "player_name": "玩家",
+          "timestamp": 1777774885.031,
+          "type": "chat"
+        },
+        {
+          "message": "13",
+          "player_id": 60699432.0,
+          "player_name": "玩家",
+          "timestamp": 1777774872.649,
+          "type": "chat"
+        }
+      ],
+      "clan_id": "clan_1777774661356_291",
+      "description": "",
+      "is_open": false,
+      "leader_id": 60699432.0,
+      "members": {
+        "60699432": {
+          "avatar_index": 2.0,
+          "avatar_seed": 1989918405.0,
+          "donations": 3.0,
+          "joined": 1777774661.356,
+          "player_name": "骷髅军团",
+          "role": "leader",
+          "trophies": 0.0
+        },
+        "64075520": {
+          "avatar_index": 0.0,
+          "avatar_seed": 6860484.0,
+          "donations": 0.0,
+          "joined": 1795056918.78,
+          "player_name": "玩家",
+          "role": "member",
+          "trophies": 0.0
+        }
+      },
+      "min_trophies": 0.0,
+      "name": "米族",
+      "total_trophies": 0
+    },
+    {
+      "chat": [
+        {
+          "amount": 2,
+          "card_id": 41,
+          "message": "请求 2 张 骷髅巨人",
+          "player_id": 60699432,
+          "player_name": "玩家",
+          "timestamp": 1777774184.664,
+          "type": "request"
+        },
+        {
+          "message": "123",
+          "player_id": 60699432.0,
+          "player_name": "ç©å®¶",
+          "timestamp": 1777774170.744,
+          "type": "chat"
+        },
+        {
+          "amount": 3.0,
+          "card_id": 29.0,
+          "message": "Ã¨Â¯Â·Ã¦Â±Â 3 Ã¥Â¼Â  Ã©ÂÂÃ¨ÂÂ®Ã¤ÂºÂºÃ§Â²Â¾Ã©ÂÂ",
+          "player_id": 60699432.0,
+          "player_name": "Ã§ÂÂ©Ã¥Â®Â¶",
+          "timestamp": 1777774153.245,
+          "type": "request"
+        },
+        {
+          "message": "ÃÂ¤ÃÂ½ÃÂ ÃÂ¥ÃÂ¥ÃÂ½",
+          "player_id": 60699432.0,
+          "player_name": "ÃÂ§ÃÂÃÂ©ÃÂ¥ÃÂ®ÃÂ¶",
+          "timestamp": 1777773760.694,
+          "type": "chat"
+        }
+      ],
+      "clan_id": "clan_1777742797012_515",
+      "description": "",
+      "is_open": false,
+      "leader_id": 60699432.0,
+      "members": {
+        "60699432": {
+          "donations": 0.0,
+          "joined": 1777742797.012,
+          "role": "leader"
+        }
+      },
+      "min_trophies": 0.0,
+      "name": "mz",
+      "total_trophies": 0
+    },
+    {
+      "chat": [],
+      "description": "",
+      "is_open": false,
+      "leader_id": 60699432,
+      "members": {
+        "60699432": {
+          "donations": 0,
+          "joined": 1777742759.228,
+          "role": "leader"
+        }
+      },
+      "min_trophies": 0,
+      "name": "mz",
+      "total_trophies": 0,
+      "clan_id": "clan_1777742759228_32"
+    }
+  ],
+  "leaderboard": [
+    {
+      "member_id": "60699432",
+      "score": 5496,
+      "rank": 1,
+      "name": "",
+      "scoped_id": "",
+      "avatar_seed": 0,
+      "avatar_index": 0,
+      "metadata": {}
+    },
+    {
+      "member_id": "64082103",
+      "score": 123,
+      "rank": 2,
+      "name": "",
+      "scoped_id": "",
+      "avatar_seed": 0,
+      "avatar_index": 0,
+      "metadata": {}
+    },
+    {
+      "member_id": "64075520",
+      "score": 82,
+      "rank": 3,
+      "name": "",
+      "scoped_id": "",
+      "avatar_seed": 0,
+      "avatar_index": 0,
+      "metadata": {}
+    },
+    {
+      "member_id": "64082074",
+      "score": 35,
+      "rank": 4,
+      "name": "",
+      "scoped_id": "",
+      "avatar_seed": 0,
+      "avatar_index": 0,
+      "metadata": {}
+    },
+    {
+      "member_id": "64082237",
+      "score": 33,
+      "rank": 5,
+      "name": "",
+      "scoped_id": "",
+      "avatar_seed": 0,
+      "avatar_index": 0,
+      "metadata": {}
+    }
+  ],
+  "inventories": {}
+}

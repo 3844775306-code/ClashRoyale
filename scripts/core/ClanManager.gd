@@ -76,10 +76,14 @@ func get_player_name() -> String:
 	return name if name != "" else "玩家"
 
 func is_logged_in() -> bool:
+	if SupabaseAPI and SupabaseAPI.is_ready():
+		return true
 	return LL_StateData.IsLoggedIn()
 
 # ---------- 初始化 ----------
 func guest_login():
+	if SupabaseAPI and SupabaseAPI.is_ready():
+		return
 	if is_logged_in():
 		print("ClanManager: 已登录，玩家ID: ", get_player_id())
 		get_player_inventory(get_player_id(), func(success, inventory):
@@ -101,6 +105,10 @@ func guest_login():
 			get_tree().get_first_node_in_group("ui_notifier").show_message(err_msg)
 # 从排行榜读取某玩家的库存 (callback 返回 Dictionary{ card_id: quantity })
 func get_player_inventory(player_id: int, callback: Callable):
+	if SupabaseAPI and SupabaseAPI.is_ready():
+		var inv_sb := await SupabaseAPI.get_value("inventory:" + str(player_id))
+		callback.call(true if not inv_sb.is_empty() else false, inv_sb)
+		return
 	if not is_logged_in() or player_id <= 0:
 		callback.call(false, {})
 		return
@@ -116,6 +124,10 @@ func get_player_inventory(player_id: int, callback: Callable):
 
 # 保存某玩家的库存到排行榜
 func save_player_inventory(player_id: int, inventory: Dictionary, callback: Callable = Callable()):
+	if SupabaseAPI and SupabaseAPI.is_ready():
+		var ok_sb2 := await SupabaseAPI.upsert("inventory:" + str(player_id), inventory)
+		if _cb_valid(callback): callback.call(ok_sb2, "" if ok_sb2 else "库存同步失败")
+		return
 	var leaderboard_key = "player_inventory_%s" % player_id
 	var member_id = str(player_id)
 	var metadata = _encode(JSON.stringify(inventory))
@@ -224,6 +236,20 @@ func _claim_pending_gifts(callback: Callable = Callable()) -> void:
 			if _cb_valid(callback): callback.call(ok)
 		)
 	)
+func _claim_legacy_membership(clan: Dictionary, old_key: String, new_key: String) -> void:
+	var members: Dictionary = clan.get("members", {})
+	if members.has(old_key) and not members.has(new_key):
+		members[new_key] = Dictionary(members[old_key]).duplicate(true)
+		members.erase(old_key)
+		clan["members"] = members
+	var gifts: Dictionary = clan.get("pending_card_gifts", {})
+	if gifts.has(old_key) and not gifts.has(new_key):
+		gifts[new_key] = gifts[old_key]
+		gifts.erase(old_key)
+		clan["pending_card_gifts"] = gifts
+	invalidate_cache()
+	_update_clan_on_leaderboard(clan)
+
 func get_my_clan(callback: Callable):
 	# 这个函数需要在服务器端维护一个映射表；简化处理：扫描整个部落列表寻找当前玩家
 	# 更高效的方式是使用另一个排行榜或 player storage 记录每个玩家的所属部落
@@ -237,6 +263,15 @@ func get_my_clan(callback: Callable):
 			if clan.has("members") and clan.members.has(pid):
 				if _cb_valid(callback): callback.call(true, clan)
 				return
+		# 迁移兼容：旧 LootLocker 部落成员 key 与新建 Supabase 账号 ID 不同，按玩家名认领
+		for clan in clans:
+			var members: Dictionary = clan.get("members", {})
+			for old_key in members.keys():
+				var m: Dictionary = Dictionary(members[old_key])
+				if String(m.get("player_name", "")) == get_player_name():
+					_claim_legacy_membership(clan, String(old_key), pid)
+					if _cb_valid(callback): callback.call(true, clan)
+					return
 		callback.call(true, null)  # 没有加入任何部落
 	)
 
@@ -285,6 +320,12 @@ func create_clan(clan_name: String, description: String, min_trophies: int, is_o
 
 # ---------- 内部：将部落数据提交到排行榜 ----------
 func _submit_clan_to_leaderboard(clan_data: Dictionary, callback: Callable):
+	if SupabaseAPI and SupabaseAPI.is_ready():
+		var sid := "clan_" + str(int(Time.get_unix_time_from_system() * 1000.0)) + "_" + str(randi() % 1000)
+		clan_data["clan_id"] = sid
+		var ok_sb := await SupabaseAPI.upsert("clan:" + sid, clan_data)
+		if _cb_valid(callback): callback.call(ok_sb, sid if ok_sb else "保存部落失败")
+		return
 	var leaderboard_key = clan_leaderboard_key()
 	var member_id = "clan_" + str(int(Time.get_unix_time_from_system() * 1000.0)) + "_" + str(randi() % 1000)
 	var score = clan_data.get("total_trophies", 0)
@@ -304,6 +345,15 @@ func _submit_clan_to_leaderboard(clan_data: Dictionary, callback: Callable):
 
 # ---------- 内部：更新部落数据（覆盖提交）----------
 func _update_clan_on_leaderboard(clan_data: Dictionary, callback: Callable = Callable()):
+	if SupabaseAPI and SupabaseAPI.is_ready():
+		var sb_id := String(clan_data.get("clan_id", ""))
+		if sb_id == "":
+			if _cb_valid(callback): callback.call(false, "clan_id 缺失")
+			return
+		_recalc_total(clan_data)
+		var ok_sb := await SupabaseAPI.upsert("clan:" + sb_id, clan_data)
+		if _cb_valid(callback): callback.call(ok_sb, null if ok_sb else "更新失败")
+		return
 	var member_id = clan_data.get("clan_id", "")
 	if member_id == "":
 		if callback.is_valid(): callback.call(false, "clan_id 缺失")
@@ -360,6 +410,16 @@ func get_all_clans(callback: Callable):
 	var now: float = Time.get_unix_time_from_system()
 	if not _clans_cache.is_empty() and now - _cache_at < CACHE_SECONDS:
 		callback.call(true, _clans_cache.duplicate(true))
+		return
+	if SupabaseAPI and SupabaseAPI.is_ready():
+		var rows: Array = await SupabaseAPI.list_prefix("clan:")
+		var clans_sb: Array = []
+		for row in rows:
+			if row is Dictionary and row.get("value") is Dictionary:
+				clans_sb.append(Dictionary(row.get("value")))
+		_clans_cache = clans_sb.duplicate(true)
+		_cache_at = now
+		callback.call(true, clans_sb)
 		return
 	var request = LL_Leaderboards.GetScoreList.new(clan_leaderboard_key(), 100)
 	var response = await request.send()

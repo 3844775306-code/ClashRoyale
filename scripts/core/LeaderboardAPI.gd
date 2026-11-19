@@ -74,6 +74,17 @@ func submit_trophies(score: int, player_name: String):
 		pid = current_member_id()
 	if pid == "":
 		pid = player_name
+	if SupabaseAPI and SupabaseAPI.is_ready():
+		await SupabaseAPI.upsert("leader:" + pid, {
+			"player_name": player_name,
+			"player_id": pid,
+			"scoped_id": scoped,
+			"score": score,
+			"avatar_seed": int(PlayerData.avatar_seed),
+			"avatar_index": int(PlayerData.avatar_index),
+			"clan": "",
+		})
+		return
 	var meta := {
 		"player_name": player_name,
 		"avatar_seed": int(PlayerData.avatar_seed),
@@ -115,6 +126,29 @@ func _decode_metadata(raw) -> Dictionary:
 
 func get_leaderboard(callback: Callable):
 	last_error = ""
+	if SupabaseAPI and SupabaseAPI.is_ready():
+		var rows: Array = await SupabaseAPI.list_prefix("leader:", 500)
+		var sb_entries: Array = []
+		for row in rows:
+			if not (row is Dictionary) or not (row.get("value") is Dictionary):
+				continue
+			var v: Dictionary = row.value
+			sb_entries.append({
+				"rank": 0,
+				"name": String(v.get("player_name", "玩家")),
+				"player_id": String(v.get("player_id", "")),
+				"score": int(v.get("score", 0)),
+				"avatar_seed": int(v.get("avatar_seed", 0)),
+				"avatar_index": int(v.get("avatar_index", 0)),
+				"clan": String(v.get("clan", "")),
+				"scoped_id": String(v.get("scoped_id", "")),
+			})
+		sb_entries.sort_custom(func(a, b): return int(a.score) > int(b.score))
+		for i in range(sb_entries.size()):
+			sb_entries[i]["rank"] = i + 1
+		if callback != null and callback.is_valid():
+			callback.call(sb_entries)
+		return
 	var req = LL_Leaderboards.GetScoreList.new(leaderboard_id(), 50, -1)
 	print("[Leaderboard] 正在获取排行榜...")
 	var resp = await req.send()
