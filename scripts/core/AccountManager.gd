@@ -286,12 +286,17 @@ func register(email: String, password: String) -> Dictionary:
 	if not offline_only:
 		cloud_status = "正在创建云端账号…"
 		cloud_status_changed.emit()
-		var sb := await _supabase_signup(email, password)
-		online = bool(sb.get("ok", false)) and bool(sb.get("has_session", false))
-		if bool(sb.get("ok", false)):
-			last_error = "注册成功，请检查邮箱完成验证后再登录云端" if not online else ""
+		# 通过 Edge Function 用 service_role 创建已确认邮箱账号，注册后直接有会话
+		var prov := await _edge_request("provision-email", {"email": email, "password": password})
+		if bool(prov.get("ok", false)):
+			var sb := await _supabase_login(email, password)
+			online = bool(sb.get("ok", false))
+			if online:
+				_supabase_using = true
+			else:
+				last_error = String(sb.get("error", "注册后登录失败"))
 		else:
-			last_error = String(sb.get("error", "注册失败"))
+			last_error = String(prov.get("error", "注册失败"))
 	# 无论云端是否可用，都创建本机账号（保证离线可进入）
 	var first_account := not local_exists and _load_index().get_sections().is_empty()
 	_upsert_local(email, password)
