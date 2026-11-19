@@ -33,6 +33,8 @@ var _supabase_access_token := ""
 var _supabase_refresh_token := ""
 var _supabase_user_id := ""
 var _supabase_using := false
+var _otp_sent_at: int = 0
+var _bind_sent_at: int = 0
 
 
 func _data_dir() -> String:
@@ -123,6 +125,8 @@ func recent_supabase_accounts(days: int = 30) -> Array:
 func _player_load_account(migrate_legacy := true) -> void:
 	_fresh_account = not FileAccess.file_exists(_account_save_path(account_id))
 	PlayerData.use_account(account_id, migrate_legacy)
+	if _fresh_account:
+		PlayerData.save_data()
 	# 新账号默认用邮箱前缀作为实际玩家名（随后仍可改名）
 	if not PlayerData.name_chosen and PlayerData.player_name.strip_edges() in ["", "玩家"] and account_email != "":
 		PlayerData.player_name = account_email.get_slice("@", 0)
@@ -356,20 +360,28 @@ func login_username(username: String, password: String) -> Dictionary:
 func request_bind_email(email: String) -> Dictionary:
 	if not is_supabase_authenticated():
 		return {"ok": false, "error": "请先登录云端"}
+	var now_b := int(Time.get_unix_time_from_system())
+	if _bind_sent_at > 0 and now_b - _bind_sent_at < 60:
+		return {"ok": false, "error": "发送过于频繁，请 %d 秒后再试" % (60 - (now_b - _bind_sent_at))}
 	var body := JSON.stringify({"email": email}).to_utf8_buffer()
 	var res: Array = await _http_request(HTTPClient.METHOD_PUT,
 		SUPABASE_URL + "/auth/v1/user", _supabase_headers(_supabase_access_token), body)
 	if int(res[1]) < 200 or int(res[1]) >= 300:
 		return {"ok": false, "error": _supabase_error(res)}
+	_bind_sent_at = now_b
 	await _edge_request("sync-email", {}, true)
 	return {"ok": true}
 
 func send_email_otp(email: String) -> Dictionary:
+	var now_o := int(Time.get_unix_time_from_system())
+	if _otp_sent_at > 0 and now_o - _otp_sent_at < 60:
+		return {"ok": false, "error": "验证码发送过于频繁，请 %d 秒后再试" % (60 - (now_o - _otp_sent_at))}
 	var body := JSON.stringify({"email": email, "create_user": false}).to_utf8_buffer()
 	var res: Array = await _http_request(HTTPClient.METHOD_POST,
 		SUPABASE_URL + "/auth/v1/otp", _supabase_headers(), body)
 	if int(res[1]) < 200 or int(res[1]) >= 300:
 		return {"ok": false, "error": _supabase_error(res)}
+	_otp_sent_at = now_o
 	return {"ok": true}
 
 func verify_email_otp(email: String, token: String) -> Dictionary:
@@ -551,7 +563,10 @@ func _supabase_error(res: Array) -> String:
 		var d: Dictionary = parsed
 		for k in ["msg", "message", "error_description", "error"]:
 			if String(d.get(k, "")) != "":
-				return String(d.get(k, ""))
+				var m := String(d.get(k, ""))
+				if m.to_lower().contains("rate limit"):
+					return "发送过于频繁，请约 60 秒后再试（Supabase 邮件限流）"
+				return m
 	return "HTTP %d" % code
 
 func _supabase_login(email: String, password: String) -> Dictionary:
@@ -668,6 +683,9 @@ func _supabase_download_cloud() -> Dictionary:
 func _supabase_upload_cloud() -> bool:
 	var path := PlayerData.current_save_path()
 	var text := FileAccess.get_file_as_string(path)
+	if text == "":
+		PlayerData.save_data()
+		text = FileAccess.get_file_as_string(path)
 	if text == "":
 		last_error = "本地存档为空：%s" % path
 		return false
