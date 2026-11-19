@@ -34,6 +34,8 @@ var _mail_btn: Button
 var _mail_badge: Panel
 var _mail_count_lbl: Label
 var _mail_timer: Timer
+var _intro_instance: Control = null
+var _intro_finished: bool = false
 
 func _ready():
 	if not AccountManager.is_authenticated and OS.get_environment("CR_SKIP_ACCOUNT") == "":
@@ -58,10 +60,11 @@ func _ready():
 		_start_bgm()
 		UiComponents.ensure_player_name(self)
 	else:
-		var intro = (load("res://assets/ui/IntroAnimation.gd") as GDScript).new()
-		intro.music_started.connect(_start_bgm, CONNECT_ONE_SHOT)
-		intro.finished.connect(_on_intro_finished, CONNECT_ONE_SHOT)
-		add_child(intro)
+		_intro_instance = (load("res://assets/ui/IntroAnimation.gd") as GDScript).new()
+		_intro_instance.music_started.connect(_start_bgm, CONNECT_ONE_SHOT)
+		_intro_instance.finished.connect(_on_intro_finished, CONNECT_ONE_SHOT)
+		add_child(_intro_instance)
+		get_tree().create_timer(3.4).timeout.connect(_on_intro_failsafe)
 
 
 func _on_friend_invite(invite: Dictionary) -> void:
@@ -215,8 +218,19 @@ func _redirect_account_login() -> void:
 
 
 func _on_intro_finished() -> void:
+	if _intro_finished:
+		return
+	_intro_finished = true
 	print("[Intro] reveal menu, prompt name")
 	UiComponents.ensure_player_name(self)
+
+func _on_intro_failsafe() -> void:
+	if _intro_finished:
+		return
+	if _intro_instance != null and is_instance_valid(_intro_instance):
+		_intro_instance.queue_free()
+	_on_intro_finished()
+	_start_bgm()
 
 
 func _start_bgm() -> void:
@@ -1088,20 +1102,23 @@ func _on_challenges_pressed():
 
 
 func _poll_mail() -> void:
-	ClanManager.sync_my_inventory(func(_ok):
-		var n: int = PlayerData.get_mail_pending_count()
-		if n > 0 and _mail_badge == null and _mail_btn != null:
-			_add_count_badge(_mail_btn, n, Vector2(66, 0), false, true)
-		if _mail_badge != null:
-			_mail_badge.visible = n > 0
-			if _mail_count_lbl != null:
-				_mail_count_lbl.text = str(mini(n, 99))
-		if PlayerData.mail_alert_pending != "":
-			var alert := PlayerData.mail_alert_pending
-			PlayerData.mail_alert_pending = ""
-			PlayerData.save_data()
-			_show_mail_notice(alert)
-	)
+	ClanManager.sync_my_inventory(_on_mail_inventory_synced)
+
+func _on_mail_inventory_synced(_ok) -> void:
+	if not is_inside_tree():
+		return
+	var n: int = PlayerData.get_mail_pending_count()
+	if n > 0 and _mail_badge == null and _mail_btn != null:
+		_add_count_badge(_mail_btn, n, Vector2(42, 0), false, true)
+	if _mail_badge != null:
+		_mail_badge.visible = n > 0
+		if _mail_count_lbl != null:
+			_mail_count_lbl.text = str(mini(n, 99))
+	if PlayerData.mail_alert_pending != "":
+		var alert := PlayerData.mail_alert_pending
+		PlayerData.mail_alert_pending = ""
+		PlayerData.save_data()
+		_show_mail_notice(alert)
 
 func _on_mailbox_pressed():
 	get_tree().change_scene_to_file("res://scenes/mailbox.tscn")

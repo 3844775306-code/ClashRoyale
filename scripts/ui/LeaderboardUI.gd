@@ -74,7 +74,10 @@ func _populate_list(entries: Array):
 		var rank: int = data.rank
 		var pid := str(data.get("player_id", ""))
 		var is_self := false
-		if pid != "" and str(ClanManager.get_player_id()) == pid:
+		var scoped := String(data.get("scoped_id", ""))
+		if scoped != "" and scoped == str(ClanManager.get_player_id()):
+			is_self = true
+		elif pid != "" and str(ClanManager.get_player_id()) == pid:
 			is_self = true
 		elif str(data.name) == str(PlayerData.player_name):
 			is_self = true
@@ -123,7 +126,7 @@ func _populate_list(entries: Array):
 		hbox.add_child(av)
 		av.mouse_filter = Control.MOUSE_FILTER_STOP
 		var prof := {
-			"player_id": String(data.get("player_id", "")),
+			"player_id": scoped if scoped != "" else String(data.get("player_id", "")),
 			"name": display_name,
 			"trophies": int(data.get("score", 0)),
 			"rank": int(data.get("rank", 0)),

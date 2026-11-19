@@ -72,6 +72,7 @@ var touchdown_score: Array = [0, 0]
 var touchdown_goal: int = 3
 var touchdown_resetting: bool = false
 var touchdown_round: int = 1
+var touchdown_scorer: Unit = null
 var _deny_selected_spell: bool = false
 # 决斗 Duel
 var duel_round: int = 1
@@ -180,13 +181,21 @@ func _update_deny_masks():
 		for m in [deny_left, deny_mid, deny_right, deny_bridge_l, deny_bridge_r]:
 			if m:
 				m.visible = false
-		if _deny_selected_spell or deny_mid == null:
+		if deny_mid == null:
 			return
-		var own_line: float = Config.ARENA_ORIGIN.z + Config.ARENA_HEIGHT * 2.0 / 3.0
+		var origin_z: float = Config.ARENA_ORIGIN.z
+		var h: float = Config.ARENA_HEIGHT
+		if _deny_selected_spell:
+			# 法术可放己方 2/3：遮住敌方最后 1/3
+			var spell_line: float = origin_z + h / 3.0
+			deny_mid.visible = true
+			_apply_deny_plane(deny_mid, 0.0, Config.ARENA_WIDTH,
+				spell_line - origin_z, origin_z + (spell_line - origin_z) * 0.5)
+			return
+		var own_line: float = origin_z + h * 2.0 / 3.0
 		deny_mid.visible = true
 		_apply_deny_plane(deny_mid, 0.0, Config.ARENA_WIDTH,
-			own_line - Config.ARENA_ORIGIN.z,
-			(Config.ARENA_ORIGIN.z + own_line) * 0.5)
+			own_line - origin_z, (origin_z + own_line) * 0.5)
 		return
 	if deny_bridge_l:
 		_apply_deny_plane(deny_bridge_l, -5.5, 3.0, 3.0, 0.0)
@@ -235,11 +244,12 @@ func _apply_deny_plane(plane: MeshInstance3D, center_x: float, width: float, hei
 	if pmesh:
 		pmesh.size = Vector2(max(width, 0.01), height)
 func create_selection_preview(card_ui: CardUI):
-	_deny_selected_spell = SPELL_IDS.has(card_ui.config.card_id) or card_ui.config.card_id == 110
-	_update_deny_masks()
 	var cfg = card_ui.config
+	_deny_selected_spell = SPELL_IDS.has(cfg.card_id) or cfg.card_id == 110
 	# ----- 不可放置区域红色遮罩 -----
-	if not SPELL_IDS.has(cfg.card_id) and cfg.card_id != 109:
+	# 冲线模式部队/法术使用不同的半区限制，都需要创建遮罩；
+	# 其他模式法术仍不显示不可放置遮罩。
+	if win_condition == "touchdown" or (not SPELL_IDS.has(cfg.card_id) and cfg.card_id != 109):
 		_create_deny_masks()
 	else:
 		_clean_deny_masks()
@@ -922,6 +932,9 @@ func _touchdown_score(team: int, scorer: Unit = null) -> void:
 func _touchdown_round_break(scorer: Unit = null) -> void:
 	# 立即清空场上所有单位/子弹/法术
 	touchdown_resetting = true
+	touchdown_scorer = scorer
+	if network_host_mode:
+		NetworkManager.send_touchdown_break(touchdown_round, int(touchdown_score[0]), int(touchdown_score[1]))
 	var victims: Array = []
 	for u in units.get_children():
 		if u is Unit and u != scorer:
@@ -947,8 +960,11 @@ func _touchdown_round_break(scorer: Unit = null) -> void:
 		remote_players[sk] = rp
 	if scorer != null and is_instance_valid(scorer):
 		scorer.queue_free()
+	touchdown_scorer = null
 	if hud and hud.has_method("hide_touchdown_round_break"):
 		hud.hide_touchdown_round_break()
+	if network_host_mode:
+		NetworkManager.send_touchdown_break_end()
 	touchdown_resetting = false
 
 
@@ -1316,6 +1332,14 @@ func _process(delta):
 		network_countdown = maxf(0.0, network_countdown - delta)
 		if network_countdown > 0.0:
 			return
+	if touchdown_resetting and win_condition == "touchdown":
+		# 2 秒回合间隙内除得分单位外保持清场（防止 AI/延迟生成）
+		var extra: Array = []
+		for u in units.get_children():
+			if u is Unit and u != touchdown_scorer:
+				extra.append(u)
+		for u in extra:
+			u.queue_free()
 	if game_over:
 		if win_condition == "duel" and not duel_finished:
 			if not duel_transition:
@@ -1565,6 +1589,8 @@ func _record_tutorial_card(card_id: int) -> void:
 		tutorial_played.append(card_id)
 
 func spawn_initial_towers():
+	if win_condition == "touchdown" or String(battle_mode.get("win_condition", "")) == "touchdown":
+		return
 	if replay_skip_towers:
 		return
 	if replay_mode and replay_towers.size() >= 6:
@@ -2090,8 +2116,14 @@ func deploy_spell(config: CardData, team: int, target_pos: Vector3, level_overri
 		if boom:
 			AudioManager.play_sfx(boom, target_pos)
 		return
-	var king_tower = get_king_tower(team)
-	var start_pos = king_tower.global_position if king_tower else target_pos + Vector3(0, 10, 0)
+	var start_pos: Vector3
+	if win_condition == "touchdown":
+		# 冲线模式没有国王塔：发射性法术从己方冲线中央出发
+		var own_z: float = Config.ARENA_ORIGIN.z + (Config.ARENA_HEIGHT - 2.0 if team == Config.Team.PLAYER else 2.0)
+		start_pos = Vector3(0.0, 1.2, own_z)
+	else:
+		var king_tower = get_king_tower(team)
+		start_pos = king_tower.global_position if king_tower else target_pos + Vector3(0, 10, 0)
 
 	# 根据法术类型设定飞行速度
 	var speed = 20.0
@@ -2121,8 +2153,13 @@ func deploy_spell(config: CardData, team: int, target_pos: Vector3, level_overri
 # ============================================================
 func _deploy_miner_tunnel(_config: CardData, team: int, target_pos: Vector3) -> void:
 	var cfg = _config
-	var kt = get_king_tower(team)
-	var start: Vector3 = kt.global_position if kt else target_pos + Vector3(0, 0, 8.0)
+	var start: Vector3
+	if win_condition == "touchdown":
+		var own_z: float = Config.ARENA_ORIGIN.z + (Config.ARENA_HEIGHT - 2.0 if team == Config.Team.PLAYER else 2.0)
+		start = Vector3(0.0, 0.05, own_z)
+	else:
+		var kt = get_king_tower(team)
+		start = kt.global_position if kt else target_pos + Vector3(0, 0, 8.0)
 	start.y = 0.05
 	var unit: Unit = spawn_unit(cfg, team, start, 1)
 	if unit == null:
@@ -2133,9 +2170,14 @@ func _deploy_miner_tunnel(_config: CardData, team: int, target_pos: Vector3) -> 
 	var col := unit.get_node_or_null("CollisionShape3D") as CollisionShape3D
 	if col:
 		col.disabled = true
-	var path: Array = _miner_path(start, target_pos)
+	var path: Array = _miner_path_touchdown(start, target_pos) if win_condition == "touchdown" else _miner_path(start, target_pos)
 	_show_tunnel_path(start, path)
 	_run_miner_tunnel(unit, start, path)
+
+func _miner_path_touchdown(from: Vector3, to: Vector3) -> Array:
+	# 足球场没有河/桥：直接斜线钻到目标，不再绕桥
+	return [Vector3(to.x, 0.05, to.z)]
+
 
 func _miner_path(from: Vector3, to: Vector3) -> Array:
 	var a := Vector3(from.x, 0.05, from.z)
@@ -2429,7 +2471,7 @@ func _show_game_over() -> void:
 	else:
 		trophy_change = -randi_range(25, 35)
 		AudioManager.play_sfx(ProceduralAudio.get_sound("defeat"))
-	if win:
+	if win and PlayerData.consume_daily_chest_win():
 		var rand = randf()
 		if rand < 0.7:
 			PlayerData.add_chest("silver")
@@ -2438,9 +2480,9 @@ func _show_game_over() -> void:
 		else:
 			PlayerData.add_chest("magical")
 		_pending_chest_index = PlayerData.chests.size() - 1
+	PlayerData.add_trophies(trophy_change)
 	if trophy_change != 0:
 		LeaderboardAPI.submit_trophies(PlayerData.trophies, PlayerData.player_name)
-	PlayerData.add_trophies(trophy_change)
 	if not replay_mode and not tutorial_battle:
 		PlayerData.add_season_crowns(player_crowns)
 	var dur: String = "%d:%02d" % [int(game_time / 60000.0), int(game_time / 1000.0) % 60]

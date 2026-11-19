@@ -33,6 +33,7 @@ const CROWN_PTS := [
 func _ready() -> void:
 	mouse_filter = Control.MOUSE_FILTER_IGNORE
 	set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	size = Vector2(800, 1600)
 	_glow_tex = _radial_texture(
 		[Color(1.0, 0.78, 0.42, 0.55), Color(1.0, 0.62, 0.26, 0.18), Color(1.0, 0.45, 0.10, 0.0)],
 		[0.0, 0.45, 1.0], 512)

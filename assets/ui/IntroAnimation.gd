@@ -69,8 +69,9 @@ func _ready() -> void:
 	mouse_filter = Control.MOUSE_FILTER_STOP
 	z_index = 150
 	_font = load(ThemeHelper.DEFAULT_FONT_PATH)
-	_crown_sfx = _try_stream("res://assets/audio/sfx/summon.wav")
-	_title_sfx = _try_stream("res://assets/audio/sfx/deploy.wav")
+	# 开场不使用召唤/部署音效，避免被误听成女巫生产单位的声音
+	_crown_sfx = null
+	_title_sfx = null
 
 	_cover = ColorRect.new()
 	_cover.color = INK

@@ -45,14 +45,24 @@ func authenticate():
 		print("[LootLocker] 登录失败: ", response.error_data)
 
 # 提交奖杯
-func submit_trophies(score: int, player_name: String):
-	var pid: String = ""
+func current_member_id() -> String:
+	var actual := str(LL_StateData.GetCachedPlayerLegacyID())
+	if actual != "" and actual != "0":
+		return actual
 	var am = get_node_or_null("/root/AccountManager")
 	if am and am.has_method("scoped_player_id"):
-		pid = str(am.scoped_player_id())
-	if pid == "" or pid == "0":
-		pid = str(LL_StateData.GetCachedPlayerLegacyID())
-	if pid == "" or pid == "0":
+		return str(am.scoped_player_id())
+	return ""
+
+func submit_trophies(score: int, player_name: String):
+	var scoped := ""
+	var am = get_node_or_null("/root/AccountManager")
+	if am and am.has_method("scoped_player_id"):
+		scoped = str(am.scoped_player_id())
+	# 排行榜 member_id 必须是当前 LootLocker 玩家真实 ID；
+	# 账号派生 ID 只放在 metadata 里用于区分本机账号。
+	var pid: String = current_member_id()
+	if pid == "":
 		pid = player_name
 	var meta := {
 		"player_name": player_name,
@@ -62,6 +72,7 @@ func submit_trophies(score: int, player_name: String):
 	}
 	if am and am.has_method("account_label"):
 		meta["account"] = am.account_label()
+	meta["scoped_id"] = scoped
 	var metadata := Marshalls.utf8_to_base64(JSON.stringify(meta))
 	var req = LL_Leaderboards.SubmitScore.new(leaderboard_id(), score, pid, metadata)
 	var resp = await req.send()
@@ -117,8 +128,33 @@ func get_leaderboard(callback: Callable):
 				"avatar_seed": int(meta.get("avatar_seed", absi(hash(shown)))),
 				"avatar_index": int(meta.get("avatar_index", 0)),
 				"clan": String(meta.get("clan", "")),
+				"scoped_id": String(meta.get("scoped_id", "")),
 			})
 	else:
 		last_error = str(resp.error_data)
 		print("[Leaderboard] 获取失败: ", resp.error_data)
-	callback.call(entries)
+	if resp.success:
+		var self_id := current_member_id()
+		var has_self := false
+		for e in entries:
+			if String(e.get("player_id", "")) == self_id and self_id != "":
+				has_self = true
+				break
+		if not has_self and self_id != "":
+			var rank_req = LL_Leaderboards.GetMemberRank.new(leaderboard_id(), self_id)
+			var rank_resp = await rank_req.send()
+			if rank_resp.success and int(rank_resp.rank) > 0:
+				var self_meta := _decode_metadata(rank_resp.metadata)
+				var self_name := String(self_meta.get("player_name", PlayerData.player_name))
+				entries.append({
+					"rank": int(rank_resp.rank),
+					"name": self_name if self_name.strip_edges() != "" else PlayerData.player_name,
+					"player_id": self_id,
+					"score": int(rank_resp.score),
+					"avatar_seed": int(self_meta.get("avatar_seed", PlayerData.avatar_seed)),
+					"avatar_index": int(self_meta.get("avatar_index", PlayerData.avatar_index)),
+					"clan": String(self_meta.get("clan", "")),
+					"scoped_id": String(self_meta.get("scoped_id", "")),
+				})
+	if callback != null and callback.is_valid():
+		callback.call(entries)
