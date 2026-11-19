@@ -30,6 +30,10 @@ var _fan_time := 0.0
 var _chest_tile: Button
 var _chest_badge: Panel
 var _chest_count_lbl: Label
+var _mail_btn: Button
+var _mail_badge: Panel
+var _mail_count_lbl: Label
+var _mail_timer: Timer
 
 func _ready():
 	if not AccountManager.is_authenticated and OS.get_environment("CR_SKIP_ACCOUNT") == "":
@@ -491,6 +495,17 @@ func _build_arena_panel() -> void:
 		Color(1, 1, 1, 0.10)))
 	bar.add_theme_stylebox_override("fill", _sb(Color(0.93, 0.72, 0.30), 7))
 	left.add_child(bar)
+	var chest_left: int = PlayerData.daily_chest_wins_remaining()
+	var quota_row := HBoxContainer.new()
+	quota_row.add_theme_constant_override("separation", 6)
+	quota_row.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	quota_row.add_child(_icon("chest", 14.0, GOLD if chest_left > 0 else MUTED))
+	var quota_col := Color(1.0, 0.88, 0.62) if chest_left > 0 else MUTED
+	var quota_txt := "今日对战宝箱奖励：剩余 %d / %d 次胜利" % [chest_left, PlayerData.DAILY_CHEST_WIN_LIMIT]
+	if chest_left <= 0:
+		quota_txt = "今日对战宝箱奖励已领完"
+	quota_row.add_child(_label(quota_txt, 11, quota_col))
+	left.add_child(quota_row)
 
 	var start_t: int = PlayerData.get_arena_trophies_at(arena_idx)
 	var is_max: bool = arena_idx >= PlayerData.ARENA_DATA.size()
@@ -694,7 +709,7 @@ func _pending_count_for(title: String) -> int:
 			return PlayerData.get_collection_reward_pending_count() + PlayerData.get_mastery_claimable_count()
 	return 0
 
-func _add_count_badge(tile: Control, count: int, pos: Vector2, is_chest: bool = false) -> void:
+func _add_count_badge(tile: Control, count: int, pos: Vector2, is_chest: bool = false, is_mail: bool = false) -> void:
 	var badge := Panel.new()
 	badge.position = pos
 	badge.size = Vector2(44, 34)
@@ -719,6 +734,9 @@ func _add_count_badge(tile: Control, count: int, pos: Vector2, is_chest: bool = 
 	if is_chest:
 		_chest_badge = badge
 		_chest_count_lbl = lbl
+	elif is_mail:
+		_mail_badge = badge
+		_mail_count_lbl = lbl
 
 func _refresh_chest_badge() -> void:
 	if _chest_badge == null or _chest_count_lbl == null:
@@ -880,6 +898,17 @@ func _build_bottom_row() -> void:
 	row.add_child(_dot_sep())
 	row.add_child(_text_action("medal", "挑战", _on_challenges_pressed))
 	row.add_child(_dot_sep())
+	_mail_btn = _text_action("chest", "邮箱", _on_mailbox_pressed)
+	row.add_child(_mail_btn)
+	var mail_pending := PlayerData.get_mail_pending_count()
+	if mail_pending > 0:
+		_add_count_badge(_mail_btn, mail_pending, Vector2(66, 0), false, true)
+	_mail_timer = Timer.new()
+	_mail_timer.wait_time = 5.0
+	_mail_timer.timeout.connect(_poll_mail)
+	add_child(_mail_timer)
+	_mail_timer.start()
+	row.add_child(_dot_sep())
 	row.add_child(_text_action("quit", "退出", _on_quit_pressed))
 
 func _dot_sep() -> Control:
@@ -1032,6 +1061,62 @@ func _on_party_pressed():
 func _on_challenges_pressed():
 	get_tree().change_scene_to_file("res://scenes/challenges.tscn")
 
+
+func _poll_mail() -> void:
+	ClanManager.sync_my_inventory(func(_ok):
+		var n: int = PlayerData.get_mail_pending_count()
+		if n > 0 and _mail_badge == null and _mail_btn != null:
+			_add_count_badge(_mail_btn, n, Vector2(66, 0), false, true)
+		if _mail_badge != null:
+			_mail_badge.visible = n > 0
+			if _mail_count_lbl != null:
+				_mail_count_lbl.text = str(mini(n, 99))
+		if PlayerData.mail_alert_pending != "":
+			var alert := PlayerData.mail_alert_pending
+			PlayerData.mail_alert_pending = ""
+			PlayerData.save_data()
+			_show_mail_notice(alert)
+	)
+
+func _on_mailbox_pressed():
+	get_tree().change_scene_to_file("res://scenes/mailbox.tscn")
+
+func _show_mail_notice(text: String) -> void:
+	if text == "":
+		return
+	var panel := Panel.new()
+	panel.position = Vector2(100, 660)
+	panel.size = Vector2(600, 88)
+	var sb := StyleBoxFlat.new()
+	sb.bg_color = Color(0.055, 0.10, 0.18, 0.98)
+	sb.border_color = Color(1.0, 0.80, 0.30, 0.9)
+	sb.set_border_width_all(2)
+	sb.set_corner_radius_all(16)
+	sb.shadow_color = Color(0, 0, 0, 0.45)
+	sb.shadow_size = 12
+	panel.add_theme_stylebox_override("panel", sb)
+	_ui_root.add_child(panel)
+	var lbl := Label.new()
+	lbl.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	lbl.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	lbl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	lbl.text = "📬 " + text
+	lbl.add_theme_font_size_override("font_size", 17)
+	lbl.add_theme_color_override("font_color", Color(1.0, 0.90, 0.55))
+	panel.add_child(lbl)
+	panel.pivot_offset = panel.size * 0.5
+	panel.scale = Vector2(0.8, 0.8)
+	panel.modulate.a = 0.0
+	var tw := create_tween()
+	tw.set_parallel(true)
+	tw.tween_property(panel, "scale", Vector2.ONE, 0.28).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+	tw.tween_property(panel, "modulate:a", 1.0, 0.22)
+	await get_tree().create_timer(2.4).timeout
+	var tw2 := create_tween()
+	tw2.tween_property(panel, "modulate:a", 0.0, 0.3)
+	await tw2.finished
+	panel.queue_free()
 
 func _on_season_pressed():
 	get_tree().change_scene_to_file("res://scenes/season.tscn")

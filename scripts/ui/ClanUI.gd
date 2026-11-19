@@ -57,7 +57,8 @@ func _ready():
 	_build_content()
 	_refresh_my_clan()
 	_load_all_clans()
-	ClanManager.sync_my_inventory()
+	ClanManager.sync_my_inventory(func(_ok):
+		_show_mail_alert_if_any())
 	_poll_timer = Timer.new()
 	_poll_timer.wait_time = 3.0
 	_poll_timer.one_shot = false
@@ -461,7 +462,8 @@ func _poll_clan() -> void:
 			_show_no_clan()
 		else:
 			_show_clan_home(clan)
-		ClanManager.sync_my_inventory()
+		ClanManager.sync_my_inventory(func(_ok):
+			_show_mail_alert_if_any())
 	)
 
 func _show_no_clan():
@@ -482,7 +484,7 @@ func _show_clan_home(clan: Dictionary):
 	var open_str := "公开" if clan.get("is_open", false) else "需申请"
 	clan_stat_label.text = "成员 %d/%d · 奖杯门槛 %d · %s" % [
 		members.size(), ClanManager.MAX_MEMBERS, clan.get("min_trophies", 0), open_str]
-	donation_label.text = "今日剩余捐赠 %d/8" % maxi(0, 8 - PlayerData.donations_used)
+	donation_label.text = "今日已捐赠 %d 次" % PlayerData.donations_used
 	if PlayerData.can_request_card():
 		request_btn.text = "请求卡牌"
 		request_btn.disabled = false
@@ -769,9 +771,6 @@ func _create_chat_node(msg: Dictionary) -> Control:
 			donate_btn.disabled = true
 		elif rarity == "epic" and not sunday:
 			donate_btn.text = "周日可捐"
-			donate_btn.disabled = true
-		elif PlayerData.donations_used >= 8:
-			donate_btn.text = "今日已满"
 			donate_btn.disabled = true
 		else:
 			donate_btn.disabled = PlayerData.get_card_quantity(cid) < step
@@ -1078,6 +1077,53 @@ func _reject_app(pid: int):
 		else:
 			_toast("审批失败：%s" % str(err))
 	)
+
+func _show_mail_alert_if_any() -> void:
+	var msg := PlayerData.mail_alert_pending
+	if msg == "":
+		return
+	PlayerData.mail_alert_pending = ""
+	PlayerData.save_data()
+	_show_mail_alert(msg)
+
+func _show_mail_alert(text: String) -> void:
+	if text == "":
+		return
+	var panel := Panel.new()
+	panel.position = Vector2(90, 700)
+	panel.size = Vector2(620, 86)
+	var sb := StyleBoxFlat.new()
+	sb.bg_color = Color(0.06, 0.12, 0.20, 0.98)
+	sb.border_color = Color(1.0, 0.80, 0.30, 0.95)
+	sb.set_border_width_all(2)
+	sb.set_corner_radius_all(16)
+	sb.shadow_color = Color(0, 0, 0, 0.45)
+	sb.shadow_size = 12
+	panel.add_theme_stylebox_override("panel", sb)
+	add_child(panel)
+	var lbl := Label.new()
+	lbl.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	lbl.offset_left = 16
+	lbl.offset_right = -16
+	lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	lbl.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	lbl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	lbl.text = "📬 " + text
+	lbl.add_theme_font_size_override("font_size", 17)
+	lbl.add_theme_color_override("font_color", Color(1.0, 0.90, 0.55))
+	panel.add_child(lbl)
+	panel.pivot_offset = panel.size * 0.5
+	panel.scale = Vector2(0.8, 0.8)
+	panel.modulate.a = 0.0
+	var tw := create_tween()
+	tw.set_parallel(true)
+	tw.tween_property(panel, "scale", Vector2.ONE, 0.28).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+	tw.tween_property(panel, "modulate:a", 1.0, 0.22)
+	await get_tree().create_timer(2.4).timeout
+	var tw2 := create_tween()
+	tw2.tween_property(panel, "modulate:a", 0.0, 0.3)
+	await tw2.finished
+	panel.queue_free()
 
 func _toast(text: String):
 	if toast_label == null:

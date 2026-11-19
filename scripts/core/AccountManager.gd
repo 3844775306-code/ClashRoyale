@@ -360,7 +360,12 @@ func _sync_cloud_after_login() -> void:
 	var remote := await _download_cloud()
 	var local_ts := _local_saved_at()
 	if bool(remote.get("ok", false)):
-		if _fresh_account or int(remote.get("saved_at", 0)) > local_ts:
+		# 全新账号不能把另一个账号的云存档拉过来
+		var remote_account := String(remote.get("account", ""))
+		var wrong_account: bool = _fresh_account and remote_account != "" and remote_account != account_email
+		if wrong_account:
+			cloud_status = "检测到其他账号云存档，已跳过"
+		elif _fresh_account or int(remote.get("saved_at", 0)) > local_ts:
 			var path := PlayerData.current_save_path()
 			var data: String = String(remote.get("text", ""))
 			if data != "":
@@ -490,6 +495,7 @@ func _download_cloud() -> Dictionary:
 	return {
 		"ok": true,
 		"saved_at": int(payload.get("saved_at", 0)),
+		"account": String(payload.get("account", "")),
 		"text": Marshalls.base64_to_utf8(b64),
 	}
 

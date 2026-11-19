@@ -136,23 +136,31 @@ func _claim_pending_gifts(callback: Callable = Callable()) -> void:
 			if callback.is_valid(): callback.call(false)
 			return
 		var gifts: Dictionary = clan.get("pending_card_gifts", {})
-		var mine: Dictionary = gifts.get(str(get_player_id()), {})
+		var key := str(get_player_id())
+		var mine = gifts.get(key, [])
+		if mine is Dictionary:
+			var conv: Array = []
+			for k in mine.keys():
+				conv.append({"card_id": int(k), "amount": int(mine[k]), "sender": "部落成员"})
+			mine = conv
 		if mine.is_empty():
 			if callback.is_valid(): callback.call(true)
 			return
-		for cid in mine.keys():
-			var amount: int = int(mine[cid])
-			if amount > 0:
-				PlayerData.add_card(int(cid), amount)
-		gifts.erase(str(get_player_id()))
+		for g in mine:
+			var cid: int = int(g.get("card_id", 0))
+			var amount: int = int(g.get("amount", 0))
+			if cid > 0 and amount > 0:
+				PlayerData.add_mail(
+					"部落赠卡",
+					"来自 %s 的赠卡：卡牌 #%d ×%d\n请点击领取加入卡牌收藏。" % [String(g.get("sender", "部落成员")), cid, amount],
+					{"cards": {str(cid): amount}}, String(g.get("sender", "部落成员")), "donation")
+		gifts.erase(key)
 		clan["pending_card_gifts"] = gifts
 		invalidate_cache()
 		_update_clan_on_leaderboard(clan, func(ok, err):
 			if callback.is_valid(): callback.call(ok)
 		)
 	)
-
-## 通过查询名为 "player_clan_{player_id}" 的排行榜条目来获取玩家当前部落
 func get_my_clan(callback: Callable):
 	# 这个函数需要在服务器端维护一个映射表；简化处理：扫描整个部落列表寻找当前玩家
 	# 更高效的方式是使用另一个排行榜或 player storage 记录每个玩家的所属部落
@@ -627,10 +635,6 @@ func donate_card(to_player_id: int, card_id: int, amount: int, request_key: Stri
 	if PlayerData.get_card_quantity(card_id) < step:
 		callback.call(false, "你拥有的该卡牌数量不足")
 		return
-	if PlayerData.donations_used + 1 > 8:
-		callback.call(false, "今日捐赠次数已用完")
-		return
-
 	get_my_clan(func(success, clan):
 		if not success or clan == null:
 			callback.call(false, "获取部落信息失败")
@@ -677,8 +681,13 @@ func donate_card(to_player_id: int, card_id: int, amount: int, request_key: Stri
 		# 接收者的待领取赠卡放在部落数据中，跨账号可靠送达
 		var gifts: Dictionary = clan.get("pending_card_gifts", {})
 		var gkey := str(to_player_id)
-		var mine: Dictionary = gifts.get(gkey, {})
-		mine[str(card_id)] = int(mine.get(str(card_id), 0)) + contribute
+		var mine = gifts.get(gkey, [])
+		if mine is Dictionary:
+			var conv: Array = []
+			for k in mine.keys():
+				conv.append({"card_id": int(k), "amount": int(mine[k]), "sender": "部落成员"})
+			mine = conv
+		mine.append({"card_id": card_id, "amount": contribute, "sender": get_player_name()})
 		gifts[gkey] = mine
 		clan["pending_card_gifts"] = gifts
 		_update_clan_on_leaderboard(clan, func(ok, err):

@@ -30,6 +30,8 @@ var trophies: int = 0          # 新增奖杯
 var highest_trophies: int = 0  # 历史最高奖杯（奖杯门保护）
 var claimed_achievements: Array = []  # 已领取的皇室征程成就（竞技场序号）
 var donations_used: int = 0          # 今日已捐赠次数
+var chest_reward_day: String = ""    # 每日宝箱奖励日期
+var chest_reward_wins: int = 0        # 当日已获得宝箱的胜利次数
 # 卡牌拥有数量 { card_id: int }
 var card_quantities: Dictionary = {}
 # 卡牌等级：{ card_id: level (1-16) }
@@ -59,6 +61,9 @@ var starter_cards_v2: bool = false
 var chest_reveal_pending: bool = false
 var collection_rewards_claimed: Array = []
 var card_mastery: Dictionary = {}
+var mailbox: Array = []
+var mail_alert_pending: String = ""
+var mail_version_seen: String = ""
 var season_key: String = ""
 var season_crowns: int = 0
 var season_claimed: Array = []
@@ -74,6 +79,7 @@ func _ready():
 	_ensure_avatar()
 	_ensure_season()
 	_ensure_starter_cards()
+	_ensure_default_mail()
 	for i in range(130):
 		ai_levels[i] = get_ai_card_level()
 	
@@ -117,6 +123,7 @@ func use_account(acct_id: String, migrate_legacy := true) -> void:
 	_ensure_avatar()
 	_ensure_season()
 	_ensure_starter_cards()
+	_ensure_default_mail()
 	ai_levels.clear()
 	for i in range(130):
 		ai_levels[i] = get_ai_card_level()
@@ -174,6 +181,35 @@ func _roll_chest_stars(rarity: String) -> int:
 		if r < 0.4096: return 3
 		if r < 0.9793: return 4
 		return 5
+
+const DAILY_CHEST_WIN_LIMIT: int = 4
+
+
+func _today_str() -> String:
+	var d := Time.get_date_dict_from_system()
+	return "%04d-%02d-%02d" % [int(d.get("year", 0)), int(d.get("month", 0)), int(d.get("day", 0))]
+
+
+func _ensure_daily_chest_day() -> void:
+	var today := _today_str()
+	if chest_reward_day != today:
+		chest_reward_day = today
+		chest_reward_wins = 0
+
+
+func daily_chest_wins_remaining() -> int:
+	_ensure_daily_chest_day()
+	return maxi(0, DAILY_CHEST_WIN_LIMIT - chest_reward_wins)
+
+
+func consume_daily_chest_win() -> bool:
+	_ensure_daily_chest_day()
+	if chest_reward_wins >= DAILY_CHEST_WIN_LIMIT:
+		return false
+	chest_reward_wins += 1
+	save_data()
+	return true
+
 
 func add_chest(rarity: String):
 	var stars: int = _roll_chest_stars(rarity)
@@ -608,6 +644,8 @@ func load_data():
 		gold = config.get_value("player", "gold", 100)
 		gems = config.get_value("player", "gems", 10)
 		shop_day = String(config.get_value("shop", "day", ""))
+		chest_reward_day = String(config.get_value("player", "chest_reward_day", ""))
+		chest_reward_wins = int(config.get_value("player", "chest_reward_wins", 0))
 		shop_offers = config.get_value("shop", "offers", [])
 		owned_emotes = config.get_value("emotes", "owned", [])
 		wildcards = config.get_value("emotes", "wildcards", {})
@@ -623,6 +661,8 @@ func load_data():
 		avatar_custom_path = String(config.get_value("player", "avatar_custom_path", ""))
 		collection_rewards_claimed = config.get_value("player", "collection_rewards_claimed", [])
 		card_mastery = config.get_value("player", "card_mastery", {})
+		mailbox = config.get_value("player", "mailbox", [])
+		mail_version_seen = String(config.get_value("player", "mail_version_seen", ""))
 		season_key = String(config.get_value("player", "season_key", ""))
 		season_crowns = int(config.get_value("player", "season_crowns", 0))
 		season_claimed = config.get_value("player", "season_claimed", [])
@@ -687,6 +727,9 @@ func _apply_defaults():
 	avatar_custom_path = ""
 	collection_rewards_claimed = []
 	card_mastery = {}
+	mailbox = []
+	mail_alert_pending = ""
+	mail_version_seen = ""
 	season_key = ""
 	season_crowns = 0
 	season_claimed = []
@@ -717,6 +760,8 @@ func save_data():
 	config.set_value("player", "card_quantities", card_quantities)
 	config.set_value("player", "chests", chests)
 	config.set_value("shop", "day", shop_day)
+	config.set_value("player", "chest_reward_day", chest_reward_day)
+	config.set_value("player", "chest_reward_wins", chest_reward_wins)
 	config.set_value("shop", "offers", shop_offers)
 	config.set_value("emotes", "owned", owned_emotes)
 	config.set_value("emotes", "wildcards", wildcards)
@@ -732,6 +777,8 @@ func save_data():
 	config.set_value("player", "avatar_custom_path", avatar_custom_path)
 	config.set_value("player", "collection_rewards_claimed", collection_rewards_claimed)
 	config.set_value("player", "card_mastery", card_mastery)
+	config.set_value("player", "mailbox", mailbox)
+	config.set_value("player", "mail_version_seen", mail_version_seen)
 	config.set_value("player", "season_key", season_key)
 	config.set_value("player", "season_crowns", season_crowns)
 	config.set_value("player", "season_claimed", season_claimed)
@@ -1177,6 +1224,72 @@ func claim_all_season_rewards() -> Array:
 			out.append(r)
 	save_data()
 	return out
+
+const APP_VERSION := "1.2.0"
+const UPDATE_URL := "https://github.com/3844775306-code/ClashRoyale/releases/tag/v1.2.0"
+
+func add_mail(title: String, body: String, reward: Dictionary = {}, sender: String = "官方", kind: String = "official", extra: Dictionary = {}) -> void:
+	var mail := {
+		"id": "mail_%d_%d" % [Time.get_ticks_usec(), randi() % 100000],
+		"title": title, "body": body, "sender": sender, "kind": kind,
+		"time": Time.get_unix_time_from_system(), "reward": reward.duplicate(true), "claimed": false,
+	}
+	for k in extra.keys():
+		mail[k] = extra[k]
+	mailbox.push_front(mail)
+	if not (reward.get("cards", {}) as Dictionary).is_empty():
+		mail_alert_pending = "收到来自 %s 的赠卡，已放入邮箱" % sender
+	save_data()
+
+func get_mail_pending_count() -> int:
+	var n := 0
+	for m in mailbox:
+		if not bool(m.get("claimed", false)):
+			n += 1
+	return n
+
+func claim_mail(mail_id: String) -> Dictionary:
+	for i in range(mailbox.size()):
+		var m: Dictionary = mailbox[i]
+		if String(m.get("id", "")) != mail_id or bool(m.get("claimed", false)):
+			continue
+		var r: Dictionary = m.get("reward", {})
+		_grant_mail_reward(r)
+		m["claimed"] = true
+		mailbox[i] = m
+		save_data()
+		return m
+	return {}
+
+func _grant_mail_reward(r: Dictionary) -> void:
+	gold += int(r.get("gold", 0))
+	gems += int(r.get("gems", 0))
+	for cid in r.get("cards", {}).keys():
+		add_card(int(cid), int(r.cards[cid]))
+	for rar in r.get("wildcards", {}).keys():
+		add_wildcards(String(rar), int(r.wildcards[rar]))
+	if String(r.get("chest", "")) != "":
+		add_chest(String(r.chest))
+	if String(r.get("emote", "")) != "":
+		add_emote(String(r.emote))
+	save_data()
+
+func _ensure_default_mail() -> void:
+	var has_update := false
+	var has_welfare := false
+	for m in mailbox:
+		if String(m.get("kind", "")) == "update": has_update = true
+		if String(m.get("kind", "")) == "welfare": has_welfare = true
+	if not has_update:
+		add_mail(
+			"版本更新 " + APP_VERSION,
+			"更新时间：%s\n更新内容：\n· 主题赛季与卡牌大师\n· 部落聊天/捐赠与邮箱\n· 回放 20 条上限与永久保存\n· 账号存档隔离\n新版本地址：%s\n\n奖励：100 宝石" % [Time.get_datetime_string_from_system().replace("T", " "), UPDATE_URL],
+			{"gems": 100}, "官方", "update", {"url": UPDATE_URL})
+	if not has_welfare:
+		add_mail(
+			"官方福利 · 新手礼包",
+			"感谢支持皇室战争同人项目！\n登录即可领取官方福利：200 金币 + 20 宝石。",
+			{"gold": 200, "gems": 20}, "官方", "welfare")
 
 func get_ai_allowed_cards() -> Array:
 	# 常规 AI 只允许：新手六卡 + 皇室征程中当前奖杯已解锁的卡牌。
