@@ -179,7 +179,12 @@ func _on_login() -> void:
 	_status.add_theme_color_override("font_color", MUTED)
 	var res: Dictionary = await AccountManager.login(_email.text, _password.text)
 	if bool(res.get("ok", false)):
-		_status.text = "登录成功"
+		if bool(res.get("online", false)):
+			_status.text = "云端登录成功"
+		else:
+			_status.text = "已登录本机账号，但云端连接失败：%s" % String(res.get("error", "未知原因"))
+			_status.add_theme_color_override("font_color", DANGER)
+			await get_tree().create_timer(1.0).timeout
 		await get_tree().create_timer(0.25).timeout
 		_enter_game()
 	else:

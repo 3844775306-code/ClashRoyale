@@ -128,6 +128,7 @@ func recent_accounts(days: int = 30) -> Array:
 
 func login_recent(email: String) -> Dictionary:
 	email = email.strip_edges().to_lower()
+	await _end_cloud_session()
 	if not _local_has(email):
 		return {"ok": false, "error": "本机没有该账号"}
 	account_email = email
@@ -143,6 +144,13 @@ func login_recent(email: String) -> Dictionary:
 	session_changed.emit()
 	return {"ok": true, "online": false}
 
+func _end_cloud_session() -> void:
+	if LL_StateData.HasSessionToken():
+		await LL_Authentication.EndSession.new().send()
+	# 强制清理，避免下一个账号继承上一个 LootLocker 会话
+	LootLockerInternal_LootLockerCache.current().delete_data("session_token")
+	LootLockerInternal_LootLockerCache.current().delete_data("white_label_session_token")
+
 func login(email: String, password: String) -> Dictionary:
 	if _busy:
 		return {"ok": false, "error": "正在处理中"}
@@ -157,6 +165,7 @@ func login(email: String, password: String) -> Dictionary:
 	if not offline_only:
 		cloud_status = "正在登录云端…"
 		cloud_status_changed.emit()
+		await _end_cloud_session()
 		var resp = await _white_label_login(email, password)
 		online = bool(resp.get("ok", false))
 		if not online:
@@ -185,7 +194,7 @@ func login(email: String, password: String) -> Dictionary:
 		cloud_status = "离线模式（云端未连接）"
 		cloud_status_changed.emit()
 	_busy = false
-	return {"ok": true, "online": online}
+	return {"ok": true, "online": online, "error": last_error if not online else ""}
 
 
 func register(email: String, password: String) -> Dictionary:
@@ -236,6 +245,7 @@ func logout() -> void:
 	session_changed.emit()
 	if was_online:
 		await _upload_cloud()
+	await _end_cloud_session()
 	if FileAccess.file_exists(session_path()):
 		DirAccess.remove_absolute(ProjectSettings.globalize_path(session_path()))
 	account_email = ""
