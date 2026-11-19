@@ -474,6 +474,24 @@ func _on_friend_request_received(request: Dictionary) -> void:
 			_request_layer = null)
 	v.add_child(reject)
 
+func nearby_players() -> Array:
+	var out: Array = []
+	var now := int(Time.get_unix_time_from_system())
+	for pid in online_peers.keys():
+		var p: Dictionary = Dictionary(online_peers[pid])
+		if now - int(p.get("last", 0)) > 8:
+			continue
+		out.append({
+			"player_id": String(pid),
+			"name": String(p.get("name", "附近玩家")),
+			"trophies": int(p.get("trophies", 0)),
+			"avatar_seed": int(p.get("avatar_seed", 0)),
+			"avatar_index": int(p.get("avatar_index", 0)),
+			"ip": String(p.get("ip", "")),
+		})
+	out.sort_custom(func(a, b): return String(a.name) < String(b.name))
+	return out
+
 func handle_friend_packet(data: Dictionary) -> void:
 	var my_id := str(ClanManager.get_player_id())
 	var ptype := String(data.get("type", ""))
@@ -548,6 +566,9 @@ func _process(delta: float) -> void:
 			"type": "cr_presence",
 			"id": str(ClanManager.get_player_id()),
 			"name": PlayerData.player_name,
+			"trophies": int(PlayerData.trophies),
+			"avatar_seed": int(PlayerData.avatar_seed),
+			"avatar_index": int(PlayerData.avatar_index),
 			"ts": int(Time.get_unix_time_from_system()),
 		}))
 	# 未处理的请求/同意通知定期重发，目标上线后可收到
@@ -599,13 +620,21 @@ func _process(delta: float) -> void:
 			if pid2 == "" or pid2 == str(ClanManager.get_player_id()) or ts - int(data.get("ts", 0)) > 10:
 				continue
 			var pip := _recv.get_packet_ip() if _recv else ""
-			online_peers[pid2] = {"name": String(data.get("name", "好友")), "last": ts, "ip": pip}
+			online_peers[pid2] = {
+				"name": String(data.get("name", "好友")), "last": ts, "ip": pip,
+				"trophies": int(data.get("trophies", 0)),
+				"avatar_seed": int(data.get("avatar_seed", 0)),
+				"avatar_index": int(data.get("avatar_index", 0)),
+			}
 			presence_changed.emit()
 			# 收到对方 presence 后立刻单播回执，修复单向在线
 			if pip != "":
 				_send_to_ip(pip, {
 					"type": "cr_presence", "id": str(ClanManager.get_player_id()),
 					"name": PlayerData.player_name,
+					"trophies": int(PlayerData.trophies),
+					"avatar_seed": int(PlayerData.avatar_seed),
+					"avatar_index": int(PlayerData.avatar_index),
 					"ts": int(Time.get_unix_time_from_system()),
 				})
 			continue

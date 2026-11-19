@@ -17,6 +17,7 @@ var _search_edit: LineEdit
 var _results: VBoxContainer
 var _friends_box: VBoxContainer
 var _requests_box: VBoxContainer
+var _nearby_box: VBoxContainer
 var _status: Label
 var _font: Font
 var _online_lbl: Label
@@ -30,6 +31,7 @@ func _ready() -> void:
 	_refresh_all()
 	FriendManager.friends_changed.connect(_refresh_friends)
 	FriendManager.presence_changed.connect(_refresh_friends)
+	FriendManager.presence_changed.connect(_refresh_nearby)
 	FriendManager.requests_changed.connect(_refresh_all)
 
 
@@ -151,6 +153,11 @@ func _build() -> void:
 	_friends_box.add_theme_constant_override("separation", 6)
 	content.add_child(_friends_box)
 
+	content.add_child(_section("附近的玩家", "同一局域网内正在运行游戏的玩家"))
+	_nearby_box = VBoxContainer.new()
+	_nearby_box.add_theme_constant_override("separation", 6)
+	content.add_child(_nearby_box)
+
 	# 底部
 	_status = _label("", 12, MUTED)
 	_status.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
@@ -186,6 +193,7 @@ func _section(title: String, hint: String) -> Control:
 func _refresh_all() -> void:
 	_refresh_requests()
 	_refresh_friends()
+	_refresh_nearby()
 	if _search_edit != null and _search_edit.text.strip_edges() != "" and _results.get_child_count() > 0:
 		_on_search()
 
@@ -260,6 +268,18 @@ func _result_row(e: Dictionary) -> Control:
 	h.add_child(add)
 	return card
 
+
+func _refresh_nearby() -> void:
+	if _nearby_box == null:
+		return
+	for c in _nearby_box.get_children():
+		c.queue_free()
+	var list: Array = FriendManager.nearby_players()
+	if list.is_empty():
+		_nearby_box.add_child(_empty_row("暂无附近玩家", "同一局域网内的玩家会自动出现"))
+		return
+	for p in list:
+		_nearby_box.add_child(_result_row(p))
 
 func _refresh_requests() -> void:
 	if _requests_box == null:

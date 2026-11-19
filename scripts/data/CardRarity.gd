@@ -81,11 +81,9 @@ static func rarity_color_by_id(id: int) -> Color:
 		"legendary": return Color(1.0, 0.80, 0.28)
 	return Color(0.74, 0.78, 0.84)
 
-const LATE_NEW_CARD_ARENA := 3
+const LATE_NEW_CARD_UNLOCKS := {73:16, 74:16, 75:16, 84:16, 98:16, 99:16, 100:17, 101:17, 102:17, 103:17, 105:17, 108:17, 111:18, 112:18, 113:18, 114:18, 116:18, 118:18, 124:19, 125:19, 126:19, 127:19, 128:19, 129:19}
 
 static func arena_unlock_by_id(id: int) -> int:
-	var v: int = int(ARENA_UNLOCK.get(str(id), 1))
-	# 后期新增、但旧表误标为 1 阶的卡牌统一移到最低的、尚未配置新卡的竞技场（竞技场 3）
-	if v == 1 and (id in [73, 74, 75, 84] or id >= 98):
-		return LATE_NEW_CARD_ARENA
-	return v
+	if LATE_NEW_CARD_UNLOCKS.has(id):
+		return int(LATE_NEW_CARD_UNLOCKS[id])
+	return int(ARENA_UNLOCK.get(str(id), 1))

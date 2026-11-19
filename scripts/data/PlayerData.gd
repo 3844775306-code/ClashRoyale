@@ -951,11 +951,13 @@ func ensure_daily_shop_offers() -> void:
 	var valid := shop_day == today and shop_offers.size() == 8
 	var arena_now: int = get_arena()
 	var allowed_now: Dictionary = {}
-	# 以皇室征程解锁为准，避免 ARENA_UNLOCK 表把新卡误标成 1 阶
-	var max_t: int = get_arena_trophies_at(mini(arena_now + 1, ARENA_DATA.size())) - 1
-	for row in _load_trophy_road():
-		var rid: int = int(row.get("card_id", 0))
-		if rid > 3 and int(row.get("trophies", 0)) <= max_t:
+	# 按卡牌自身的竞技场解锁配置，和卡组/图鉴显示保持一致
+	var token_ids := [98, 99, 100, 101, 102, 103, 118, 124, 125, 126, 127]
+	for cid in CARD_RARITY.RARITY_BY_ID.keys():
+		var rid: int = int(cid)
+		if rid <= 3 or token_ids.has(rid):
+			continue
+		if CARD_RARITY.arena_unlock_by_id(rid) <= arena_now:
 			allowed_now[rid] = true
 	for cid in STARTER_CARDS:
 		allowed_now[int(cid)] = true
@@ -1353,15 +1355,16 @@ func _ensure_default_mail() -> void:
 			{"gold": 200, "gems": 20}, "官方", "welfare")
 
 func get_ai_allowed_cards() -> Array:
-	# 常规 AI 只允许：新手六卡 + 皇室征程中当前奖杯已解锁的卡牌。
-	# 用征程奖励卡而不是 ARENA_UNLOCK 表，避免新卡默认 arena=1 混入低级竞技场。
+	# AI 卡池跟随卡牌竞技场解锁，避免新卡在低阶出现
 	var out: Array = [44, 10, 4, 8, 9, 11]
-	for row in _load_trophy_road():
-		var cid: int = int(row.get("card_id", 0))
-		if cid <= 3:
+	var arena_now: int = get_arena()
+	var token_ids := [98, 99, 100, 101, 102, 103, 118, 124, 125, 126, 127]
+	for cid in CARD_RARITY.RARITY_BY_ID.keys():
+		var rid: int = int(cid)
+		if rid <= 3 or token_ids.has(rid):
 			continue
-		if int(row.get("trophies", 0)) <= trophies and not out.has(cid):
-			out.append(cid)
+		if CARD_RARITY.arena_unlock_by_id(rid) <= arena_now and not out.has(rid):
+			out.append(rid)
 	return out
 
 func get_ai_default_deck() -> Array:
