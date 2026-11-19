@@ -9,6 +9,8 @@ signal cloud_status_changed
 const SESSION_DAYS := 30
 const CLOUD_KEY := "cr_player_data"
 const CLOUD_FILE := "player_data.json"
+const SUPABASE_URL := "https://oewvixujojsbqwxfnkfk.supabase.co"
+const SUPABASE_KEY := "sb_publishable_ppeyEdIwDfUDkcrmTFBVjQ_6P8i64F3"
 
 var is_authenticated: bool = false
 var auto_login_pending: bool = false
@@ -26,6 +28,10 @@ var _syncing := false
 var _upload_retry_at := 0
 var _session_online := false
 var _fresh_account := false
+var _supabase_access_token := ""
+var _supabase_refresh_token := ""
+var _supabase_user_id := ""
+var _supabase_using := false
 
 
 func _data_dir() -> String:
@@ -72,6 +78,10 @@ func _boot() -> void:
 	account_email = String(sess.get("email", ""))
 	account_id = String(sess.get("id", _make_id(account_email)))
 	_session_online = bool(sess.get("online", false))
+	_supabase_access_token = String(sess.get("supabase_access", ""))
+	_supabase_refresh_token = String(sess.get("supabase_refresh", ""))
+	_supabase_user_id = String(sess.get("supabase_user", ""))
+	_supabase_using = _supabase_access_token != ""
 	_player_load_account(false)
 	# 有本机最近账号时先显示登录选择，不再直接跳过登录界面。
 	if not recent_accounts().is_empty():
@@ -80,7 +90,10 @@ func _boot() -> void:
 		session_changed.emit()
 		return
 	if _session_online and not offline_only:
-		await _restore_online_session()
+		if _supabase_using:
+			await _restore_supabase_session()
+		else:
+			await _restore_online_session()
 	# 先完成云端同步再放开登录态，避免主菜单先渲染旧数据
 	if _session_online and not offline_only:
 		await _sync_cloud_after_login()
@@ -128,23 +141,42 @@ func recent_accounts(days: int = 30) -> Array:
 
 func login_recent(email: String) -> Dictionary:
 	email = email.strip_edges().to_lower()
-	await _end_cloud_session()
 	if not _local_has(email):
 		return {"ok": false, "error": "本机没有该账号"}
+	var idx := _load_index()
+	var saved_refresh := String(idx.get_value(email, "supabase_refresh", ""))
+	var saved_user := String(idx.get_value(email, "supabase_user", ""))
+	await _end_cloud_session()
 	account_email = email
 	account_id = _make_id(email)
+	_supabase_refresh_token = saved_refresh
+	_supabase_user_id = saved_user
+	_supabase_access_token = ""
+	_supabase_using = saved_refresh != ""
 	_session_online = false
 	_player_load_account(false)
-	_save_session(false)
+	if _supabase_using and await _supabase_refresh():
+		_session_online = true
+		cloud_status = "云端已连接（Supabase）"
+		await _sync_cloud_after_login()
+	else:
+		_supabase_using = false
+		cloud_status = "本机账号已登录（云端未连接）"
+	_save_session(_session_online)
 	_upsert_local(email, "")
 	is_authenticated = true
 	auto_login_pending = false
-	cloud_status = "本机账号已登录（云端未连接）"
 	cloud_status_changed.emit()
 	session_changed.emit()
-	return {"ok": true, "online": false}
+	return {"ok": true, "online": _session_online}
 
 func _end_cloud_session() -> void:
+	if _supabase_access_token != "":
+		await _supabase_logout()
+	_supabase_access_token = ""
+	_supabase_refresh_token = ""
+	_supabase_user_id = ""
+	_supabase_using = false
 	if LL_StateData.HasSessionToken():
 		await LL_Authentication.EndSession.new().send()
 	# 强制清理，避免下一个账号继承上一个 LootLocker 会话
@@ -166,10 +198,19 @@ func login(email: String, password: String) -> Dictionary:
 		cloud_status = "正在登录云端…"
 		cloud_status_changed.emit()
 		await _end_cloud_session()
-		var resp = await _white_label_login(email, password)
-		online = bool(resp.get("ok", false))
-		if not online:
-			last_error = String(resp.get("error", "云端登录失败"))
+		var sb := await _supabase_login(email, password)
+		online = bool(sb.get("ok", false))
+		if online:
+			_supabase_using = true
+		else:
+			last_error = String(sb.get("error", "云端登录失败"))
+			# 兼容此前注册的 LootLocker 账号
+			var resp = await _white_label_login(email, password)
+			online = bool(resp.get("ok", false))
+			if online:
+				_supabase_using = false
+			else:
+				last_error = String(resp.get("error", last_error))
 	# 云端失败时使用本机账号（同设备离线登录）
 	if not online:
 		if not _verify_local(email, password):
@@ -182,7 +223,7 @@ func login(email: String, password: String) -> Dictionary:
 	account_email = email
 	account_id = _make_id(email)
 	_session_online = online
-	_player_load_account(first_account)
+	_player_load_account(first_account and not online)
 	_save_session(online)
 	is_authenticated = true
 	auto_login_pending = false
@@ -213,13 +254,12 @@ func register(email: String, password: String) -> Dictionary:
 	if not offline_only:
 		cloud_status = "正在创建云端账号…"
 		cloud_status_changed.emit()
-		var req = LL_WhiteLabel.SignUp.new(email, password)
-		var resp = await req.send()
-		if resp.success:
-			online = true
-			last_error = "注册成功，请检查邮箱完成验证后再登录云端"
+		var sb := await _supabase_signup(email, password)
+		online = bool(sb.get("ok", false)) and bool(sb.get("has_session", false))
+		if bool(sb.get("ok", false)):
+			last_error = "注册成功，请检查邮箱完成验证后再登录云端" if not online else ""
 		else:
-			last_error = str(resp.error_data)
+			last_error = String(sb.get("error", "注册失败"))
 	# 无论云端是否可用，都创建本机账号（保证离线可进入）
 	var first_account := _load_index().get_sections().is_empty()
 	_upsert_local(email, password)
@@ -335,6 +375,9 @@ func _load_session() -> Dictionary:
 		"id": String(cfg.get_value("session", "id", "")),
 		"expires": int(cfg.get_value("session", "expires", 0)),
 		"online": bool(cfg.get_value("session", "online", false)),
+		"supabase_access": String(cfg.get_value("session", "supabase_access", "")),
+		"supabase_refresh": String(cfg.get_value("session", "supabase_refresh", "")),
+		"supabase_user": String(cfg.get_value("session", "supabase_user", "")),
 	}
 
 
@@ -345,8 +388,157 @@ func _save_session(online: bool) -> void:
 	cfg.set_value("session", "id", account_id)
 	cfg.set_value("session", "expires", int(Time.get_unix_time_from_system()) + SESSION_DAYS * 86400)
 	cfg.set_value("session", "online", online)
+	cfg.set_value("session", "supabase_access", _supabase_access_token)
+	cfg.set_value("session", "supabase_refresh", _supabase_refresh_token)
+	cfg.set_value("session", "supabase_user", _supabase_user_id)
 	cfg.save(session_path())
+	if account_email != "":
+		var idx := _load_index()
+		idx.set_value(account_email, "supabase_refresh", _supabase_refresh_token)
+		idx.set_value(account_email, "supabase_user", _supabase_user_id)
+		idx.set_value(account_email, "supabase_online", _session_online)
+		idx.save(index_path())
 
+
+# ============================================================
+# Supabase Auth + 用户 metadata 云存档
+# ============================================================
+func _supabase_headers(token: String = "") -> PackedStringArray:
+	var bearer := token if token != "" else SUPABASE_KEY
+	return PackedStringArray([
+		"apikey: " + SUPABASE_KEY,
+		"Authorization: Bearer " + bearer,
+		"Content-Type: application/json",
+	])
+
+func _supabase_error(res: Array) -> String:
+	var code: int = int(res[1])
+	var text := String(res[3].get_string_from_utf8())
+	var parsed = JSON.parse_string(text)
+	if parsed is Dictionary:
+		var d: Dictionary = parsed
+		for k in ["msg", "message", "error_description", "error"]:
+			if String(d.get(k, "")) != "":
+				return String(d.get(k, ""))
+	return "HTTP %d" % code
+
+func _supabase_login(email: String, password: String) -> Dictionary:
+	var body := JSON.stringify({"email": email, "password": password}).to_utf8_buffer()
+	var res: Array = await _http_request(HTTPClient.METHOD_POST,
+		SUPABASE_URL + "/auth/v1/token?grant_type=password", _supabase_headers(), body)
+	if int(res[1]) < 200 or int(res[1]) >= 300:
+		return {"ok": false, "error": _supabase_error(res)}
+	var data = JSON.parse_string(String(res[3].get_string_from_utf8()))
+	if not (data is Dictionary):
+		return {"ok": false, "error": "云端返回格式错误"}
+	var d: Dictionary = data
+	_supabase_access_token = String(d.get("access_token", ""))
+	_supabase_refresh_token = String(d.get("refresh_token", ""))
+	var user: Dictionary = Dictionary(d.get("user", {}))
+	_supabase_user_id = String(user.get("id", ""))
+	return {"ok": _supabase_access_token != "", "error": "" if _supabase_access_token != "" else "未获取到会话"}
+
+func _supabase_signup(email: String, password: String) -> Dictionary:
+	var body := JSON.stringify({"email": email, "password": password}).to_utf8_buffer()
+	var res: Array = await _http_request(HTTPClient.METHOD_POST,
+		SUPABASE_URL + "/auth/v1/signup", _supabase_headers(), body)
+	if int(res[1]) < 200 or int(res[1]) >= 300:
+		return {"ok": false, "error": _supabase_error(res)}
+	var data = JSON.parse_string(String(res[3].get_string_from_utf8()))
+	var d: Dictionary = data if data is Dictionary else {}
+	_supabase_access_token = String(d.get("access_token", ""))
+	_supabase_refresh_token = String(d.get("refresh_token", ""))
+	var user: Dictionary = Dictionary(d.get("user", {}))
+	_supabase_user_id = String(user.get("id", ""))
+	return {"ok": true, "has_session": _supabase_access_token != ""}
+
+func _supabase_refresh() -> bool:
+	if _supabase_refresh_token == "":
+		return false
+	var body := JSON.stringify({"refresh_token": _supabase_refresh_token}).to_utf8_buffer()
+	var res: Array = await _http_request(HTTPClient.METHOD_POST,
+		SUPABASE_URL + "/auth/v1/token?grant_type=refresh_token", _supabase_headers(), body)
+	if int(res[1]) < 200 or int(res[1]) >= 300:
+		return false
+	var data = JSON.parse_string(String(res[3].get_string_from_utf8()))
+	if not (data is Dictionary):
+		return false
+	var d: Dictionary = data
+	_supabase_access_token = String(d.get("access_token", ""))
+	_supabase_refresh_token = String(d.get("refresh_token", _supabase_refresh_token))
+	return _supabase_access_token != ""
+
+func _supabase_get_user() -> Dictionary:
+	if _supabase_access_token == "":
+		return {}
+	var res: Array = await _http_request(HTTPClient.METHOD_GET,
+		SUPABASE_URL + "/auth/v1/user", _supabase_headers(_supabase_access_token), PackedByteArray())
+	if int(res[1]) == 401 and await _supabase_refresh():
+		res = await _http_request(HTTPClient.METHOD_GET,
+			SUPABASE_URL + "/auth/v1/user", _supabase_headers(_supabase_access_token), PackedByteArray())
+	if int(res[1]) < 200 or int(res[1]) >= 300:
+		return {}
+	var data = JSON.parse_string(String(res[3].get_string_from_utf8()))
+	return data if data is Dictionary else {}
+
+func _supabase_update_metadata(meta: Dictionary) -> bool:
+	if _supabase_access_token == "":
+		return false
+	var body := JSON.stringify({"data": meta}).to_utf8_buffer()
+	var res: Array = await _http_request(HTTPClient.METHOD_PUT,
+		SUPABASE_URL + "/auth/v1/user", _supabase_headers(_supabase_access_token), body)
+	if int(res[1]) == 401 and await _supabase_refresh():
+		res = await _http_request(HTTPClient.METHOD_PUT,
+			SUPABASE_URL + "/auth/v1/user", _supabase_headers(_supabase_access_token), body)
+	return int(res[1]) >= 200 and int(res[1]) < 300
+
+func _supabase_logout() -> void:
+	if _supabase_access_token == "":
+		return
+	await _http_request(HTTPClient.METHOD_POST,
+		SUPABASE_URL + "/auth/v1/logout", _supabase_headers(_supabase_access_token), PackedByteArray())
+
+func _restore_supabase_session() -> void:
+	if _supabase_access_token == "" and _supabase_refresh_token == "":
+		_session_online = false
+		return
+	var user := await _supabase_get_user()
+	if user.is_empty() and _supabase_refresh_token != "":
+		if await _supabase_refresh():
+			user = await _supabase_get_user()
+	if user.is_empty():
+		_session_online = false
+		cloud_status = "云端会话已过期，请重新登录"
+		cloud_status_changed.emit()
+		return
+	_supabase_using = true
+	cloud_status = "云端已连接（Supabase）"
+	cloud_status_changed.emit()
+
+func _supabase_download_cloud() -> Dictionary:
+	var user := await _supabase_get_user()
+	if user.is_empty():
+		return {"ok": false, "code": 0}
+	var meta: Dictionary = Dictionary(user.get("user_metadata", {}))
+	var b64 := String(meta.get("cr_save", ""))
+	if b64 == "":
+		return {"ok": false, "not_found": true, "code": 404}
+	var decoded := Marshalls.base64_to_utf8(b64)
+	if decoded == "":
+		return {"ok": false, "code": 500}
+	return {"ok": true, "saved_at": int(meta.get("cr_saved_at", 0)),
+		"account": account_email, "text": decoded}
+
+func _supabase_upload_cloud() -> bool:
+	var path := PlayerData.current_save_path()
+	var text := FileAccess.get_file_as_string(path)
+	if text == "":
+		return false
+	var meta := {
+		"cr_save": Marshalls.utf8_to_base64(text),
+		"cr_saved_at": int(Time.get_unix_time_from_system()),
+	}
+	return await _supabase_update_metadata(meta)
 
 # ============================================================
 # LootLocker White Label
@@ -380,7 +572,7 @@ func _ensure_lootlocker_settings() -> void:
 # 云端存档（LootLocker Player Files）
 # ============================================================
 func _sync_public_profile() -> void:
-	if not _session_online:
+	if not _session_online or _supabase_using:
 		return
 	LeaderboardAPI.submit_trophies(PlayerData.trophies, PlayerData.player_name)
 	ClanManager.sync_my_profile()
@@ -482,6 +674,8 @@ func _upload_cloud_async() -> void:
 
 
 func _upload_cloud() -> bool:
+	if _supabase_using:
+		return await _supabase_upload_cloud()
 	if not _session_online:
 		return false
 	var token := _session_token()
@@ -509,6 +703,8 @@ func _upload_cloud() -> bool:
 
 
 func _download_cloud() -> Dictionary:
+	if _supabase_using:
+		return await _supabase_download_cloud()
 	if not _session_online:
 		return {"ok": false, "code": 0}
 	var token := _session_token()
