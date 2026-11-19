@@ -54,6 +54,14 @@ func current_member_id() -> String:
 		return str(am.scoped_player_id())
 	return ""
 
+func current_score_member_id() -> String:
+	var am = get_node_or_null("/root/AccountManager")
+	if am and am.has_method("scoped_player_id"):
+		var sid := str(am.scoped_player_id())
+		if sid != "" and sid != "0":
+			return sid
+	return current_member_id()
+
 func submit_trophies(score: int, player_name: String):
 	var scoped := ""
 	var am = get_node_or_null("/root/AccountManager")
@@ -61,7 +69,9 @@ func submit_trophies(score: int, player_name: String):
 		scoped = str(am.scoped_player_id())
 	# 排行榜 member_id 必须是当前 LootLocker 玩家真实 ID；
 	# 账号派生 ID 只放在 metadata 里用于区分本机账号。
-	var pid: String = current_member_id()
+	var pid: String = scoped
+	if pid == "" or pid == "0":
+		pid = current_member_id()
 	if pid == "":
 		pid = player_name
 	var meta := {
@@ -134,7 +144,7 @@ func get_leaderboard(callback: Callable):
 		last_error = str(resp.error_data)
 		print("[Leaderboard] 获取失败: ", resp.error_data)
 	if resp.success:
-		var self_id := current_member_id()
+		var self_id := current_score_member_id()
 		var has_self := false
 		for e in entries:
 			if String(e.get("player_id", "")) == self_id and self_id != "":

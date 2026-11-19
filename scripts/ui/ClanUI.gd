@@ -751,6 +751,7 @@ func _create_chat_node(msg: Dictionary) -> Control:
 		var donors: Array = Array(msg.get("donors", []))
 		var key := String(msg.get("request_key", ""))
 		var local_id := ClanManager.get_player_id()
+		var is_mine_request: bool = pid == local_id or pid <= 0 or sender_name == PlayerData.player_name
 		var already: bool = donors.has(local_id) or donors.has(str(local_id))
 		var completed: bool = donated >= amt
 		var rarity: String = CARD_RARITY.rarity_of_id(cid)
@@ -784,7 +785,7 @@ func _create_chat_node(msg: Dictionary) -> Control:
 		prog_row.add_child(prog_lbl)
 		req_col.add_child(prog_row)
 		var donate_btn := UiComponents.make_primary_button("捐赠", Callable(), Vector2(82, 34))
-		if pid == local_id:
+		if is_mine_request:
 			donate_btn.text = "自己的请求"
 			donate_btn.disabled = true
 		elif completed:

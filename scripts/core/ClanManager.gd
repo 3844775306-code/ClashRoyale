@@ -667,6 +667,9 @@ func donate_card(to_player_id: int, card_id: int, amount: int, request_key: Stri
 			if _cb_valid(callback): callback.call(false, "该请求已完成或不存在")
 			return
 		var msg: Dictionary = chat_list[msg_index]
+		if String(msg.get("player_name", "")) == get_player_name():
+			callback.call(false, "不能捐赠给自己")
+			return
 		var target: int = int(msg.get("amount", amount))
 		var donated: int = int(msg.get("donated", 0))
 		if donated >= target:

@@ -147,7 +147,11 @@ func _build_card_rows():
 		hbox.mouse_filter = Control.MOUSE_FILTER_IGNORE
 		btn.add_child(hbox)
 
-		var art_path := "res://assets/cards_rendered/%s.png" % String(cfg.card_name)
+		var art_path := _official_art(cfg.card_id)
+		if art_path == "":
+			art_path = "res://assets/cards_web/%s.png" % String(cfg.card_name)
+		if not ResourceLoader.exists(art_path):
+			art_path = "res://assets/cards_rendered/%s.png" % String(cfg.card_name)
 		var tex := TextureRect.new()
 		tex.custom_minimum_size = Vector2(68, 68)
 		tex.size = Vector2(68, 68)
@@ -254,6 +258,15 @@ func _on_confirm():
 func _on_cancel():
 	queue_free()
 
+
+func _official_art(cid: int) -> String:
+	var f := FileAccess.open("res://data/official_card_art.json", FileAccess.READ)
+	if f == null:
+		return ""
+	var parsed = JSON.parse_string(f.get_as_text())
+	if not (parsed is Dictionary):
+		return ""
+	return String(parsed.get(str(cid), ""))
 
 func _card_row_style(selected: bool, hover := false) -> StyleBoxFlat:
 	var sb := StyleBoxFlat.new()
