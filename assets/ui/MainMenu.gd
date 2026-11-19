@@ -93,6 +93,7 @@ func _build_ui() -> void:
 	_build_arena_panel()
 	_build_primary_cta()
 	_build_menu_grid()
+	_build_season_panel()
 	_build_bottom_row()
 
 # ============================================================
@@ -649,6 +650,69 @@ func _make_tile(icon_kind: String, title: String, subtitle: String, action: Call
 	return btn
 
 # ============================================================
+# 主题赛季进度条（部落按钮下方，仿皇室征程样式）
+# ============================================================
+func _build_season_panel() -> void:
+	var theme: Dictionary = PlayerData.get_season_theme()
+	var crowns: int = PlayerData.get_season_crowns()
+	var pending: int = PlayerData.get_season_pending_count()
+	var panel := Button.new()
+	panel.focus_mode = Control.FOCUS_NONE
+	panel.anchor_left = 0.5
+	panel.anchor_right = 0.5
+	panel.anchor_top = 0.60
+	panel.anchor_bottom = 0.60
+	panel.offset_left = -356
+	panel.offset_right = 356
+	panel.offset_top = 444
+	panel.offset_bottom = 538
+	panel.add_theme_stylebox_override("normal", _shadow_sb(Color(0.04, 0.06, 0.12, 0.82), 20, 1,
+		Color(GOLD.r, GOLD.g, GOLD.b, 0.30), 10, 0.35))
+	panel.add_theme_stylebox_override("hover", _shadow_sb(Color(0.07, 0.10, 0.19, 0.90), 20, 1,
+		Color(GOLD.r, GOLD.g, GOLD.b, 0.58), 12, 0.4))
+	panel.add_theme_stylebox_override("pressed", _sb(Color(0.03, 0.045, 0.09, 0.95), 20, 1,
+		Color(GOLD.r, GOLD.g, GOLD.b, 0.42)))
+	panel.add_theme_stylebox_override("focus", _sb(Color(0, 0, 0, 0), 20))
+	panel.pressed.connect(_on_season_pressed)
+	_ui_root.add_child(panel)
+	_intro_nodes.append(panel)
+	var pad := MarginContainer.new()
+	pad.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	pad.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	pad.add_theme_constant_override("margin_left", 18)
+	pad.add_theme_constant_override("margin_right", 16)
+	pad.add_theme_constant_override("margin_top", 10)
+	pad.add_theme_constant_override("margin_bottom", 10)
+	panel.add_child(pad)
+	var hb := HBoxContainer.new()
+	hb.add_theme_constant_override("separation", 12)
+	pad.add_child(hb)
+	hb.add_child(_icon("trophy", 38.0, Color(1.0, 0.82, 0.30)))
+	var mid := VBoxContainer.new()
+	mid.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	mid.alignment = BoxContainer.ALIGNMENT_CENTER
+	mid.add_theme_constant_override("separation", 3)
+	hb.add_child(mid)
+	var title := _label("主题赛季 · %s" % String(theme.get("name", "主题赛季")), 18, GOLD_LIGHT, true)
+	mid.add_child(title)
+	var next_need: int = 10 - (crowns % 10)
+	var sub_text: String = "距下一档还差 %d 皇冠" % next_need if PlayerData.season_claimed.size() < PlayerData.get_season_tier_count() else "本赛季已全部领取"
+	var sub := _label(sub_text, 12, MUTED)
+	mid.add_child(sub)
+	var bar := ProgressBar.new()
+	bar.custom_minimum_size = Vector2(0, 9)
+	bar.show_percentage = false
+	bar.max_value = 10.0
+	bar.value = float(crowns % 10)
+	ThemeHelper.apply_progress_gold(bar)
+	mid.add_child(bar)
+	var crown_lbl := _label("%d 皇冠" % crowns, 13, Color(1.0, 0.85, 0.40))
+	crown_lbl.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	hb.add_child(crown_lbl)
+	if pending > 0:
+		_add_count_badge(panel, pending, Vector2(672, 6))
+
+# ============================================================
 # 底部工具行
 # ============================================================
 func _build_bottom_row() -> void:
@@ -667,12 +731,6 @@ func _build_bottom_row() -> void:
 	row.add_child(_text_action("flask", "派对", _on_party_pressed))
 	row.add_child(_dot_sep())
 	row.add_child(_text_action("medal", "挑战", _on_challenges_pressed))
-	row.add_child(_dot_sep())
-	var season_btn := _text_action("trophy", "主题赛季", _on_season_pressed)
-	row.add_child(season_btn)
-	var season_pending := PlayerData.get_season_pending_count()
-	if season_pending > 0:
-		_add_count_badge(season_btn, season_pending, Vector2(66, 0))
 	row.add_child(_dot_sep())
 	row.add_child(_text_action("quit", "退出", _on_quit_pressed))
 

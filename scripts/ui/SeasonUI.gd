@@ -3,6 +3,7 @@ extends Control
 
 const SEASON = preload("res://scripts/data/SeasonCatalog.gd")
 const REWARD_ICON = preload("res://scripts/ui/RewardIcon.gd")
+const CHEST3D = preload("res://scripts/ui/Chest3DPreview.gd")
 
 var content: VBoxContainer
 var scroll: ScrollContainer
@@ -103,14 +104,20 @@ func _reward_row(s: Dictionary) -> Panel:
 	t.add_theme_font_size_override("font_size", 18)
 	t.add_theme_color_override("font_color", Color(1.0, 0.86, 0.42) if available else Color(0.70, 0.78, 0.90))
 	hb.add_child(t)
-	var icon = REWARD_ICON.new()
-	icon.custom_minimum_size = Vector2(52, 58)
-	match String(reward.get("type", "gold")):
-		"gems": icon.setup("gems", int(reward.get("amount", 0)))
-		"wild": icon.setup("wild", int(reward.get("amount", 0)))
-		"chest": icon.setup("chest", 1)
-		_: icon.setup("gold", int(reward.get("amount", 0)))
-	hb.add_child(icon)
+	if String(reward.get("type", "gold")) == "chest":
+		var chest = CHEST3D.new()
+		chest.custom_minimum_size = Vector2(58, 62)
+		chest.size = Vector2(58, 62)
+		chest.rarity = "magical"
+		hb.add_child(chest)
+	else:
+		var icon = REWARD_ICON.new()
+		icon.custom_minimum_size = Vector2(52, 58)
+		if String(reward.get("type", "gold")) == "card":
+			icon.setup("card", int(reward.get("amount", 0)), String(reward.get("card_name", "卡牌")), int(reward.get("card_id", 0)))
+		else:
+			icon.setup("gold", int(reward.get("amount", 0)))
+		hb.add_child(icon)
 	var mid := VBoxContainer.new()
 	mid.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	mid.alignment = BoxContainer.ALIGNMENT_CENTER

@@ -2,6 +2,7 @@ extends Control
 # 官方收藏等级奖励：20 级起每 10 级一个奖励（1500 级后每 5 级）。
 
 const REWARD_ICON = preload("res://scripts/ui/RewardIcon.gd")
+const CHEST3D = preload("res://scripts/ui/Chest3DPreview.gd")
 const WILD_CN := {"common": "普通", "rare": "稀有", "epic": "史诗", "legendary": "传奇", "champion": "冠军"}
 
 var content: VBoxContainer
@@ -119,15 +120,20 @@ func _reward_row(r: Dictionary, lv: int) -> Panel:
 	lv_lbl.add_theme_font_size_override("font_size", 18)
 	lv_lbl.add_theme_color_override("font_color", Color(1.0, 0.86, 0.42) if available else Color(0.72, 0.78, 0.90))
 	hb.add_child(lv_lbl)
-	var ic = REWARD_ICON.new()
-	ic.custom_minimum_size = Vector2(58, 64)
-	if String(r.get("type", "")) == "gems":
-		ic.setup("gems", int(r.get("amount", 0)))
-	elif String(r.get("type", "")) == "chest":
-		ic.setup("chest", 1)
+	if String(r.get("type", "")) == "chest":
+		var chest = CHEST3D.new()
+		chest.custom_minimum_size = Vector2(64, 64)
+		chest.size = Vector2(64, 64)
+		chest.rarity = "magical"
+		hb.add_child(chest)
 	else:
-		ic.setup("wild", int(r.get("amount", 0)))
-	hb.add_child(ic)
+		var ic = REWARD_ICON.new()
+		ic.custom_minimum_size = Vector2(58, 64)
+		if String(r.get("type", "")) == "gems":
+			ic.setup("gems", int(r.get("amount", 0)))
+		else:
+			ic.setup("wild", int(r.get("amount", 0)))
+		hb.add_child(ic)
 	var txt := VBoxContainer.new()
 	txt.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	txt.alignment = BoxContainer.ALIGNMENT_CENTER

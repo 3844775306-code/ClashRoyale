@@ -287,9 +287,9 @@ func _grant_cards_of_rarity(cards: Dictionary, rar: String, amount: int, arena: 
 	var ids: Array = _ids_of_rarity(rar, arena)
 	if ids.is_empty():
 		return
-	# 官方宝箱只给少量卡种，每种给多张；避免开出几十种卡牌刷屏
+	# 每个稀有度最多 1 种卡牌，避免开出多种卡刷屏
 	ids.shuffle()
-	var kinds: int = mini(4, ids.size())
+	var kinds: int = mini(1, ids.size())
 	var chosen: Array = []
 	for i in range(kinds):
 		chosen.append(ids[i])
@@ -974,6 +974,9 @@ func get_mastery_claimable_count() -> int:
 				n += 1
 	return n
 
+func get_mastery_reward(card_id: int, tier: int) -> Dictionary:
+	return _mastery_reward(card_id, tier)
+
 func _mastery_reward(card_id: int, tier: int) -> Dictionary:
 	var rar: String = CARD_RARITY.rarity_of_id(card_id)
 	var gold_amt: int = [500, 1500, 3000][tier - 1]
@@ -1033,6 +1036,9 @@ func get_season_theme() -> Dictionary:
 	_ensure_season()
 	return SEASON.current()
 
+func get_season_tier_count() -> int:
+	return SEASON.TIERS
+
 func get_season_crowns() -> int:
 	_ensure_season()
 	return season_crowns
@@ -1068,6 +1074,8 @@ func get_season_reward_state() -> Array:
 
 func _grant_season_reward(r: Dictionary) -> void:
 	match String(r.get("type", "gold")):
+		"card":
+			add_card(int(r.get("card_id", 0)), int(r.get("amount", 0)))
 		"gems":
 			gems += int(r.get("amount", 0))
 		"wild":

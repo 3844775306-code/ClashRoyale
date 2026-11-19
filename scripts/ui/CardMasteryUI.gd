@@ -2,6 +2,7 @@ extends Control
 # 卡牌大师：每张卡累计使用次数，解锁三档奖励。
 
 const REWARD_ICON = preload("res://scripts/ui/RewardIcon.gd")
+const CHEST3D = preload("res://scripts/ui/Chest3DPreview.gd")
 const CARD_RARITY = preload("res://scripts/data/CardRarity.gd")
 const RARITY_CN := {"common": "普通", "rare": "稀有", "epic": "史诗", "legendary": "传奇", "champion": "冠军"}
 
@@ -159,6 +160,20 @@ func _card_row(cfg) -> Panel:
 	uses_lbl.add_theme_color_override("font_color", Color(0.72, 0.82, 0.96))
 	uses_lbl.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 	hb.add_child(uses_lbl)
+	if next_tier > 0:
+		var rew: Dictionary = PlayerData.get_mastery_reward(cid, next_tier)
+		if String(rew.get("chest", "")) != "":
+			var chest = CHEST3D.new()
+			chest.custom_minimum_size = Vector2(50, 50)
+			chest.size = Vector2(50, 50)
+			chest.rarity = "magical"
+			hb.add_child(chest)
+		else:
+			var rew_ic = REWARD_ICON.new()
+			rew_ic.custom_minimum_size = Vector2(42, 48)
+			if int(rew.get("gold", 0)) > 0:
+				rew_ic.setup("gold", int(rew.get("gold", 0)))
+			hb.add_child(rew_ic)
 	var btn := UiComponents.make_primary_button("领取", Callable(), Vector2(92, 40))
 	btn.disabled = next_tier <= 0
 	btn.pressed.connect(_claim_one.bind(cid))
