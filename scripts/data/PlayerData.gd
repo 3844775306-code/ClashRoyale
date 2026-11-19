@@ -75,6 +75,7 @@ var avatar_index: int = 0
 var avatar_custom_path: String = ""
 var account_id: String = "default"          # 当前账号 id（default = 旧版单存档）
 var account_save_path: String = ""          # 当前账号本地存档路径（空=默认/环境目录）
+var last_save_error: String = ""
 func _ready():
 	
 	load_data()
@@ -113,6 +114,9 @@ func ensure_save_dir(for_path: String) -> bool:
 		return DirAccess.make_dir_recursive_absolute(ProjectSettings.globalize_path(dir)) == OK
 	return DirAccess.make_dir_recursive_absolute(dir) == OK
 
+func fallback_save_path(acct_id: String) -> String:
+	return "%s/account_%s.cfg" % [_data_root().trim_suffix("/"), acct_id]
+
 ## 切换到指定账号的本地存档；首次登录会把旧版单存档迁移到该账号
 func use_account(acct_id: String, migrate_legacy := true) -> void:
 	account_id = acct_id
@@ -121,6 +125,9 @@ func use_account(acct_id: String, migrate_legacy := true) -> void:
 		account_save_path = _default_save_path()
 	else:
 		account_save_path = "%s/accounts/%s/player_data.cfg" % [_data_root().trim_suffix("/"), acct_id]
+		var fb_path := fallback_save_path(acct_id)
+		if not FileAccess.file_exists(account_save_path) and FileAccess.file_exists(fb_path):
+			account_save_path = fb_path
 	ensure_save_dir(account_save_path)
 	if migrate_legacy and acct_id != "default" and not FileAccess.file_exists(account_save_path) \
 			and FileAccess.file_exists(_default_save_path()):
@@ -138,7 +145,7 @@ func use_account(acct_id: String, migrate_legacy := true) -> void:
 	ai_levels.clear()
 	for i in range(130):
 		ai_levels[i] = get_ai_card_level()
-	save_data()
+	ensure_local_save()
 
 
 func get_card_quantity(card_id: int) -> int:
@@ -809,13 +816,33 @@ func build_save_config() -> ConfigFile:
 	return config
 
 
+func ensure_local_save() -> Dictionary:
+	var normal := current_save_path()
+	save_data()
+	if FileAccess.file_exists(normal):
+		return {"ok": true, "path": normal}
+	# 子目录不可写时退化为 user:// 根目录下的单文件账号存档
+	var fb := fallback_save_path(account_id)
+	account_save_path = fb
+	ensure_save_dir(fb)
+	save_data()
+	var ok := FileAccess.file_exists(fb)
+	if not ok:
+		last_save_error = "无法写入：%s" % fb
+	return {"ok": ok, "path": fb if ok else normal}
+
 func save_data():
 	var config := build_save_config()
 
 	ensure_save_dir(current_save_path())
 	var _save_err := config.save(current_save_path())
 	if _save_err != OK:
+		last_save_error = "保存失败 %d：%s" % [_save_err, current_save_path()]
 		push_warning("PlayerData save failed: %s (%d)" % [current_save_path(), _save_err])
+	else:
+		last_save_error = ""
+		if not FileAccess.file_exists(current_save_path()):
+			last_save_error = "保存后文件不存在：%s" % current_save_path()
 	var am = get_node_or_null("/root/AccountManager")
 	if am and am.has_method("notify_local_save"):
 		am.notify_local_save()
