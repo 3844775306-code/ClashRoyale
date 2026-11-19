@@ -1,5 +1,7 @@
 extends Control
 
+const BATTLE_MODES := preload("res://scripts/core/BattleModes.gd")
+
 var _ru
 var _opened := false
 var _selected_card := -1
@@ -42,6 +44,8 @@ func _ready():
 	NetworkManager.match_started.connect(_on_rematch_start)
 	NetworkManager.emote_received.connect(_on_net_emote)
 	NetworkManager.countdown_received.connect(_on_countdown)
+	NetworkManager.touchdown_break_received.connect(_on_touchdown_break)
+	NetworkManager.touchdown_break_ended.connect(_on_touchdown_break_end)
 	NetworkManager.entry_started.connect(_on_entry_started)
 	_ru.king_sequence_finished.connect(_on_king_sequence_finished)
 	set_process(true)
@@ -197,21 +201,71 @@ func _sync_guest_state(m: Dictionary) -> void:
 		b.player_elixir = float(pe[slot])
 	elif ex.size() >= 2:
 		b.player_elixir = float(ex[0])
+	var desired: Array = []
 	if slot < ph.size():
-		b.network_guest_sync_hand(ph[slot])
+		desired = Array(ph[slot]).duplicate()
 	else:
-		var hs: Array = m.get("hands", [])
-		if hs.size() >= 1:
-			b.network_guest_sync_hand(hs[0])
+		var hs0: Array = m.get("hands", [])
+		if hs0.size() >= 1:
+			desired = Array(hs0[NetworkManager.local_team if NetworkManager.local_team < hs0.size() else 0]).duplicate()
+	# 空手牌兜底：若该快照为空但本地已有手牌，保留旧手牌，避免下一轮突然空牌
+	if desired.is_empty():
+		var hs1: Array = m.get("hands", [])
+		var team_idx: int = NetworkManager.local_team
+		if team_idx < hs1.size() and not Array(hs1[team_idx]).is_empty():
+			desired = Array(hs1[team_idx]).duplicate()
+	if not desired.is_empty() or b.player_hand.is_empty():
+		b.network_guest_sync_hand(desired)
+	# 联机多人：给玩家卡桌上方显示队友手牌（精简版）
+	if b.hud and b.hud.has_method("set_teammate_hand"):
+		var team := NetworkManager.local_team
+		var mate_slot: int = team * 2 + (1 - (int(NetworkManager.local_slot) % 2))
+		if mate_slot < ph.size():
+			var mate_elixir: float = float(pe[mate_slot]) if mate_slot < pe.size() else 5.0
+			b.hud.set_teammate_hand(Array(ph[mate_slot]), mate_elixir)
+		else:
+			b.hud.set_teammate_hand([])
 	var cs: Array = m.get("crowns", [0, 0])
 	if cs.size() >= 2:
 		b.player_crowns = int(cs[0])
 		b.enemy_crowns = int(cs[1])
+	b.touchdown_round = int(m.get("touchdown_round", 1))
+	var ts: Array = m.get("touchdown_scores", [])
+	if ts.size() >= 2:
+		b.touchdown_score = [int(ts[0]), int(ts[1])]
+		if b.hud and b.hud.has_method("set_touchdown_score"):
+			b.hud.set_touchdown_score(int(ts[0]), int(ts[1]), 3)
 	_ru._update_elixir()
 
 func _on_rematch_start(_info: Dictionary) -> void:
 	if NetworkManager.role == NetworkManager.Role.GUEST:
 		get_tree().change_scene_to_file("res://scenes/network_guest.tscn")
+
+func _on_touchdown_break(round_no: int, score_a: int, score_b: int) -> void:
+	if _ru == null or _ru._battle == null or _ru._battle.hud == null:
+		return
+	var sa := score_a
+	var sb := score_b
+	if NetworkManager.local_team == 1:
+		sa = score_b
+		sb = score_a
+	var b = _ru._battle
+	b.touchdown_round = round_no
+	b.touchdown_score = [sa, sb]
+	b.touchdown_resetting = true
+	if b.hud.has_method("set_touchdown_score"):
+		b.hud.set_touchdown_score(sa, sb, 3)
+	if b.hud.has_method("show_touchdown_round_break"):
+		b.hud.show_touchdown_round_break(round_no, sa, sb)
+
+
+func _on_touchdown_break_end() -> void:
+	if _ru == null or _ru._battle == null or _ru._battle.hud == null:
+		return
+	_ru._battle.touchdown_resetting = false
+	if _ru._battle.hud.has_method("hide_touchdown_round_break"):
+		_ru._battle.hud.hide_touchdown_round_break()
+
 
 func _on_countdown(seconds: float) -> void:
 	if _ru == null or _ru._battle == null or _ru._battle.hud == null:
@@ -373,6 +427,9 @@ func _mirror(snap: Dictionary) -> Dictionary:
 	out["hands"] = [hs[1], hs[0]] if hs.size() >= 2 else hs
 	var cs: Array = out.get("crowns", [0, 0])
 	out["crowns"] = [cs[1], cs[0]] if cs.size() >= 2 else cs
+	var td: Array = out.get("touchdown_scores", [])
+	if td.size() >= 2:
+		out["touchdown_scores"] = [td[1], td[0]]
 	return out
 
 func _make_data(first: Dictionary) -> Dictionary:
@@ -392,15 +449,24 @@ func _make_data(first: Dictionary) -> Dictionary:
 		elif st != NetworkManager.local_team and opp_deck.is_empty():
 			opp_deck = Array(seat.get("deck", [])).duplicate()
 			opp_levels = Dictionary(seat.get("levels", {})).duplicate()
+	var rule := String(info.get("party_rule", "standard"))
+	var party_fixed := bool(BATTLE_MODES.get_by_id(rule).get("party", false))
+	if party_fixed:
+		for k in own_levels.keys():
+			own_levels[k] = 11
+		for k in opp_levels.keys():
+			opp_levels[k] = 11
+	var is_td := rule == "touchdown"
 	var meta := {
 		"version": 4,
 		"duration": 360.0,
 		"arena": int(info.get("arena", 1)),
+		"mode": preload("res://scripts/core/BattleModes.gd").get_by_id(rule),
 		"player_deck": own_deck,
 		"enemy_deck": opp_deck,
 		"player_levels": own_levels,
 		"enemy_levels": opp_levels,
-		"towers": _guest_towers(),
+		"towers": [] if is_td else _guest_towers(),
 		"winner": -1,
 		"crowns": [0, 0]
 	}
@@ -408,9 +474,10 @@ func _make_data(first: Dictionary) -> Dictionary:
 
 func _guest_towers() -> Array:
 	var o: Vector3 = Config.ARENA_ORIGIN
+	var is_party := bool(BATTLE_MODES.get_by_id(String(NetworkManager.match_info.get("party_rule", "standard"))).get("party", false))
 	var w: float = Config.ARENA_WIDTH
 	var h: float = Config.ARENA_HEIGHT
-	var lv := PlayerData.get_tower_level()
+	var lv: int = 11 if is_party else PlayerData.get_tower_level()
 	var left0 := o.x + w * 3.5 / 18.0
 	var right0 := o.x + w * 14.5 / 18.0
 	var mid0 := o.x + w * 9.0 / 18.0

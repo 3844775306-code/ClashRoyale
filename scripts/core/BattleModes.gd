@@ -24,22 +24,22 @@ const MODES := [
 	{
 		"id": "double_elixir", "name": "双倍圣水", "icon": "flask",
 		"desc": "全程双倍圣水，节奏更快、卡组更敢下",
-		"elixir": 2.0, "sudden_death": false, "deck": "custom", "level": "own",
+		"party": true, "elixir": 2.0, "sudden_death": false, "deck": "custom", "level": "own",
 	},
 	{
 		"id": "triple_elixir", "name": "三倍圣水", "icon": "flask",
 		"desc": "全程三倍圣水，兵海与法术齐飞",
-		"elixir": 3.0, "sudden_death": false, "deck": "custom", "level": "own",
+		"party": true, "elixir": 3.0, "sudden_death": false, "deck": "custom", "level": "own",
 	},
 	{
 		"id": "seven_elixir", "name": "七倍圣水", "icon": "flask",
 		"desc": "圣水爆炸的娱乐规则，全程七倍回复",
-		"elixir": 7.0, "sudden_death": false, "deck": "custom", "level": "own",
+		"party": true, "elixir": 7.0, "sudden_death": false, "deck": "custom", "level": "own",
 	},
 	{
 		"id": "sudden_death", "name": "突然死亡", "icon": "sword",
 		"desc": "先推掉一座塔立刻获胜；时间到则比较双方塔血",
-		"elixir": 1.0, "sudden_death": true, "deck": "custom", "level": "own",
+		"party": true, "elixir": 1.0, "sudden_death": true, "deck": "custom", "level": "own",
 	},
 	{
 		"id": "classic_deck", "name": "经典卡组", "icon": "deck",
@@ -49,7 +49,7 @@ const MODES := [
 	{
 		"id": "touchdown", "name": "冲线 Touchdown", "icon": "sword",
 		"desc": "把部队送进对方底线得分，先到 3 分获胜；时间到比分高者胜",
-		"elixir": 1.0, "sudden_death": false, "deck": "custom", "level": "own",
+		"party": true, "elixir": 1.0, "sudden_death": false, "deck": "custom", "level": "own",
 		"win_condition": "touchdown", "score_to_win": 3,
 	},
 	{
@@ -64,8 +64,26 @@ const MODES := [
 	},
 	{
 		"id": "mega_deck", "name": "超级卡组", "icon": "deck",
-		"desc": "18 张卡的大卡组对战，续航更长",
-		"elixir": 1.0, "sudden_death": false, "deck": "mega", "level": "own",
+		"desc": "18 张卡的大卡组对战，续航更长；全单位与皇家塔固定 11 级",
+		"elixir": 1.0, "sudden_death": false, "deck": "mega", "level": "fixed", "party": true,
+	},
+	{
+		"id": "swap_draft", "name": "双向选卡", "icon": "deck",
+		"desc": "4 轮 2 选 1，不要的卡送给对手",
+		"elixir": 1.0, "sudden_death": false, "deck": "swap_draft", "level": "fixed",
+		"party": true, "draft_choices": 2, "draft_picks": 4,
+	},
+	{
+		"id": "mirror_deck", "name": "镜像卡组", "icon": "deck",
+		"desc": "双方使用完全相同的卡组",
+		"elixir": 1.0, "sudden_death": false, "deck": "mirror", "level": "fixed",
+		"party": true,
+	},
+	{
+		"id": "commando", "name": "主题特种兵", "icon": "sword",
+		"desc": "每天随机一个特种兵，每 15 秒从国王塔两侧轮换生成，每分钟数量 +1",
+		"elixir": 1.0, "sudden_death": false, "deck": "custom", "level": "fixed",
+		"party": true, "commando": true,
 	},
 	{
 		"id": "duel", "name": "决斗 Duel", "icon": "sword",
@@ -76,7 +94,7 @@ const MODES := [
 	{
 		"id": "custom", "name": "友谊战自定义", "icon": "gear",
 		"desc": "自定义圣水倍率、突然死亡与卡等规则",
-		"elixir": 1.0, "sudden_death": false, "deck": "custom", "level": "own",
+		"party": true, "elixir": 1.0, "sudden_death": false, "deck": "custom", "level": "own",
 		"custom": true,
 	},
 ]
@@ -84,6 +102,8 @@ const MODES := [
 static var _current_id: String = "standard"
 static var _draft_player: Array = []
 static var _draft_enemy: Array = []
+static var _swap_player: Array = []
+static var _swap_enemy: Array = []
 static var _duel: Dictionary = {
 	"active": false, "round": 1, "wins": [0, 0],
 	"player_decks": [], "enemy_decks": [],
@@ -140,6 +160,24 @@ static func set_custom_config(cfg: Dictionary) -> void:
 static func set_draft_decks(player: Array, enemy: Array) -> void:
 	_draft_player = Array(player).duplicate()
 	_draft_enemy = Array(enemy).duplicate()
+
+
+static func set_swap_decks(player: Array, enemy: Array) -> void:
+	_swap_player = Array(player).duplicate()
+	_swap_enemy = Array(enemy).duplicate()
+
+
+static func swap_decks() -> Dictionary:
+	return {"player": _swap_player.duplicate(), "enemy": _swap_enemy.duplicate()}
+
+
+# 每日特种兵：用日期做种子，返回稳定的数字种子（具体卡牌由 BattleManager 从卡表挑选）
+static func commando_seed() -> int:
+	var env_card := OS.get_environment("CR_COMMANDO_CARD")
+	if env_card != "":
+		return -int(env_card)   # 负数表示直接指定卡 id
+	var d: Dictionary = Time.get_date_dict_from_system()
+	return int(d.get("year", 2026)) * 10000 + int(d.get("month", 1)) * 100 + int(d.get("day", 1))
 
 
 static func draft_decks() -> Dictionary:
@@ -231,6 +269,12 @@ static func mode_label(m: Dictionary) -> String:
 		parts.append("选卡")
 	elif deck_src == "mega":
 		parts.append("18 卡")
+	elif deck_src == "swap_draft":
+		parts.append("双向选卡")
+	elif deck_src == "mirror":
+		parts.append("镜像卡组")
+	if bool(m.get("commando", false)):
+		parts.append("每日特种兵")
 	return " · ".join(parts)
 
 

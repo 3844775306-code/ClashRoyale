@@ -14,6 +14,13 @@ const EMBER := Color(1.0, 0.590, 0.300)
 
 var _font: Font
 var _choices := 4
+var _picks_total := 8
+var _swap := false
+var _net_draft := false
+var _current_offer: Array = []
+var _ai_offer: Array = []
+var _own_picks: Array = []
+var _own_rejects: Array = []
 var _round := 0
 var _pool: Array = []
 var _player: Array = []
@@ -27,19 +34,27 @@ var _busy := false
 
 func _ready() -> void:
 	_font = load(ThemeHelper.DEFAULT_FONT_PATH)
+	_net_draft = bool(get_meta("network_draft", false))
 	var env_mode := OS.get_environment("CR_MODE_ID")
 	if env_mode != "":
 		BATTLE_MODES.set_mode(BATTLE_MODES.get_by_id(env_mode))
 	var mode := BATTLE_MODES.current()
-	if String(mode.get("deck", "")) != "draft":
+	var deck_src := String(mode.get("deck", ""))
+	if deck_src != "draft" and deck_src != "swap_draft":
 		get_tree().change_scene_to_file("res://scenes/battle.tscn")
 		return
-	_choices = int(mode.get("draft_choices", 4))
+	_swap = deck_src == "swap_draft"
+	_choices = int(mode.get("draft_choices", 2 if _swap else 4))
+	_picks_total = int(mode.get("draft_picks", 4 if _swap else 8))
 	_load_configs()
 	UiComponents.add_background(self)
-	UiComponents.make_header(self, "选卡对战", _on_back, true)
+	if _net_draft:
+		UiComponents.make_header(self, "联机双向选卡" if _swap else "联机选卡", _on_back, true)
+	else:
+		UiComponents.make_header(self, "双向选卡" if _swap else "选卡对战", _on_back, true)
 	_build()
 	_refresh()
+	LoadingScreen.hide_loading()
 
 
 func _load_configs() -> void:
@@ -71,7 +86,9 @@ func _build() -> void:
 	_progress.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	vbox.add_child(_progress)
 
-	var hint := _label("pick 一张加入卡组，对手也会同步选卡", 13, MUTED)
+	var hint := _label("2 选 1：不要的卡送给对手；对手不要的卡也会送给你" if _swap else "pick 一张加入卡组，对手也会同步选卡", 13, MUTED)
+	if _net_draft:
+		hint.text = "联机选卡：双方各自完成选卡后进入战场" if not _swap else "联机双向选卡：自己选 4 张，另外 4 张来自其他玩家不要的卡"
 	hint.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	vbox.add_child(hint)
 
@@ -104,11 +121,20 @@ func _build() -> void:
 
 
 func _refresh() -> void:
-	_progress.text = "第 %d / 8 手 · %d 选 1" % [_round + 1, _choices]
+	_progress.text = "第 %d / %d 手 · %d 选 1" % [_round + 1, _picks_total, _choices]
 	for c in _choices_grid.get_children():
 		c.queue_free()
-	var offer: Array = _draw_offer() if _round < 8 else []
-	if _round < 8:
+	var offer: Array = []
+	if _round < _picks_total:
+		if _swap:
+			var pair := _draw_swap_offers()
+			_current_offer = pair[0]
+			_ai_offer = pair[1]
+			offer = _current_offer
+		else:
+			offer = _draw_offer()
+			_current_offer = offer
+	if _round < _picks_total:
 		for cid in offer:
 			_choices_grid.add_child(_choice_tile(int(cid)))
 	# 已选卡
@@ -122,7 +148,7 @@ func _refresh() -> void:
 		slot.add_theme_stylebox_override("panel", _sb(Color(0.03, 0.05, 0.10, 0.8), 10, 1, Color(1, 1, 1, 0.10)))
 		_picked_row.add_child(slot)
 	var auto := OS.get_environment("CR_DRAFT_AUTO")
-	if auto != "" and _round < 8 and not _busy:
+	if auto != "" and _round < _picks_total and not _busy:
 		_busy = true
 		call_deferred("_auto_pick", offer)
 
@@ -138,6 +164,23 @@ func _draw_offer() -> Array:
 			break
 		offer.append(cid)
 	return offer
+
+
+func _draw_swap_offers() -> Array:
+	var remaining: Array = []
+	for cid in _pool:
+		if not _player.has(cid) and not _enemy.has(cid):
+			remaining.append(cid)
+	var player_offer: Array = []
+	var ai_offer: Array = []
+	for cid in remaining:
+		if player_offer.size() < _choices:
+			player_offer.append(cid)
+		elif ai_offer.size() < _choices:
+			ai_offer.append(cid)
+		else:
+			break
+	return [player_offer, ai_offer]
 
 
 func _auto_pick(offer: Array) -> void:
@@ -230,7 +273,46 @@ func _art(cfg) -> Texture2D:
 
 
 func _pick(cid: int) -> void:
-	if _round >= 8:
+	if _round >= _picks_total:
+		return
+	if _swap and _net_draft:
+		if not _current_offer.has(cid):
+			return
+		_own_picks.append(cid)
+		_player.append(cid)
+		for other in _current_offer:
+			if int(other) != cid:
+				_own_rejects.append(int(other))
+				_enemy.append(int(other))
+				break
+		_round += 1
+		if _round >= _picks_total:
+			_finish_draft()
+			return
+		_refresh()
+		return
+	if _swap:
+		if not _current_offer.has(cid):
+			return
+		_player.append(cid)
+		# 玩家没选的卡送给对面
+		for other in _current_offer:
+			if int(other) != cid:
+				_enemy.append(int(other))
+				break
+		# 对面也在自己的 2 张里选 1，不要的送给我
+		if not _ai_offer.is_empty():
+			var ai_pick: int = int(_ai_offer[randi() % _ai_offer.size()])
+			_enemy.append(ai_pick)
+			for other in _ai_offer:
+				if int(other) != ai_pick:
+					_player.append(int(other))
+					break
+		_round += 1
+		if _round >= _picks_total:
+			_finish_draft()
+			return
+		_refresh()
 		return
 	_player.append(cid)
 	# AI 同步取一张（避开玩家已选）
@@ -243,14 +325,30 @@ func _pick(cid: int) -> void:
 	else:
 		_enemy.append(cid)
 	_round += 1
-	if _round >= 8:
+	if _round >= _picks_total:
 		_finish_draft()
 		return
 	_refresh()
 
 
 func _finish_draft() -> void:
-	BATTLE_MODES.set_draft_decks(_player, _enemy)
+	if _swap:
+		BATTLE_MODES.set_swap_decks(_player, _enemy)
+	else:
+		BATTLE_MODES.set_draft_decks(_player, _enemy)
+	if _net_draft:
+		NetworkManager.network_draft_started.connect(_on_network_draft_started, CONNECT_ONE_SHOT)
+		if OS.get_environment("CR_MODE_DEBUG") != "":
+			print("[DraftNet] finish role=", NetworkManager.role, " deck=", str(_player),
+				" picks=", str(_own_picks), " rejects=", str(_own_rejects))
+		if _swap:
+			NetworkManager.submit_local_swap_draft(_own_picks, _own_rejects)
+		else:
+			NetworkManager.submit_local_draft_deck(_player)
+		_progress.text = "选卡完成，等待其他玩家…"
+		for c in _choices_grid.get_children():
+			c.queue_free()
+		return
 	_progress.text = "选卡完成，准备开战…"
 	for c in _choices_grid.get_children():
 		c.queue_free()
@@ -258,8 +356,15 @@ func _finish_draft() -> void:
 	get_tree().change_scene_to_file("res://scenes/battle.tscn")
 
 
+func _on_network_draft_started() -> void:
+	var target := "res://scenes/battle.tscn" if NetworkManager.role == NetworkManager.Role.HOST else "res://scenes/network_guest.tscn"
+	get_tree().change_scene_to_file(target)
+
+
 func _on_back() -> void:
-	get_tree().change_scene_to_file("res://scenes/mode_select.tscn")
+	if _net_draft:
+		return
+	get_tree().change_scene_to_file("res://scenes/party_select.tscn" if _swap else "res://scenes/mode_select.tscn")
 
 
 func _label(text: String, fs: int, color: Color, use_display := false) -> Label:
