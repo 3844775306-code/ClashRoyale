@@ -328,6 +328,7 @@ func _sync_public_profile() -> void:
 		return
 	LeaderboardAPI.submit_trophies(PlayerData.trophies, PlayerData.player_name)
 	ClanManager.sync_my_profile()
+	ClanManager.sync_my_inventory()
 
 
 func notify_local_save() -> void:

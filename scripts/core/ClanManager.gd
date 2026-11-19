@@ -121,6 +121,37 @@ func save_player_inventory(player_id: int, inventory: Dictionary, callback: Call
 	if callback.is_valid():
 		callback.call(response.success, response.error if not response.success else null)
 # ---------- 获取当前玩家所在部落 ----------
+func sync_my_inventory(callback: Callable = Callable()) -> void:
+	get_player_inventory(get_player_id(), func(success, inventory):
+		if success and inventory is Dictionary and not inventory.is_empty():
+			for cid in inventory.keys():
+				PlayerData.card_quantities[int(cid)] = int(inventory[cid])
+			PlayerData.save_data()
+		_claim_pending_gifts(callback)
+	)
+
+func _claim_pending_gifts(callback: Callable = Callable()) -> void:
+	get_my_clan(func(success, clan):
+		if not success or clan == null:
+			if callback.is_valid(): callback.call(false)
+			return
+		var gifts: Dictionary = clan.get("pending_card_gifts", {})
+		var mine: Dictionary = gifts.get(str(get_player_id()), {})
+		if mine.is_empty():
+			if callback.is_valid(): callback.call(true)
+			return
+		for cid in mine.keys():
+			var amount: int = int(mine[cid])
+			if amount > 0:
+				PlayerData.add_card(int(cid), amount)
+		gifts.erase(str(get_player_id()))
+		clan["pending_card_gifts"] = gifts
+		invalidate_cache()
+		_update_clan_on_leaderboard(clan, func(ok, err):
+			if callback.is_valid(): callback.call(ok)
+		)
+	)
+
 ## 通过查询名为 "player_clan_{player_id}" 的排行榜条目来获取玩家当前部落
 func get_my_clan(callback: Callable):
 	# 这个函数需要在服务器端维护一个映射表；简化处理：扫描整个部落列表寻找当前玩家
@@ -634,6 +665,8 @@ func donate_card(to_player_id: int, card_id: int, amount: int, request_key: Stri
 		PlayerData.remove_card(card_id, contribute)
 		PlayerData.donations_used += 1
 		PlayerData.save_data()
+		# 同步捐赠者云端库存，避免下次登录退回
+		save_player_inventory(get_player_id(), PlayerData.card_quantities)
 		if clan.members.has(str(get_player_id())):
 			clan.members[str(get_player_id())].donations += contribute
 		msg["donated"] = donated + contribute
@@ -641,6 +674,13 @@ func donate_card(to_player_id: int, card_id: int, amount: int, request_key: Stri
 		msg["donors"] = donors
 		chat_list[msg_index] = msg
 		clan["chat"] = chat_list
+		# 接收者的待领取赠卡放在部落数据中，跨账号可靠送达
+		var gifts: Dictionary = clan.get("pending_card_gifts", {})
+		var gkey := str(to_player_id)
+		var mine: Dictionary = gifts.get(gkey, {})
+		mine[str(card_id)] = int(mine.get(str(card_id), 0)) + contribute
+		gifts[gkey] = mine
+		clan["pending_card_gifts"] = gifts
 		_update_clan_on_leaderboard(clan, func(ok, err):
 			if not ok:
 				callback.call(false, "保存部落失败")

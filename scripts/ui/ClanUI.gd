@@ -45,6 +45,7 @@ var toast_label: Label
 var my_clan_data: Dictionary = {}
 var current_chat: Array = []
 var _last_search_clans: Array = []
+var _pending_chat: Array = []
 var _poll_timer: Timer
 var _polling: bool = false
 
@@ -56,6 +57,7 @@ func _ready():
 	_build_content()
 	_refresh_my_clan()
 	_load_all_clans()
+	ClanManager.sync_my_inventory()
 	_poll_timer = Timer.new()
 	_poll_timer.wait_time = 3.0
 	_poll_timer.one_shot = false
@@ -459,6 +461,7 @@ func _poll_clan() -> void:
 			_show_no_clan()
 		else:
 			_show_clan_home(clan)
+		ClanManager.sync_my_inventory()
 	)
 
 func _show_no_clan():
@@ -496,7 +499,7 @@ func _show_clan_home(clan: Dictionary):
 
 	ClanManager.get_chat_history(func(success, chat):
 		if success and chat is Array:
-			current_chat = chat
+			current_chat = _merge_pending_chat(chat)
 			_update_chat_display()
 	)
 
@@ -528,7 +531,6 @@ func _refresh_members():
 			av.setup_local()
 		else:
 			av.setup(an, aseed, aidx)
-		av.mouse_filter = Control.MOUSE_FILTER_STOP
 		var member_snapshot := {
 			"player_id": str(member_id), "name": an,
 			"trophies": int(m.get("trophies", 0)),
@@ -536,11 +538,11 @@ func _refresh_members():
 			"role": String(m.get("role", "")),
 			"clan": String(my_clan_data.get("name", "")),
 		}
+		hbox.add_child(av)
+		av.mouse_filter = Control.MOUSE_FILTER_STOP
 		av.gui_input.connect(func(e):
 			if e is InputEventMouseButton and e.pressed:
 				_open_player_profile(member_snapshot))
-		hbox.add_child(av)
-
 		var id_lbl := Label.new()
 		id_lbl.text = an
 		id_lbl.size_flags_horizontal = Control.SIZE_EXPAND_FILL
@@ -605,12 +607,29 @@ func _role_text(role: String) -> String:
 func _update_chat_display():
 	for child in chat_list.get_children():
 		child.queue_free()
-	for msg in current_chat:
+	var ordered: Array = current_chat.duplicate()
+	ordered.sort_custom(func(a, b): return float(a.get("timestamp", 0.0)) < float(b.get("timestamp", 0.0)))
+	for msg in ordered:
 		chat_list.add_child(_create_chat_node(msg))
 	var sc = get_meta("chat_scroll", null)
 	if sc:
 		await get_tree().process_frame
 		sc.scroll_vertical = int(sc.get_v_scroll_bar().max_value)
+
+func _merge_pending_chat(server_chat: Array) -> Array:
+	var merged: Array = server_chat.duplicate()
+	var keep: Array = []
+	for p in _pending_chat:
+		var found := false
+		for m in server_chat:
+			if int(m.get("player_id", -2)) == int(p.get("player_id", -3)) and String(m.get("message", "")) == String(p.get("message", "")):
+				found = true
+				break
+		if not found:
+			keep.append(p)
+			merged.push_front(p)
+	_pending_chat = keep
+	return merged
 
 func _format_chat_time(ts: float) -> String:
 	if ts <= 0.0:
@@ -646,6 +665,11 @@ func _create_chat_node(msg: Dictionary) -> Control:
 	else:
 		av.setup(sender_name, seed_value, avatar_index)
 	row.add_child(av)
+	av.mouse_filter = Control.MOUSE_FILTER_STOP
+	var chat_profile := {"player_id": str(pid), "name": sender_name, "avatar_seed": seed_value, "avatar_index": avatar_index, "clan": String(my_clan_data.get("name", ""))}
+	av.gui_input.connect(func(e):
+		if e is InputEventMouseButton and e.pressed:
+			_open_player_profile(chat_profile))
 
 	var col := VBoxContainer.new()
 	col.size_flags_horizontal = Control.SIZE_EXPAND_FILL
@@ -772,7 +796,7 @@ func _on_send_chat():
 		if not success:
 			_toast("发送失败：%s" % str(_data))
 			return
-		current_chat.push_front({
+		var local_msg := {
 			"player_id": ClanManager.get_player_id(),
 			"player_name": ClanManager.get_player_name(),
 			"message": msg,
@@ -780,7 +804,10 @@ func _on_send_chat():
 			"type": "chat",
 			"avatar_seed": PlayerData.avatar_seed,
 			"avatar_index": PlayerData.avatar_index,
-		})
+			"client_id": "local_%d" % Time.get_ticks_usec(),
+		}
+		current_chat.push_front(local_msg)
+		_pending_chat.append(local_msg)
 		_update_chat_display()
 		chat_input.clear()
 	)
