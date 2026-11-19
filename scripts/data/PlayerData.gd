@@ -173,7 +173,8 @@ func prepare_chest_opening(index: int) -> Dictionary:
 	var chest: Dictionary = chests[index]
 	var taps: int = 4 if String(chest.get("rarity", "silver")) == "magical" else 3
 	chest["total_taps"] = int(chest.get("total_taps", taps))
-	chest["taps_left"] = int(chest.get("total_taps", taps))
+	if not chest.has("taps_left") or int(chest.get("taps_left", 0)) <= 0:
+		chest["taps_left"] = int(chest.get("total_taps", taps))
 	if not chest.has("stars"):
 		chest["stars"] = _roll_chest_stars(chest.rarity)
 	chest["ready"] = true
@@ -238,8 +239,14 @@ func _grant_cards_of_rarity(cards: Dictionary, rar: String, amount: int, arena: 
 	var ids: Array = _ids_of_rarity(rar, arena)
 	if ids.is_empty():
 		return
+	# 官方宝箱只给少量卡种，每种给多张；避免开出几十种卡牌刷屏
+	ids.shuffle()
+	var kinds: int = mini(4, ids.size())
+	var chosen: Array = []
+	for i in range(kinds):
+		chosen.append(ids[i])
 	for i in range(amount):
-		var cid: int = int(ids[randi() % ids.size()])
+		var cid: int = int(chosen[randi() % chosen.size()])
 		cards[cid] = int(cards.get(cid, 0)) + 1
 
 func _build_full_chest_rewards(rarity: String, lv: int, stars: int, arena: int) -> Dictionary:
@@ -264,11 +271,11 @@ func _build_full_chest_rewards(rarity: String, lv: int, stars: int, arena: int) 
 		_grant_cards_of_rarity(cards, "legendary", int(CHEST_LEGEND[3][lv - 1]), arena)
 	else:
 		# 4/5 星：官方以万能卡/进化碎片为主，本项目折算为更多卡牌
-		var mul: int = 2 if stars == 4 else 3
-		_grant_cards_of_rarity(cards, "common", int(CHEST_COMMON[3][lv - 1]) * mul, arena)
-		_grant_cards_of_rarity(cards, "rare", int(CHEST_RARE[3][lv - 1]) * mul, arena)
-		_grant_cards_of_rarity(cards, "epic", int(CHEST_EPIC[3][lv - 1]) * mul, arena)
-		_grant_cards_of_rarity(cards, "legendary", int(CHEST_LEGEND[3][lv - 1]) * mul, arena)
+		# 4/5 星沿用 3 星卡牌数量，不再乘以 2/3；高星的额外价值由奖励系统/万能卡承载
+		_grant_cards_of_rarity(cards, "common", int(CHEST_COMMON[3][lv - 1]), arena)
+		_grant_cards_of_rarity(cards, "rare", int(CHEST_RARE[3][lv - 1]), arena)
+		_grant_cards_of_rarity(cards, "epic", int(CHEST_EPIC[3][lv - 1]), arena)
+		_grant_cards_of_rarity(cards, "legendary", int(CHEST_LEGEND[3][lv - 1]), arena)
 	return { "gold": gold_reward, "gems": 0, "cards": cards }
 
 # --- 卡牌升级（重写） ---
