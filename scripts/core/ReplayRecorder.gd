@@ -8,6 +8,7 @@ var actions: Array = []
 var emotes: Array = []
 var _path: String = ""
 var _dir: String = "user://replays"
+const MAX_REPLAYS := 20
 var _finished: bool = false
 var _bound_ai: Dictionary = {}
 var _meta_ready: bool = false
@@ -23,6 +24,7 @@ func _ready():
 	battle = get_parent()
 	if battle == null:
 		return
+	_dir = PlayerData.replay_dir()
 	var env_dir := OS.get_environment("CR_MATCH_REPLAY_DIR")
 	if env_dir != "":
 		_dir = env_dir
@@ -245,7 +247,10 @@ func build_snapshot() -> Dictionary:
 		"towers": battle.healths.duplicate(),
 		"elixir": [float(battle.player_elixir), float(battle.enemy_elixir)],
 		"hands": [_hand_for_team(0), _hand_for_team(1)],
-		"crowns": [int(battle.player_crowns), int(battle.enemy_crowns)]
+		"crowns": [int(battle.player_crowns), int(battle.enemy_crowns)],
+		"touchdown_scores": [int(battle.touchdown_score[0]), int(battle.touchdown_score[1])],
+		"touchdown_round": int(battle.touchdown_round),
+		"touchdown_resetting": bool(battle.touchdown_resetting),
 	}
 	if battle.get("network_host_mode"):
 		snap["player_hands"] = battle.network_player_hands()
@@ -325,8 +330,40 @@ func _finish():
 		_snap_file = null
 	var f := FileAccess.open(ProjectSettings.globalize_path(_path), FileAccess.WRITE)
 	if f:
-		f.store_string(JSON.stringify({"meta": meta, "actions": actions, "snapshots": snapshots, "emotes": emotes}))
+		f.store_string(JSON.stringify({"meta": meta, "actions": actions, "snapshots": snapshots, "emotes": emotes, "permanent": false}))
 		f.close()
 		print("REPLAY saved ", _path, " frames=", snapshots.size(), " actions=", actions.size())
+		cleanup_replays(_dir)
 	else:
 		print("REPLAY write failed ", _path)
+
+static func cleanup_replays(dir_path: String) -> void:
+	var abs_dir := ProjectSettings.globalize_path(dir_path)
+	var d := DirAccess.open(abs_dir)
+	if d == null:
+		return
+	var items: Array = []
+	for f in d.get_files():
+		if not f.ends_with(".json") or not f.begins_with("replay_"):
+			continue
+		var p := abs_dir + "/" + f
+		var fa := FileAccess.open(p, FileAccess.READ)
+		if fa == null:
+			continue
+		var parsed = JSON.parse_string(fa.get_as_text())
+		fa.close()
+		if not (parsed is Dictionary):
+			continue
+		var permanent: bool = bool(parsed.get("permanent", false))
+		var mtime: int = int(FileAccess.get_modified_time(p))
+		items.append({"path": p, "time": mtime, "permanent": permanent})
+	items.sort_custom(func(a, b): return int(a.time) > int(b.time))
+	var kept := 0
+	for it in items:
+		if bool(it.permanent):
+			continue
+		kept += 1
+		if kept <= MAX_REPLAYS:
+			continue
+		DirAccess.remove_absolute(String(it.path))
+		DirAccess.remove_absolute(String(it.path).get_basename() + ".snap.jsonl")

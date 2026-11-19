@@ -10,6 +10,7 @@ const REPLAY_DIR := "user://replays"
 const SPELL_VFX = preload("res://scripts/visuals/SpellVFX.gd")
 const CARD_SCAN = preload("res://assets/shaders/card_scan.gdshader")
 const EMOTES = preload("res://scripts/data/EmoteCatalog.gd")
+const REPLAY_RECORDER = preload("res://scripts/core/ReplayRecorder.gd")
 
 var _bg: ColorRect
 var _bg_layer: ColorRect
@@ -94,12 +95,13 @@ func _build_list_view():
 
 func _replay_dir() -> String:
 	var env := OS.get_environment("CR_MATCH_REPLAY_DIR")
-	return env if env != "" else REPLAY_DIR
+	return env if env != "" else PlayerData.replay_dir()
 
 func _load_replays():
 	for c in _list_box.get_children():
 		c.queue_free()
 	var dir := _replay_dir()
+	REPLAY_RECORDER.cleanup_replays(dir)
 	var files: Array = []
 	var d := DirAccess.open(ProjectSettings.globalize_path(dir))
 	if d:
@@ -221,10 +223,38 @@ func _make_replay_row(data: Dictionary, filename: String) -> Control:
 	sub.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	sub.max_lines_visible = 3
 	vb.add_child(sub)
-	var play := UiComponents.make_primary_button("▶", func(): _open_replay(data), Vector2(58, 40))
+	var permanent: bool = bool(data.get("permanent", false))
+	var perm_btn := UiComponents.make_secondary_button("永久" if permanent else "保存", func(): _toggle_permanent(filename, data), Vector2(64, 36))
+	perm_btn.add_theme_font_size_override("font_size", 12)
+	perm_btn.add_theme_color_override("font_color", Color(1.0, 0.82, 0.30) if permanent else Color(0.76, 0.82, 0.92))
+	hbox.add_child(perm_btn)
+	var play := UiComponents.make_primary_button("▶", func(): _open_replay(data), Vector2(52, 40))
 	play.add_theme_font_size_override("font_size", 15)
 	hbox.add_child(play)
+	if permanent:
+		var dot := Label.new()
+		dot.text = "P"
+		dot.add_theme_font_size_override("font_size", 11)
+		dot.add_theme_color_override("font_color", Color(1.0, 0.82, 0.30))
+		vb.add_child(dot)
 	return panel
+
+func _toggle_permanent(filename: String, data: Dictionary):
+	var src := String(data.get("_source_dir", _replay_dir()))
+	var path := "%s/%s" % [src, filename]
+	var fa := FileAccess.open(ProjectSettings.globalize_path(path), FileAccess.READ)
+	if fa == null:
+		return
+	var parsed = JSON.parse_string(fa.get_as_text())
+	fa.close()
+	if not (parsed is Dictionary):
+		return
+	parsed["permanent"] = not bool(parsed.get("permanent", false))
+	var out := FileAccess.open(ProjectSettings.globalize_path(path), FileAccess.WRITE)
+	if out:
+		out.store_string(JSON.stringify(parsed))
+		out.close()
+	_load_replays()
 
 func _result_cn(w: int) -> String:
 	if w == 0:

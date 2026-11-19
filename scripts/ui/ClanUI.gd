@@ -45,6 +45,8 @@ var toast_label: Label
 var my_clan_data: Dictionary = {}
 var current_chat: Array = []
 var _last_search_clans: Array = []
+var _poll_timer: Timer
+var _polling: bool = false
 
 
 func _ready():
@@ -54,6 +56,12 @@ func _ready():
 	_build_content()
 	_refresh_my_clan()
 	_load_all_clans()
+	_poll_timer = Timer.new()
+	_poll_timer.wait_time = 3.0
+	_poll_timer.one_shot = false
+	_poll_timer.timeout.connect(_poll_clan)
+	add_child(_poll_timer)
+	_poll_timer.start()
 	toast_label = Label.new()
 	toast_label.position = Vector2(70, 1540)
 	toast_label.size = Vector2(660, 32)
@@ -438,6 +446,21 @@ func _refresh_my_clan():
 	)
 
 
+func _poll_clan() -> void:
+	if _polling or current_tab != 0 or clan_home_box == null or not clan_home_box.visible:
+		return
+	_polling = true
+	ClanManager.invalidate_cache()
+	ClanManager.get_my_clan(func(success, clan):
+		_polling = false
+		if not success:
+			return
+		if clan == null:
+			_show_no_clan()
+		else:
+			_show_clan_home(clan)
+	)
+
 func _show_no_clan():
 	no_clan_box.show()
 	clan_home_box.hide()
@@ -445,7 +468,7 @@ func _show_no_clan():
 
 func _show_clan_home(clan: Dictionary):
 	my_clan_data = clan
-	if not _last_search_clans.is_empty() and clan_list != null:
+	if current_tab == 1 and not _last_search_clans.is_empty() and clan_list != null:
 		_show_clan_list(_last_search_clans)
 	no_clan_box.hide()
 	clan_home_box.show()
@@ -770,6 +793,7 @@ func _on_request_card():
 	card_select.callback = func(card_id, amount):
 		ClanManager.request_card(card_id, amount, func(succ, data):
 			if succ:
+				ClanManager.invalidate_cache()
 				_refresh_my_clan()
 			else:
 				_toast("请求失败：%s" % str(data))
@@ -780,6 +804,7 @@ func _on_request_card():
 func _donate_card(target_id: int, card_id: int, request_key: String):
 	ClanManager.donate_card(target_id, card_id, 0, request_key, func(succ, data):
 		if succ:
+			ClanManager.invalidate_cache()
 			_refresh_my_clan()
 			PlayerData.save_data()
 		else:
@@ -854,6 +879,7 @@ func _join_clan(clan_id: String):
 			if str(data) == "applied":
 				_toast("已提交入部申请，等待首领审批")
 			else:
+				ClanManager.invalidate_cache()
 				_switch_tab(0)
 				_refresh_my_clan()
 		else:
@@ -872,6 +898,7 @@ func _on_create_clan():
 	create_error.text = ""
 	ClanManager.create_clan(name, desc, min_trophies, is_open, func(success, clan_id):
 		if success:
+			ClanManager.invalidate_cache()
 			_switch_tab(0)
 			_refresh_my_clan()
 		else:

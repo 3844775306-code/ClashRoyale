@@ -41,6 +41,7 @@ func _ready():
 	set_process(true)
 	PlayerData.ensure_daily_shop_offers()
 	_build_ui()
+	_build_friend_module()
 	_build_notifier()
 	FriendManager.invite_received.connect(_on_friend_invite)
 	_play_intro()
@@ -68,6 +69,141 @@ func _on_friend_invite(invite: Dictionary) -> void:
 	dlg.canceled.connect(func(): FriendManager.pending_invite = {})
 	add_child(dlg)
 	dlg.popup_centered(Vector2i(680, 320))
+
+
+var _friend_module_btn: Button
+var _friend_online_lbl: Label
+var _friend_req_badge: Panel
+var _friend_req_lbl: Label
+
+func _build_friend_module() -> void:
+	var btn := Button.new()
+	btn.focus_mode = Control.FOCUS_NONE
+	btn.position = Vector2(16, UiComponents.TOPBAR_H + 10)
+	btn.size = Vector2(238, 64)
+	btn.z_index = 40
+	btn.tooltip_text = "好友中心"
+	var normal := StyleBoxFlat.new()
+	normal.bg_color = Color(0.035, 0.055, 0.115, 0.94)
+	normal.set_corner_radius_all(18)
+	normal.set_border_width_all(1)
+	normal.border_color = Color(GOLD.r, GOLD.g, GOLD.b, 0.55)
+	normal.shadow_color = Color(0, 0, 0, 0.45)
+	normal.shadow_size = 8
+	normal.shadow_offset = Vector2(0, 4)
+	btn.add_theme_stylebox_override("normal", normal)
+	var hover := normal.duplicate()
+	hover.bg_color = Color(0.065, 0.095, 0.19, 0.98)
+	hover.border_color = Color(GOLD.r, GOLD.g, GOLD.b, 0.9)
+	hover.shadow_size = 12
+	btn.add_theme_stylebox_override("hover", hover)
+	var pressed := normal.duplicate()
+	pressed.bg_color = Color(0.025, 0.040, 0.085, 0.98)
+	btn.add_theme_stylebox_override("pressed", pressed)
+	btn.add_theme_stylebox_override("focus", StyleBoxEmpty.new())
+	btn.pressed.connect(_open_friend_center)
+	add_child(btn)
+	_friend_module_btn = btn
+
+	var icon_bg := Panel.new()
+	icon_bg.position = Vector2(10, 12)
+	icon_bg.size = Vector2(40, 40)
+	icon_bg.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	var icon_sb := StyleBoxFlat.new()
+	icon_sb.bg_color = Color(0.13, 0.10, 0.04, 0.95)
+	icon_sb.set_corner_radius_all(20)
+	icon_sb.set_border_width_all(1)
+	icon_sb.border_color = Color(GOLD.r, GOLD.g, GOLD.b, 0.75)
+	icon_bg.add_theme_stylebox_override("panel", icon_sb)
+	btn.add_child(icon_bg)
+	var ic = ICON.new()
+	ic.kind = "medal"
+	ic.tint = GOLD_LIGHT
+	ic.size = Vector2(24, 24)
+	ic.position = Vector2(8, 8)
+	icon_bg.add_child(ic)
+
+	var title := Label.new()
+	title.text = "好友"
+	title.position = Vector2(60, 7)
+	title.size = Vector2(150, 26)
+	title.add_theme_font_size_override("font_size", 18)
+	title.add_theme_color_override("font_color", GOLD_LIGHT)
+	title.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	if _font != null:
+		title.add_theme_font_override("font", _font)
+	btn.add_child(title)
+	_friend_online_lbl = Label.new()
+	_friend_online_lbl.position = Vector2(60, 33)
+	_friend_online_lbl.size = Vector2(150, 20)
+	_friend_online_lbl.add_theme_font_size_override("font_size", 11)
+	_friend_online_lbl.add_theme_color_override("font_color", MUTED)
+	_friend_online_lbl.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	btn.add_child(_friend_online_lbl)
+
+	_friend_req_badge = Panel.new()
+	_friend_req_badge.position = Vector2(202, 10)
+	_friend_req_badge.size = Vector2(24, 24)
+	_friend_req_badge.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	var badge_sb := StyleBoxFlat.new()
+	badge_sb.bg_color = Color(0.92, 0.24, 0.20, 0.98)
+	badge_sb.set_corner_radius_all(12)
+	badge_sb.set_border_width_all(1)
+	badge_sb.border_color = Color(1.0, 0.82, 0.55)
+	_friend_req_badge.add_theme_stylebox_override("panel", badge_sb)
+	btn.add_child(_friend_req_badge)
+	_friend_req_lbl = Label.new()
+	_friend_req_lbl.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	_friend_req_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_friend_req_lbl.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	_friend_req_lbl.add_theme_font_size_override("font_size", 12)
+	_friend_req_lbl.add_theme_color_override("font_color", Color.WHITE)
+	_friend_req_lbl.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_friend_req_badge.add_child(_friend_req_lbl)
+
+	FriendManager.friends_changed.connect(_refresh_friend_module)
+	FriendManager.presence_changed.connect(_refresh_friend_module)
+	FriendManager.requests_changed.connect(_refresh_friend_module)
+	FriendManager.friend_request_received.connect(_on_friend_request_received)
+	_refresh_friend_module()
+
+
+func _refresh_friend_module() -> void:
+	var online := 0
+	for f in FriendManager.all():
+		if FriendManager.is_online(String(f.get("id", ""))):
+			online += 1
+	var req_n := FriendManager.incoming_list().size()
+	if _friend_online_lbl != null:
+		if FriendManager.all().is_empty():
+			_friend_online_lbl.text = "搜索玩家添加好友"
+		else:
+			_friend_online_lbl.text = "● %d 人同局域网在线" % online
+			_friend_online_lbl.add_theme_color_override("font_color", Color(0.52, 0.88, 0.60) if online > 0 else MUTED)
+	if _friend_req_badge != null:
+		_friend_req_badge.visible = req_n > 0
+		if _friend_req_lbl != null:
+			_friend_req_lbl.text = str(req_n)
+
+
+func _on_friend_request_received(req: Dictionary) -> void:
+	var prof: Dictionary = Dictionary(req.get("profile", {})).duplicate(true)
+	var pid := String(prof.get("player_id", req.get("id", "")))
+	var name := String(prof.get("name", "玩家"))
+	var dlg := ConfirmationDialog.new()
+	dlg.title = "好友请求"
+	dlg.dialog_text = "%s 请求加你为好友，是否同意？" % name
+	dlg.ok_button_text = "同意"
+	dlg.cancel_button_text = "拒绝"
+	dlg.confirmed.connect(func(): FriendManager.accept_request(pid))
+	dlg.canceled.connect(func(): FriendManager.reject_request(pid))
+	add_child(dlg)
+	dlg.popup_centered(Vector2i(680, 300))
+
+
+func _open_friend_center() -> void:
+	var center = preload("res://assets/ui/FriendCenter.gd").new()
+	add_child(center)
 
 
 func _redirect_account_login() -> void:
@@ -901,4 +1037,11 @@ func _on_season_pressed():
 	get_tree().change_scene_to_file("res://scenes/season.tscn")
 
 func _on_clan_pressed():
-	get_tree().change_scene_to_file("res://scenes/clan_ui.tscn")
+	# 先拉取部落/成员/聊天数据，再进入界面，避免空白或旧数据
+	LoadingScreen.show_loading("正在从云端加载部落…")
+	ClanManager.invalidate_cache()
+	ClanManager.get_my_clan(func(_ok, _clan):
+		ClanManager.search_clans(func(_sok, _clans):
+			LoadingScreen.change_scene("res://scenes/clan_ui.tscn", "正在打开部落…")
+		, "")
+	)

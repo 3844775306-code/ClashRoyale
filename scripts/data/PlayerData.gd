@@ -90,6 +90,11 @@ func _default_save_path() -> String:
 func current_save_path() -> String:
 	return account_save_path if account_save_path != "" else _default_save_path()
 
+func replay_dir() -> String:
+	if account_save_path != "":
+		return account_save_path.get_base_dir() + "/replays"
+	return _data_root().trim_suffix("/") + "/replays"
+
 
 ## 切换到指定账号的本地存档；首次登录会把旧版单存档迁移到该账号
 func use_account(acct_id: String, migrate_legacy := true) -> void:
