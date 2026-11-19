@@ -2280,6 +2280,8 @@ func show_network_result(winner_team: int, crowns: Array, local_team: int, durat
 	var cs1: int = int(crowns[1]) if crowns.size() > 1 else 0
 	var my_c: int = cs0 if local_team == 0 else cs1
 	var en_c: int = cs1 if local_team == 0 else cs0
+	if not replay_mode and not tutorial_battle:
+		PlayerData.add_season_crowns(my_c)
 	var data := {
 		"win": winner_team == local_team,
 		"crowns_my": my_c,
@@ -2439,6 +2441,8 @@ func _show_game_over() -> void:
 	if trophy_change != 0:
 		LeaderboardAPI.submit_trophies(PlayerData.trophies, PlayerData.player_name)
 	PlayerData.add_trophies(trophy_change)
+	if not replay_mode and not tutorial_battle:
+		PlayerData.add_season_crowns(player_crowns)
 	var dur: String = "%d:%02d" % [int(game_time / 60000.0), int(game_time / 1000.0) % 60]
 	var data := {
 		"win": win,

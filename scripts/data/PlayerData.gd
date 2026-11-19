@@ -59,6 +59,9 @@ var starter_cards_v2: bool = false
 var chest_reveal_pending: bool = false
 var collection_rewards_claimed: Array = []
 var card_mastery: Dictionary = {}
+var season_key: String = ""
+var season_crowns: int = 0
+var season_claimed: Array = []
 var _collection_rewards_cache: Array = []
 var avatar_seed: int = 0
 var avatar_index: int = 0
@@ -69,6 +72,7 @@ func _ready():
 	
 	load_data()
 	_ensure_avatar()
+	_ensure_season()
 	_ensure_starter_cards()
 	for i in range(130):
 		ai_levels[i] = get_ai_card_level()
@@ -106,6 +110,7 @@ func use_account(acct_id: String, migrate_legacy := true) -> void:
 				f.close()
 	load_data()
 	_ensure_avatar()
+	_ensure_season()
 	_ensure_starter_cards()
 	ai_levels.clear()
 	for i in range(130):
@@ -613,6 +618,9 @@ func load_data():
 		avatar_custom_path = String(config.get_value("player", "avatar_custom_path", ""))
 		collection_rewards_claimed = config.get_value("player", "collection_rewards_claimed", [])
 		card_mastery = config.get_value("player", "card_mastery", {})
+		season_key = String(config.get_value("player", "season_key", ""))
+		season_crowns = int(config.get_value("player", "season_crowns", 0))
+		season_claimed = config.get_value("player", "season_claimed", [])
 		experience = config.get_value("player", "experience", 0)
 		trophies = config.get_value("player", "trophies", 0)
 		highest_trophies = config.get_value("player", "highest_trophies", trophies)
@@ -686,6 +694,9 @@ func save_data():
 	config.set_value("player", "avatar_custom_path", avatar_custom_path)
 	config.set_value("player", "collection_rewards_claimed", collection_rewards_claimed)
 	config.set_value("player", "card_mastery", card_mastery)
+	config.set_value("player", "season_key", season_key)
+	config.set_value("player", "season_crowns", season_crowns)
+	config.set_value("player", "season_claimed", season_claimed)
 	config.set_value("player", "donations_used", donations_used)
 	config.set_value("player", "custom_deck", custom_deck)
 	config.set_value("player", "custom_decks", custom_decks)
@@ -1006,6 +1017,87 @@ func claim_all_mastery() -> Array:
 			if rew.is_empty():
 				break
 			out.append({"card_id": cid, "reward": rew})
+	return out
+
+const SEASON = preload("res://scripts/data/SeasonCatalog.gd")
+
+func _ensure_season() -> void:
+	var key: String = String(SEASON.current_key())
+	if season_key != key:
+		season_key = key
+		season_crowns = 0
+		season_claimed.clear()
+		save_data()
+
+func get_season_theme() -> Dictionary:
+	_ensure_season()
+	return SEASON.current()
+
+func get_season_crowns() -> int:
+	_ensure_season()
+	return season_crowns
+
+func add_season_crowns(n: int) -> void:
+	if n <= 0:
+		return
+	_ensure_season()
+	season_crowns += n
+	save_data()
+
+func get_season_pending_count() -> int:
+	var n := 0
+	for t in range(1, SEASON.TIERS + 1):
+		if season_crowns >= SEASON.tier_crowns(t) and not season_claimed.has(t):
+			n += 1
+	return n
+
+func get_season_reward(tier: int) -> Dictionary:
+	return SEASON.reward_for(tier, SEASON.current())
+
+func get_season_reward_state() -> Array:
+	var out: Array = []
+	for t in range(1, SEASON.TIERS + 1):
+		out.append({
+			"tier": t,
+			"crowns": SEASON.tier_crowns(t),
+			"claimed": season_claimed.has(t),
+			"available": season_crowns >= SEASON.tier_crowns(t) and not season_claimed.has(t),
+			"reward": get_season_reward(t),
+		})
+	return out
+
+func _grant_season_reward(r: Dictionary) -> void:
+	match String(r.get("type", "gold")):
+		"gems":
+			gems += int(r.get("amount", 0))
+		"wild":
+			add_wildcards(String(r.get("rarity", "common")), int(r.get("amount", 0)))
+		"chest":
+			add_chest(String(r.get("rarity", "magical")))
+			if not chests.is_empty():
+				chests[chests.size() - 1]["stars"] = clampi(int(r.get("stars", 4)), 1, 5)
+		_:
+			gold += int(r.get("amount", 0))
+	save_data()
+
+func claim_season_reward(tier: int) -> Dictionary:
+	if season_claimed.has(tier) or season_crowns < SEASON.tier_crowns(tier):
+		return {}
+	var r: Dictionary = get_season_reward(tier)
+	season_claimed.append(tier)
+	_grant_season_reward(r)
+	save_data()
+	return r
+
+func claim_all_season_rewards() -> Array:
+	var out: Array = []
+	for t in range(1, SEASON.TIERS + 1):
+		if season_crowns >= SEASON.tier_crowns(t) and not season_claimed.has(t):
+			var r: Dictionary = get_season_reward(t)
+			season_claimed.append(t)
+			_grant_season_reward(r)
+			out.append(r)
+	save_data()
 	return out
 
 func get_ai_allowed_cards() -> Array:

@@ -668,6 +668,12 @@ func _build_bottom_row() -> void:
 	row.add_child(_dot_sep())
 	row.add_child(_text_action("medal", "挑战", _on_challenges_pressed))
 	row.add_child(_dot_sep())
+	var season_btn := _text_action("trophy", "主题赛季", _on_season_pressed)
+	row.add_child(season_btn)
+	var season_pending := PlayerData.get_season_pending_count()
+	if season_pending > 0:
+		_add_count_badge(season_btn, season_pending, Vector2(66, 0))
+	row.add_child(_dot_sep())
 	row.add_child(_text_action("quit", "退出", _on_quit_pressed))
 
 func _dot_sep() -> Control:
@@ -820,6 +826,9 @@ func _on_party_pressed():
 func _on_challenges_pressed():
 	get_tree().change_scene_to_file("res://scenes/challenges.tscn")
 
+
+func _on_season_pressed():
+	get_tree().change_scene_to_file("res://scenes/season.tscn")
 
 func _on_clan_pressed():
 	get_tree().change_scene_to_file("res://scenes/clan_ui.tscn")
