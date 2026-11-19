@@ -35,7 +35,7 @@ func _ready():
 			_invite_autoclaim = false
 			call_deferred("_auto_claim"))
 	NetworkManager.match_started.connect(_on_match_started)
-	FriendManager.invite_received.connect(_on_friend_invite)
+	NetworkManager.room_closed.connect(_on_room_closed)
 	# 从主菜单接受好友邀请后直接尝试加入
 	if FriendManager.pending_invite.size() > 0 and NetworkManager.role == NetworkManager.Role.NONE:
 		var inv := FriendManager.pending_invite
@@ -206,6 +206,10 @@ func _build_room() -> void:
 	_room_box.add_child(_seats_box)
 	_start_btn = UiComponents.make_primary_button("开始游戏", _start_pressed, Vector2(680, 64))
 	_room_box.add_child(_start_btn)
+	var destroy_btn := UiComponents.make_secondary_button("销毁房间", _destroy_room, Vector2(680, 46))
+	destroy_btn.visible = false
+	destroy_btn.name = "DestroyRoom"
+	_room_box.add_child(destroy_btn)
 	_room_status = _label("", 15, Color(0.9,0.95,1.0))
 	_room_box.add_child(_room_status)
 
@@ -400,15 +404,21 @@ func _refresh_seats() -> void:
 		team_lbl.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 		head.add_child(team_lbl)
 		if NetworkManager.role == NetworkManager.Role.HOST:
-			var addb := UiComponents.make_secondary_button("+ 席位", func(): NetworkManager.add_seat(team), Vector2(120, 38))
+			var addb := UiComponents.make_secondary_button("+ 席位", func(): NetworkManager.add_seat(team), Vector2(96, 38))
 			addb.disabled = NetworkManager.seats_in_team(team).size() >= 2
 			head.add_child(addb)
+			var delb := UiComponents.make_secondary_button("- 席位", func(): NetworkManager.remove_seat(team, NetworkManager.seats_in_team(team).size() - 1), Vector2(96, 38))
+			delb.disabled = NetworkManager.seats_in_team(team).size() <= 0
+			head.add_child(delb)
 		var cards := HBoxContainer.new()
 		cards.add_theme_constant_override("separation", 10)
 		row.add_child(cards)
 		for s in NetworkManager.seats_in_team(team):
 			cards.add_child(_make_seat_card(s, team))
 	_start_btn.visible = NetworkManager.role == NetworkManager.Role.HOST
+	var dr := _room_box.get_node_or_null("DestroyRoom")
+	if dr:
+		dr.visible = NetworkManager.role == NetworkManager.Role.HOST
 	_start_btn.disabled = not NetworkManager.can_start()
 	if NetworkManager.role == NetworkManager.Role.HOST:
 		_start_btn.text = "开始游戏" if NetworkManager.can_start() else "等待玩家入驻…"
@@ -513,6 +523,15 @@ func _on_guest_joined() -> void:
 		_refresh_seats()
 	else:
 		_enter_room(false)
+
+func _destroy_room() -> void:
+	if NetworkManager.role != NetworkManager.Role.HOST:
+		return
+	NetworkManager.destroy_room()
+	get_tree().change_scene_to_file("res://scenes/menu.tscn")
+
+func _on_room_closed() -> void:
+	get_tree().change_scene_to_file("res://scenes/network_lobby.tscn")
 
 func _on_status(text: String) -> void:
 	if _status:

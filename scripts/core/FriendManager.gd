@@ -22,6 +22,7 @@ var _presence_acc := 0.0
 var _requests_resend_acc := 0.0
 var _accept_notices: Dictionary = {}  # id -> {profile, expires}
 var _rejected: Dictionary = {}  # id -> ts
+var _request_sent_at: Dictionary = {}  # id -> ts
 var _recv: PacketPeerUDP
 var _send: PacketPeerUDP
 var _invite_layer: CanvasLayer
@@ -233,16 +234,22 @@ func send_friend_request(profile: Dictionary) -> bool:
 	var pid := String(p.get("player_id", ""))
 	if pid == "" or pid == str(ClanManager.get_player_id()):
 		return false
+	var now := int(Time.get_unix_time_from_system())
 	if is_friend(pid) or has_outgoing(pid):
 		return false
+	if _request_sent_at.has(pid) and now - int(_request_sent_at[pid]) < 60:
+		return false
+	_request_sent_at[pid] = now
 	outgoing_requests[pid] = p
 	save_friends()
-	_broadcast_packet({
+	var req_data := {
 		"type": "cr_friend_request", "target": pid,
 		"from_id": str(ClanManager.get_player_id()),
 		"from_profile": _self_profile(),
 		"ts": int(Time.get_unix_time_from_system()),
-	})
+	}
+	_broadcast_packet(req_data)
+	_send_to_ip(String(online_peers.get(pid, {}).get("ip", "")), req_data)
 	requests_changed.emit()
 	return true
 
@@ -392,6 +399,7 @@ func _on_invite_received(invite: Dictionary) -> void:
 		if _invite_layer != null:
 			_invite_layer.queue_free()
 			_invite_layer = null
+		NetworkManager.reset_net()
 		get_tree().change_scene_to_file("res://scenes/network_lobby.tscn"))
 	v.add_child(accept)
 	var reject := UiComponents.make_secondary_button("拒绝", Callable(), Vector2(0, 48))

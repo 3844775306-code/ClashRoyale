@@ -15,6 +15,7 @@ signal emote_received(id: String, team: int)
 signal clients_ready
 signal seats_changed
 signal joined_room
+signal room_closed
 signal countdown_received(seconds: float)
 signal entry_started
 
@@ -197,6 +198,50 @@ func request_claim_seat(team: int, idx: int) -> void:
 	target.avatar_index = int(players[pid].get("avatar_index", 0))
 	_broadcast_seats()
 	seats_changed.emit()
+
+func remove_seat(team: int, idx: int) -> bool:
+	if role != Role.HOST:
+		return false
+	var team_seats := seats_in_team(team)
+	if idx < 0 or idx >= team_seats.size():
+		return false
+	var target: Dictionary = team_seats[idx]
+	var pid := int(target.get("peer", 0))
+	if pid > 1:
+		rpc_id(pid, "you_are_kicked")
+		players.erase(pid)
+		if peer:
+			peer.disconnect_peer(pid)
+	seats.erase(target)
+	var n := 0
+	for s in seats:
+		if int(s.team) == team:
+			s.idx = n
+			n += 1
+	room_mode = mode_name()
+	_broadcast_seats()
+	seats_changed.emit()
+	return true
+
+func destroy_room() -> void:
+	if role != Role.HOST:
+		return
+	rpc("room_destroyed")
+	reset_net()
+	lobby_status.emit("房间已销毁")
+	room_closed.emit()
+
+@rpc("authority", "call_remote", "reliable")
+func you_are_kicked() -> void:
+	reset_net()
+	lobby_status.emit("你已被房主移出房间")
+	room_closed.emit()
+
+@rpc("authority", "call_remote", "reliable")
+func room_destroyed() -> void:
+	reset_net()
+	lobby_status.emit("房主已销毁房间")
+	room_closed.emit()
 
 func all_players_seated() -> bool:
 	if role != Role.HOST:

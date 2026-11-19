@@ -186,6 +186,8 @@ func _section(title: String, hint: String) -> Control:
 func _refresh_all() -> void:
 	_refresh_requests()
 	_refresh_friends()
+	if _search_edit != null and _search_edit.text.strip_edges() != "" and _results.get_child_count() > 0:
+		_on_search()
 
 
 func _on_search() -> void:
@@ -251,7 +253,10 @@ func _result_row(e: Dictionary) -> Control:
 			add.text = "等待同意"
 			add.disabled = true
 		else:
-			_status.text = "已在好友列表或请求已发送")
+			_status.text = "已在好友列表或请求已发送" if not FriendManager.has_outgoing(pid) else "已发送过申请，等待对方同意"
+			if FriendManager.has_outgoing(pid) or FriendManager.is_friend(pid):
+				add.text = "等待同意" if FriendManager.has_outgoing(pid) else "已是好友"
+				add.disabled = true)
 	h.add_child(add)
 	return card
 
