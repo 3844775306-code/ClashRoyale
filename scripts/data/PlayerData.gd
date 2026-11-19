@@ -946,9 +946,19 @@ func ensure_daily_shop_offers() -> void:
 	var d := Time.get_date_dict_from_system()
 	var today := "%04d-%02d-%02d" % [int(d.year), int(d.month), int(d.day)]
 	var valid := shop_day == today and shop_offers.size() == 8
+	var arena_now: int = get_arena()
+	var allowed_now: Dictionary = {}
+	for a in range(1, arena_now + 1):
+		for cid in get_cards_unlocked_at(a):
+			allowed_now[int(cid)] = true
+	for cid in STARTER_CARDS:
+		allowed_now[int(cid)] = true
 	if valid:
 		for o in shop_offers:
 			if not o.has("unit") or int(o.get("unit", 0)) != _shop_unit_price(int(o.get("card_id", 0))):
+				valid = false
+				break
+			if not allowed_now.has(int(o.get("card_id", 0))):
 				valid = false
 				break
 	if not valid:
@@ -956,9 +966,11 @@ func ensure_daily_shop_offers() -> void:
 		bm.load_card_configs()
 		var ids: Array = []
 		for cfg in bm.configs:
-			if cfg.card_id >= 4 and cfg.cost > 0:
+			if cfg.card_id >= 4 and cfg.cost > 0 and allowed_now.has(int(cfg.card_id)):
 				ids.append(cfg.card_id)
 		bm.free()
+		if ids.is_empty():
+			ids = [44, 10, 4, 8, 9, 11]
 		var rng := RandomNumberGenerator.new()
 		rng.seed = today.hash()
 		shop_offers.clear()
@@ -969,9 +981,10 @@ func ensure_daily_shop_offers() -> void:
 				continue
 			used[cid] = true
 			var unit: int = _shop_unit_price(cid)
+			var min_total: int = 300 + arena_now * 100
 			var qty: int = 1
-			if unit < 500:
-				qty = int(ceil(500.0 / float(unit)))
+			if unit < min_total:
+				qty = int(ceil(float(min_total) / float(unit)))
 				qty = int(ceil(float(qty) / 5.0)) * 5
 				qty += 5 * rng.randi_range(0, 3)
 			shop_offers.append({"card_id": cid, "qty": qty, "unit": unit, "price": unit * qty, "sold": false})
@@ -985,7 +998,13 @@ func ensure_daily_shop_offers() -> void:
 				epic_idx = i
 				break
 		if epic_idx < 0:
-			shop_offers[0] = {"card_id": 15, "qty": 25, "unit": 200, "price": 5000, "sold": false}
+			var epic_id := 15
+			for a in range(1, arena_now + 1):
+				for cid in get_cards_unlocked_at(a):
+					if CARD_RARITY.rarity_of_id(int(cid)) == "epic":
+						epic_id = int(cid)
+						break
+			shop_offers[0] = {"card_id": epic_id, "qty": 25, "unit": 200, "price": 5000, "sold": false}
 			epic_idx = 0
 		# 清掉旧的免费标记/恢复原价，再固定史诗免费卡
 		for o in shop_offers:

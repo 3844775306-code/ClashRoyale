@@ -543,6 +543,9 @@ func _refresh_members():
 		av.gui_input.connect(func(e):
 			if e is InputEventMouseButton and e.pressed:
 				_open_player_profile(member_snapshot))
+		row.gui_input.connect(func(e):
+			if e is InputEventMouseButton and e.pressed:
+				_open_player_profile(member_snapshot))
 		var id_lbl := Label.new()
 		id_lbl.text = an
 		id_lbl.size_flags_horizontal = Control.SIZE_EXPAND_FILL
@@ -579,6 +582,11 @@ func _refresh_members():
 
 
 func _open_player_profile(profile: Dictionary) -> void:
+	call_deferred("_open_player_profile_deferred", profile)
+
+func _open_player_profile_deferred(profile: Dictionary) -> void:
+	if not is_inside_tree():
+		return
 	var dlg = preload("res://scripts/ui/PlayerProfileDialog.gd").new()
 	dlg.profile = profile
 	add_child(dlg)
