@@ -190,26 +190,21 @@ func _finish_login(email: String, username: String, from_recent: bool) -> Dictio
 	cloud_status_changed.emit()
 	return {"ok": true, "online": true, "username": account_username}
 
-func _sync_cloud(had_local: bool) -> void:
+func _sync_cloud(_had_local: bool) -> void:
 	_syncing = true
 	var remote := await _download_cloud()
-	var local_ts := _local_saved_at()
 	if bool(remote.get("ok", false)):
-		var remote_ts := int(remote.get("saved_at", 0))
-		if not had_local or remote_ts > local_ts:
-			var text := String(remote.get("text", ""))
-			if text != "" and PlayerData.apply_save_text(text):
-				cloud_status = "已从云端恢复存档"
-			else:
-				cloud_status = "云端存档读取失败"
+		var text := String(remote.get("text", ""))
+		if text != "" and PlayerData.apply_save_text(text):
+			_dirty = false
+			cloud_status = "已从云端读取存档"
 		else:
-			var ok := await _upload_cloud()
-			cloud_status = "已上传云端存档" if ok else ("云端上传失败：" + last_error)
+			cloud_status = "云端存档读取失败"
 	elif bool(remote.get("not_found", false)):
 		var ok2 := await _upload_cloud()
 		cloud_status = "已上传云端存档" if ok2 else ("云端上传失败：" + last_error)
 	else:
-		cloud_status = "云端不可用，使用本地存档"
+		cloud_status = "云端不可用"
 	_syncing = false
 	cloud_status_changed.emit()
 
