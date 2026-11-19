@@ -49,7 +49,6 @@ func _ready():
 	_build_ui()
 	_build_friend_module()
 	_build_notifier()
-	FriendManager.invite_received.connect(_on_friend_invite)
 	_play_intro()
 	if PlayerData.trophies <= 0 and not PlayerData.tutorial_done:
 		call_deferred("_auto_tutorial")

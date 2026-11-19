@@ -24,12 +24,14 @@ var _accept_notices: Dictionary = {}  # id -> {profile, expires}
 var _rejected: Dictionary = {}  # id -> ts
 var _recv: PacketPeerUDP
 var _send: PacketPeerUDP
+var _invite_layer: CanvasLayer
 
 
 func _ready() -> void:
 	process_mode = Node.PROCESS_MODE_ALWAYS
 	load_friends()
 	_init_udp()
+	invite_received.connect(_on_invite_received)
 	# 切换账号后好友列表按账号重新加载
 	if AccountManager and not AccountManager.session_changed.is_connected(_on_session_changed):
 		AccountManager.session_changed.connect(_on_session_changed)
@@ -296,7 +298,7 @@ func _init_udp() -> void:
 	_send.set_broadcast_enabled(true)
 
 
-func send_room_invite(room_code: String, host_ip: String, host_name: String) -> bool:
+func send_room_invite(room_code: String, host_ip: String, host_name: String, target_pid: String = "") -> bool:
 	if _send == null or room_code == "" or host_ip == "":
 		return false
 	var payload := JSON.stringify({
@@ -315,6 +317,13 @@ func send_room_invite(room_code: String, host_ip: String, host_name: String) -> 
 	# 同时发一份给本机（方便单机/测试预览）
 	_send.set_dest_address("127.0.0.1", UDP_PORT)
 	_send.put_packet(data)
+	# 已知好友 IP 时再单播一次，避免广播被防火墙拦截
+	if target_pid != "":
+		var peer_info = online_peers.get(target_pid, {})
+		var pip := String(peer_info.get("ip", ""))
+		if pip != "":
+			_send.set_dest_address(pip, UDP_PORT)
+			_send.put_packet(data)
 	return ok
 
 
@@ -327,6 +336,74 @@ func _broadcast_packet(data: Dictionary) -> void:
 	_send.set_dest_address("127.0.0.1", UDP_PORT)
 	_send.put_packet(buf)
 
+
+func _send_to_ip(ip: String, data: Dictionary) -> void:
+	if _send == null or ip == "":
+		return
+	_send.set_dest_address(ip, UDP_PORT)
+	_send.put_packet(JSON.stringify(data).to_utf8_buffer())
+
+func _on_invite_received(invite: Dictionary) -> void:
+	if _invite_layer != null and is_instance_valid(_invite_layer):
+		return
+	_invite_layer = CanvasLayer.new()
+	_invite_layer.layer = 250
+	add_child(_invite_layer)
+	var root := Control.new()
+	root.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	root.mouse_filter = Control.MOUSE_FILTER_STOP
+	_invite_layer.add_child(root)
+	var dim := ColorRect.new()
+	dim.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	dim.color = Color(0, 0, 0, 0.62)
+	root.add_child(dim)
+	var panel := Panel.new()
+	panel.position = Vector2(90, 500)
+	panel.size = Vector2(620, 420)
+	var sb := StyleBoxFlat.new()
+	sb.bg_color = Color(0.055, 0.075, 0.15, 0.98)
+	sb.border_color = Color(0.95, 0.76, 0.34, 0.9)
+	sb.set_border_width_all(2)
+	sb.set_corner_radius_all(22)
+	panel.add_theme_stylebox_override("panel", sb)
+	root.add_child(panel)
+	var v := VBoxContainer.new()
+	v.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	v.offset_left = 24; v.offset_top = 22; v.offset_right = -24; v.offset_bottom = -22
+	v.add_theme_constant_override("separation", 14)
+	panel.add_child(v)
+	var title := Label.new()
+	title.text = "联机邀请"
+	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	title.add_theme_font_size_override("font_size", 28)
+	title.add_theme_color_override("font_color", Color(1.0, 0.86, 0.42))
+	v.add_child(title)
+	var info := Label.new()
+	info.text = "好友 %s 邀请你加入房间\n房间码：%s\nIP：%s" % [String(invite.get("from", "好友")), String(invite.get("code", "")), String(invite.get("ip", ""))]
+	info.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	info.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	info.add_theme_font_size_override("font_size", 18)
+	info.add_theme_color_override("font_color", Color(0.88, 0.94, 1.0))
+	v.add_child(info)
+	var accept := UiComponents.make_primary_button("接受邀请", Callable(), Vector2(0, 58))
+	accept.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	accept.pressed.connect(func():
+		pending_invite = invite
+		if _invite_layer != null:
+			_invite_layer.queue_free()
+			_invite_layer = null
+		get_tree().change_scene_to_file("res://scenes/network_lobby.tscn"))
+	v.add_child(accept)
+	var reject := UiComponents.make_secondary_button("拒绝", Callable(), Vector2(0, 48))
+	reject.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	reject.pressed.connect(_on_reject_invite)
+	v.add_child(reject)
+
+func _on_reject_invite() -> void:
+	pending_invite = {}
+	if _invite_layer != null:
+		_invite_layer.queue_free()
+		_invite_layer = null
 
 func handle_friend_packet(data: Dictionary) -> void:
 	var my_id := str(ClanManager.get_player_id())
@@ -341,6 +418,9 @@ func handle_friend_packet(data: Dictionary) -> void:
 			return
 		if _rejected.has(pid) and int(Time.get_unix_time_from_system()) - int(_rejected[pid]) < 300:
 			return
+		var from_ip := _recv.get_packet_ip() if _recv else ""
+		if from_ip != "":
+			online_peers[pid] = {"name": String(data.get("from_profile", {}).get("name", "好友")), "last": int(Time.get_unix_time_from_system()), "ip": from_ip}
 		incoming_requests[pid] = {
 			"id": pid,
 			"profile": Dictionary(data.get("from_profile", {})).duplicate(true),
@@ -406,12 +486,14 @@ func _process(delta: float) -> void:
 			if int(notice.get("expires", 0)) < now2:
 				_accept_notices.erase(pid)
 				continue
-			_broadcast_packet({
+			var acc2 := {
 				"type": "cr_friend_accept", "target": pid,
 				"from_id": str(ClanManager.get_player_id()),
 				"from_profile": _self_profile(),
 				"ts": now2,
-			})
+			}
+			_broadcast_packet(acc2)
+			_send_to_ip(String(online_peers.get(pid, {}).get("ip", "")), acc2)
 		for pid in outgoing_requests.keys():
 			_broadcast_packet({
 				"type": "cr_friend_request", "target": pid,
@@ -442,7 +524,8 @@ func _process(delta: float) -> void:
 			var pid2 := String(data.get("id", ""))
 			if pid2 == "" or pid2 == str(ClanManager.get_player_id()) or ts - int(data.get("ts", 0)) > 10:
 				continue
-			online_peers[pid2] = {"name": String(data.get("name", "好友")), "last": ts}
+			var pip := _recv.get_packet_ip() if _recv else ""
+			online_peers[pid2] = {"name": String(data.get("name", "好友")), "last": ts, "ip": pip}
 			presence_changed.emit()
 			continue
 		if ptype in ["cr_friend_request", "cr_friend_accept", "cr_friend_reject", "cr_friend_accept_ack"]:

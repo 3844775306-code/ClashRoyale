@@ -325,7 +325,7 @@ func _show_friend_list() -> void:
 		var ib := UiComponents.make_primary_button("邀请", Callable(), Vector2(88, 36))
 		ib.pressed.connect(func():
 			if NetworkManager.role == NetworkManager.Role.HOST and NetworkManager.room_code != "":
-				var ok := FriendManager.send_room_invite(NetworkManager.room_code, NetworkManager.get_local_ip(), PlayerData.player_name)
+				var ok := FriendManager.send_room_invite(NetworkManager.room_code, NetworkManager.get_local_ip(), PlayerData.player_name, String(f.get("id", "")))
 				_room_status.text = "已邀请 %s（同一局域网）" % String(f.get("name", "好友")) if ok else "邀请失败"
 			else:
 				_room_status.text = "请先创建房间再邀请好友")

@@ -367,7 +367,7 @@ func _refresh_friends() -> void:
 		var invite := UiComponents.make_secondary_button("邀请入房", Callable(), Vector2(104, 36))
 		invite.pressed.connect(func():
 			if NetworkManager.role == NetworkManager.Role.HOST and NetworkManager.room_code != "":
-				var ok := FriendManager.send_room_invite(NetworkManager.room_code, NetworkManager.get_local_ip(), PlayerData.player_name)
+				var ok := FriendManager.send_room_invite(NetworkManager.room_code, NetworkManager.get_local_ip(), PlayerData.player_name, pid)
 				_status.text = "已向 %s 发出邀请（同一局域网）" % name if ok else "邀请发送失败"
 			else:
 				_status.text = "请先创建联机房间")

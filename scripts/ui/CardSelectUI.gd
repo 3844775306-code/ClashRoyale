@@ -147,14 +147,13 @@ func _build_card_rows():
 		hbox.mouse_filter = Control.MOUSE_FILTER_IGNORE
 		btn.add_child(hbox)
 
-		var art_path := _official_art(cfg.card_id)
-		if art_path == "":
-			art_path = "res://assets/cards_web/%s.png" % String(cfg.card_name)
+		# 与战斗卡桌手牌一致，使用 cards_web 手牌图像
+		var art_path := "res://assets/cards_web/%s.png" % String(cfg.card_name)
 		if not ResourceLoader.exists(art_path):
 			art_path = "res://assets/cards_rendered/%s.png" % String(cfg.card_name)
 		var tex := TextureRect.new()
-		tex.custom_minimum_size = Vector2(68, 68)
-		tex.size = Vector2(68, 68)
+		tex.custom_minimum_size = Vector2(58, 76)
+		tex.size = Vector2(58, 76)
 		if ResourceLoader.exists(art_path):
 			tex.texture = load(art_path)
 		tex.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
