@@ -15,6 +15,10 @@ static func leaderboard_id() -> String:
 
 func _ready():
 	_ensure_lootlocker_settings()
+	# 有账号会话时由 AccountManager 登录白标账号，避免游客会话覆盖云端账号 token
+	if FileAccess.file_exists("user://account_session.cfg"):
+		print("[LootLocker] 检测到账号会话，等待账号登录")
+		return
 	await authenticate()
 
 # 若 LootLockerSettings.cfg 未随包导出，运行时补齐配置
@@ -42,10 +46,23 @@ func authenticate():
 
 # 提交奖杯
 func submit_trophies(score: int, player_name: String):
-	var pid: String = str(LL_StateData.GetCachedPlayerLegacyID())
+	var pid: String = ""
+	var am = get_node_or_null("/root/AccountManager")
+	if am and am.has_method("scoped_player_id"):
+		pid = str(am.scoped_player_id())
+	if pid == "" or pid == "0":
+		pid = str(LL_StateData.GetCachedPlayerLegacyID())
 	if pid == "" or pid == "0":
 		pid = player_name
-	var metadata := Marshalls.utf8_to_base64(JSON.stringify({"player_name": player_name}))
+	var meta := {
+		"player_name": player_name,
+		"avatar_seed": int(PlayerData.avatar_seed),
+		"avatar_index": int(PlayerData.avatar_index),
+		"clan": "",
+	}
+	if am and am.has_method("account_label"):
+		meta["account"] = am.account_label()
+	var metadata := Marshalls.utf8_to_base64(JSON.stringify(meta))
 	var req = LL_Leaderboards.SubmitScore.new(leaderboard_id(), score, pid, metadata)
 	var resp = await req.send()
 	if resp.success:
@@ -89,12 +106,17 @@ func get_leaderboard(callback: Callable):
 		for item in items:
 			var member_id := str(item.get("member_id") if item.has_method("get") else item.member_id)
 			var meta := _decode_metadata(item.get("metadata") if item.has_method("get") else item.metadata)
-			var shown: String = String(meta.get("player_name", member_id))
+			var shown: String = String(meta.get("player_name", ""))
+			if shown.strip_edges() == "":
+				shown = "玩家 #" + member_id.substr(maxi(0, member_id.length() - 4))
 			entries.append({
 				"rank": int(item.get("rank") if item.has_method("get") else item.rank),
 				"name": shown,
 				"player_id": member_id,
-				"score": int(item.get("score") if item.has_method("get") else item.score)
+				"score": int(item.get("score") if item.has_method("get") else item.score),
+				"avatar_seed": int(meta.get("avatar_seed", absi(hash(shown)))),
+				"avatar_index": int(meta.get("avatar_index", 0)),
+				"clan": String(meta.get("clan", "")),
 			})
 	else:
 		last_error = str(resp.error_data)

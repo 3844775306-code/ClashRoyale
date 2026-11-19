@@ -651,14 +651,47 @@ func load_data():
 		print("[PlayerData] 存档版本高于当前，已重置为默认数据。")
 
 func _apply_defaults():
+	# 切换账号/新账号时必须清空全部持久化字段，避免上一账号数据串档
 	player_name = "玩家"
+	name_chosen = false
+	challenge_state = {}
+	party_deck = []
 	gold = 100
 	gems = 10
 	experience = 0
 	trophies = 0
+	highest_trophies = 0
+	claimed_achievements.clear()
 	card_levels.clear()
 	card_quantities.clear()
 	chests.clear()
+	shop_day = ""
+	shop_offers = []
+	owned_emotes.clear()
+	wildcards.clear()
+	tower_choice = 1
+	last_card_request = 0.0
+	record_replays = true
+	tutorial_done = false
+	tutorial_practice = false
+	tutorial_chest_claimed = false
+	starter_cards_v2 = false
+	chest_reveal_pending = false
+	avatar_seed = 0
+	avatar_index = 0
+	avatar_custom_path = ""
+	collection_rewards_claimed = []
+	card_mastery = {}
+	season_key = ""
+	season_crowns = 0
+	season_claimed = []
+	donations_used = 0
+	custom_deck = []
+	custom_decks = [[], [], [], [], []]
+	active_deck_index = 0
+	use_custom_deck = false
+	test_mode = false
+	deck_sort_mode = "level"
 
 func save_data():
 	var config = ConfigFile.new()

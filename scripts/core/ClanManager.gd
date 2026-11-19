@@ -62,6 +62,9 @@ func _get_response_error(response) -> String:
 	return "未知错误"
 # ---------- 玩家信息（基于 LL_StateData）----------
 func get_player_id() -> int:
+	var am = get_node_or_null("/root/AccountManager")
+	if am and am.has_method("scoped_player_id"):
+		return int(am.scoped_player_id())
 	return LL_StateData.GetCachedPlayerLegacyID()
 
 func get_player_name() -> String:

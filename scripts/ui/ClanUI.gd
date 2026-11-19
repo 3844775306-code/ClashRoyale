@@ -595,6 +595,14 @@ func _format_chat_time(ts: float) -> String:
 	var d := Time.get_datetime_dict_from_unix_time(int(ts))
 	return "%d月%d日 %02d:%02d" % [int(d.month), int(d.day), int(d.hour), int(d.minute)]
 
+func _card_name_for_id(card_id: int) -> String:
+	var bm = get_tree().get_first_node_in_group("battle_manager")
+	if bm == null:
+		bm = load("res://scripts/core/BattleManager.gd").new()
+		bm.load_card_configs()
+	var cfg = bm.get_config(card_id) if bm else null
+	return String(cfg.card_name) if cfg else "卡牌"
+
 func _create_chat_node(msg: Dictionary) -> Control:
 	var sender_name := String(msg.get("player_name", "玩家"))
 	var pid := int(msg.get("player_id", 0))
@@ -662,7 +670,9 @@ func _create_chat_node(msg: Dictionary) -> Control:
 	var msg_type := String(msg.get("type", "chat"))
 	if msg_type == "request":
 		var cid := int(msg.get("card_id", 0))
-		var cname := String(msg.get("card_name", "卡牌"))
+		var cname := String(msg.get("card_name", ""))
+		if cname == "" or cname == "卡牌":
+			cname = _card_name_for_id(cid)
 		var amt := int(msg.get("amount", 1))
 		var donated := int(msg.get("donated", 0))
 		var donors: Array = Array(msg.get("donors", []))
