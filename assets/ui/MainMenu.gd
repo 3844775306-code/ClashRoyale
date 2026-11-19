@@ -42,6 +42,7 @@ func _ready():
 	PlayerData.ensure_daily_shop_offers()
 	_build_ui()
 	_build_notifier()
+	FriendManager.invite_received.connect(_on_friend_invite)
 	_play_intro()
 	if PlayerData.trophies <= 0 and not PlayerData.tutorial_done:
 		call_deferred("_auto_tutorial")
@@ -56,6 +57,17 @@ func _ready():
 		intro.music_started.connect(_start_bgm, CONNECT_ONE_SHOT)
 		intro.finished.connect(_on_intro_finished, CONNECT_ONE_SHOT)
 		add_child(intro)
+
+
+func _on_friend_invite(invite: Dictionary) -> void:
+	var dlg := AcceptDialog.new()
+	dlg.title = "联机邀请"
+	dlg.dialog_text = "好友 %s 邀请你加入房间 %s\nIP：%s\n\n确定后进入联机房间。" % [
+		String(invite.get("from", "好友")), String(invite.get("code", "")), String(invite.get("ip", ""))]
+	dlg.confirmed.connect(func(): get_tree().change_scene_to_file("res://scenes/network_lobby.tscn"))
+	dlg.canceled.connect(func(): FriendManager.pending_invite = {})
+	add_child(dlg)
+	dlg.popup_centered(Vector2i(680, 320))
 
 
 func _redirect_account_login() -> void:

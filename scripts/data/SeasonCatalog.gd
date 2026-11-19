@@ -3,6 +3,7 @@ extends RefCounted
 # 每个赛季侧重某几张主题卡牌，而不是单一资源。
 
 const TIERS := 50
+const EMOTES := preload("res://scripts/data/EmoteCatalog.gd")
 const THEMES := [
 	{"name": "哥布林狂欢", "desc": "哥布林系卡牌", "color": "5fd47a", "cards": [
 		{"id": 32, "name": "吹箭哥布林"}, {"id": 39, "name": "哥布林"},
@@ -59,13 +60,24 @@ static func reward_for(tier: int, theme: Dictionary = {}) -> Dictionary:
 	var th: Dictionary = theme if not theme.is_empty() else current()
 	var cards: Array = th.get("cards", [])
 	var t: int = clampi(tier, 1, TIERS)
-	# 每个 10 档给 3D 宝箱，其余档给主题卡牌
+	# 卡牌与资源交替插入：宝箱、表情、万能卡、宝石、金币、主题卡
 	if t % 10 == 0:
 		return {"type": "chest", "rarity": "magical", "stars": 4, "label": "%s 宝箱" % String(th.get("name", "主题"))}
+	if t % 7 == 0:
+		var emotes: Array = EMOTES.all()
+		var em: Dictionary = emotes[(t / 7 - 1) % emotes.size()]
+		return {"type": "emote", "emote_id": String(em.get("id", "")), "emote_name": String(em.get("name", "表情"))}
+	if t % 5 == 0:
+		var rar := "epic" if t % 15 == 0 else ("rare" if t % 10 == 0 else "common")
+		return {"type": "wild", "rarity": rar, "amount": 4 + t}
+	if t % 3 == 0:
+		return {"type": "gems", "amount": 8 + t}
+	if t % 2 == 0:
+		return {"type": "gold", "amount": 700 + t * 180}
 	if cards.is_empty():
 		return {"type": "gold", "amount": 1000}
 	var card: Dictionary = cards[(t - 1) % cards.size()]
-	return {"type": "card", "card_id": int(card.get("id", 0)), "card_name": String(card.get("name", "卡牌")), "amount": 10 + t * 2}
+	return {"type": "card", "card_id": int(card.get("id", 0)), "card_name": String(card.get("name", "卡牌")), "amount": 8 + t}
 
 static func reward_text(r: Dictionary) -> String:
 	match String(r.get("type", "gold")):
@@ -73,5 +85,12 @@ static func reward_text(r: Dictionary) -> String:
 			return "%s ×%d" % [String(r.get("card_name", "卡牌")), int(r.get("amount", 0))]
 		"chest":
 			return String(r.get("label", "主题宝箱"))
+		"emote":
+			return "表情：%s" % String(r.get("emote_name", "表情"))
+		"gems":
+			return "%d 宝石" % int(r.get("amount", 0))
+		"wild":
+			var names := {"common": "普通", "rare": "稀有", "epic": "史诗", "legendary": "传奇"}
+			return "%d 张%s万能卡" % [int(r.get("amount", 0)), String(names.get(String(r.get("rarity", "common")), "普通"))]
 		_:
 			return "%d 金币" % int(r.get("amount", 0))

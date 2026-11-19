@@ -3,6 +3,7 @@
 extends Control
 
 const REWARD_ICON = preload("res://scripts/ui/RewardIcon.gd")
+const CHEST3D = preload("res://scripts/ui/Chest3DPreview.gd")
 
 var currency_row: HBoxContainer
 var content_vbox: VBoxContainer
@@ -107,12 +108,14 @@ func _hero_chest(chest: Dictionary) -> Panel:
 	gsb.set_border_width_all(2)
 	glow.add_theme_stylebox_override("panel", gsb)
 	vb.add_child(glow)
-	var icon = REWARD_ICON.new()
+	var icon = CHEST3D.new()
 	icon.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	icon.offset_left = 90
 	icon.offset_right = -90
+	icon.offset_top = 4
+	icon.offset_bottom = -4
 	icon.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	icon.setup("chest", 1)
+	icon.rarity = String(chest.get("rarity", "silver"))
 	glow.add_child(icon)
 	var name_lbl := Label.new()
 	name_lbl.text = _chest_name(chest)

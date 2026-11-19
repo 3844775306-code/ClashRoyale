@@ -171,7 +171,11 @@ func _card_row(cfg) -> Panel:
 		else:
 			var rew_ic = REWARD_ICON.new()
 			rew_ic.custom_minimum_size = Vector2(42, 48)
-			if int(rew.get("gold", 0)) > 0:
+			var wcs: Dictionary = rew.get("wildcards", {})
+			if not wcs.is_empty():
+				var rar := String(wcs.keys()[0])
+				rew_ic.setup("wild", int(wcs[rar]))
+			else:
 				rew_ic.setup("gold", int(rew.get("gold", 0)))
 			hb.add_child(rew_ic)
 	var btn := UiComponents.make_primary_button("领取", Callable(), Vector2(92, 40))

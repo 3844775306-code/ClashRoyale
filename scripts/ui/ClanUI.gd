@@ -493,17 +493,29 @@ func _refresh_members():
 		var av = AVATAR_ICON.new()
 		av.custom_minimum_size = Vector2(40, 40)
 		av.size = Vector2(40, 40)
-		var an := String(m.get("player_name", "玩家"))
+		var is_me: bool = int(member_id) == ClanManager.get_player_id()
+		var an := PlayerData.player_name if is_me else String(m.get("player_name", "玩家"))
 		var aseed: int = int(m.get("avatar_seed", absi(hash(an))))
 		var aidx: int = int(m.get("avatar_index", aseed % 12))
-		if int(member_id) == ClanManager.get_player_id():
+		if is_me:
 			av.setup_local()
 		else:
 			av.setup(an, aseed, aidx)
+		av.mouse_filter = Control.MOUSE_FILTER_STOP
+		var member_snapshot := {
+			"player_id": str(member_id), "name": an,
+			"trophies": int(m.get("trophies", 0)),
+			"avatar_seed": aseed, "avatar_index": aidx,
+			"role": String(m.get("role", "")),
+			"clan": String(my_clan_data.get("name", "")),
+		}
+		av.gui_input.connect(func(e):
+			if e is InputEventMouseButton and e.pressed:
+				_open_player_profile(member_snapshot))
 		hbox.add_child(av)
 
 		var id_lbl := Label.new()
-		id_lbl.text = str(m.get("player_name", "玩家 #%s" % member_id))
+		id_lbl.text = an
 		id_lbl.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		id_lbl.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 		id_lbl.add_theme_font_size_override("font_size", 15)
@@ -535,6 +547,12 @@ func _refresh_members():
 			hbox.add_child(promote_btn)
 
 		member_list.add_child(row)
+
+
+func _open_player_profile(profile: Dictionary) -> void:
+	var dlg = preload("res://scripts/ui/PlayerProfileDialog.gd").new()
+	dlg.profile = profile
+	add_child(dlg)
 
 
 func _role_emoji(role: String) -> String:
@@ -578,58 +596,64 @@ func _create_chat_node(msg: Dictionary) -> Control:
 	var pid := int(msg.get("player_id", 0))
 	var is_me: bool = pid == ClanManager.get_player_id() or (pid == 0 and sender_name == PlayerData.player_name)
 	var row := HBoxContainer.new()
-	row.add_theme_constant_override("separation", 8)
-	row.alignment = BoxContainer.ALIGNMENT_END if is_me else BoxContainer.ALIGNMENT_BEGIN
-	row.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	row.add_theme_constant_override("separation", 9)
+	row.alignment = BoxContainer.ALIGNMENT_BEGIN
+	row.custom_minimum_size = Vector2(0, 52)
 
 	var seed_value: int = int(msg.get("avatar_seed", absi(hash(sender_name))))
 	var avatar_index: int = int(msg.get("avatar_index", seed_value % 12))
 	var av = AVATAR_ICON.new()
-	av.custom_minimum_size = Vector2(34, 34)
-	av.size = Vector2(34, 34)
+	av.custom_minimum_size = Vector2(36, 36)
+	av.size = Vector2(36, 36)
+	av.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	if is_me:
 		av.setup_local()
 	else:
 		av.setup(sender_name, seed_value, avatar_index)
-	if not is_me:
-		row.add_child(av)
+	row.add_child(av)
 
 	var col := VBoxContainer.new()
 	col.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	col.add_theme_constant_override("separation", 2)
+	col.add_theme_constant_override("separation", 3)
 	row.add_child(col)
 
 	var meta := HBoxContainer.new()
 	meta.alignment = BoxContainer.ALIGNMENT_END if is_me else BoxContainer.ALIGNMENT_BEGIN
-	meta.add_theme_constant_override("separation", 8)
+	meta.add_theme_constant_override("separation", 7)
 	col.add_child(meta)
 	var name_lbl := Label.new()
 	name_lbl.text = "你" if is_me else sender_name
 	name_lbl.add_theme_font_size_override("font_size", 12)
-	name_lbl.add_theme_color_override("font_color", Color(0.58, 0.82, 1.0) if is_me else Color(0.78, 0.84, 0.94))
+	name_lbl.add_theme_color_override("font_color", Color(0.57, 0.82, 1.0) if is_me else Color(0.78, 0.84, 0.94))
 	meta.add_child(name_lbl)
 	var time_lbl := Label.new()
 	time_lbl.text = _format_chat_time(float(msg.get("timestamp", 0.0)))
 	time_lbl.add_theme_font_size_override("font_size", 10)
-	time_lbl.add_theme_color_override("font_color", Color(0.52, 0.60, 0.72))
+	time_lbl.add_theme_color_override("font_color", Color(0.48, 0.57, 0.70))
 	meta.add_child(time_lbl)
 
+	var bubble_row := HBoxContainer.new()
+	bubble_row.alignment = BoxContainer.ALIGNMENT_END if is_me else BoxContainer.ALIGNMENT_BEGIN
+	bubble_row.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	col.add_child(bubble_row)
 	var bubble := Panel.new()
 	var bs := StyleBoxFlat.new()
-	bs.bg_color = Color(0.14, 0.30, 0.51, 0.96) if is_me else Color(0.075, 0.11, 0.19, 0.96)
-	bs.border_color = Color(0.96, 0.77, 0.36, 0.48) if is_me else Color(1, 1, 1, 0.10)
+	bs.bg_color = Color(0.16, 0.38, 0.66, 0.98) if is_me else Color(0.075, 0.105, 0.18, 0.98)
+	bs.border_color = Color(0.46, 0.80, 1.0, 0.45) if is_me else Color(1, 1, 1, 0.10)
 	bs.set_border_width_all(1)
-	bs.set_corner_radius_all(14)
-	bs.content_margin_left = 12
-	bs.content_margin_right = 12
-	bs.content_margin_top = 8
-	bs.content_margin_bottom = 8
+	bs.set_corner_radius_all(16)
+	bs.content_margin_left = 13
+	bs.content_margin_right = 13
+	bs.content_margin_top = 9
+	bs.content_margin_bottom = 9
+	bs.shadow_color = Color(0, 0, 0, 0.22)
+	bs.shadow_size = 5
 	bubble.add_theme_stylebox_override("panel", bs)
 	bubble.size_flags_horizontal = Control.SIZE_SHRINK_END if is_me else Control.SIZE_SHRINK_BEGIN
-	col.add_child(bubble)
+	bubble_row.add_child(bubble)
 
 	var body := HBoxContainer.new()
-	body.add_theme_constant_override("separation", 8)
+	body.add_theme_constant_override("separation", 9)
 	bubble.add_child(body)
 	var msg_type := String(msg.get("type", "chat"))
 	if msg_type == "request":
@@ -637,19 +661,19 @@ func _create_chat_node(msg: Dictionary) -> Control:
 		var cname := String(msg.get("card_name", "卡牌"))
 		var amt := int(msg.get("amount", 1))
 		var card_icon = REWARD_ICON.new()
-		card_icon.custom_minimum_size = Vector2(48, 62)
+		card_icon.custom_minimum_size = Vector2(46, 60)
 		card_icon.setup("card", amt, cname, cid)
 		body.add_child(card_icon)
 		var req_text := Label.new()
 		req_text.text = "请求 %d 张\n%s" % [amt, cname]
 		req_text.add_theme_font_size_override("font_size", 13)
-		req_text.add_theme_color_override("font_color", Color(0.95, 0.94, 0.90))
+		req_text.add_theme_color_override("font_color", Color(0.96, 0.95, 0.92))
 		req_text.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-		req_text.custom_minimum_size = Vector2(140, 0)
+		req_text.custom_minimum_size = Vector2(132, 0)
 		body.add_child(req_text)
 		if pid != ClanManager.get_player_id():
 			var can_donate: bool = (PlayerData.get_card_quantity(cid) >= amt and (8 - PlayerData.donations_used) >= amt)
-			var donate_btn := UiComponents.make_primary_button("捐赠", Callable(), Vector2(72, 34))
+			var donate_btn := UiComponents.make_primary_button("捐赠", Callable(), Vector2(70, 34))
 			donate_btn.disabled = not can_donate
 			donate_btn.pressed.connect(_donate_card.bind(pid, cid, amt))
 			body.add_child(donate_btn)
@@ -657,13 +681,10 @@ func _create_chat_node(msg: Dictionary) -> Control:
 		var content := Label.new()
 		content.text = String(msg.get("message", ""))
 		content.add_theme_font_size_override("font_size", 13)
-		content.add_theme_color_override("font_color", Color(0.95, 0.94, 0.90))
+		content.add_theme_color_override("font_color", Color(0.96, 0.95, 0.92))
 		content.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-		content.custom_minimum_size = Vector2(220, 0)
+		content.custom_minimum_size = Vector2(200, 0)
 		body.add_child(content)
-
-	if is_me:
-		row.add_child(av)
 	return row
 
 

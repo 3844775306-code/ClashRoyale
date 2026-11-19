@@ -1076,6 +1076,12 @@ func _grant_season_reward(r: Dictionary) -> void:
 	match String(r.get("type", "gold")):
 		"card":
 			add_card(int(r.get("card_id", 0)), int(r.get("amount", 0)))
+		"emote":
+			var eid := String(r.get("emote_id", ""))
+			if owned_emotes.has(eid):
+				gems += 20
+			else:
+				add_emote(eid)
 		"gems":
 			gems += int(r.get("amount", 0))
 		"wild":
