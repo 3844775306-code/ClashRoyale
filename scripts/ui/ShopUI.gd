@@ -79,7 +79,7 @@ func _build_banner(vbox: VBoxContainer):
 	t.add_theme_color_override("font_color", Color(1.0, 0.84, 0.36))
 	v.add_child(t)
 	var s := Label.new()
-	s.text = "4 件商品一排 · 向下滚动选购"
+	s.text = "4 件商品一排 · 今日卡牌含 1 件免费"
 	s.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	s.add_theme_font_size_override("font_size", 14)
 	s.add_theme_color_override("font_color", Color(0.76, 0.72, 0.92))
@@ -163,7 +163,7 @@ func _make_chest_card(offer: Dictionary) -> Panel:
 	return p
 
 func _build_cards(vbox: VBoxContainer):
-	vbox.add_child(UiComponents.make_section_title("🃏 今日卡牌 · 8 件"))
+	vbox.add_child(UiComponents.make_section_title("🃏 今日卡牌 · 8 件 · 每日 1 件免费"))
 	_ensure_daily_offers()
 	var center := CenterContainer.new()
 	vbox.add_child(center)
@@ -254,47 +254,19 @@ func _ensure_daily_offers():
 	for cfg in _all_configs:
 		if cfg.card_id >= 4 and cfg.cost > 0:
 			_cfg_by_id[cfg.card_id] = cfg
-	var d := Time.get_date_dict_from_system()
-	var today := "%04d-%02d-%02d" % [int(d.year), int(d.month), int(d.day)]
-	if PlayerData.shop_day == today and PlayerData.shop_offers.size() == 8:
-		var valid := true
-		for o in PlayerData.shop_offers:
-			if not o.has("unit") or int(o.get("unit", 0)) != _unit_price(int(o.get("card_id", 0))):
-				valid = false
-				break
-		if valid:
-			return
-	var ids: Array = _cfg_by_id.keys()
-	var rng := RandomNumberGenerator.new()
-	rng.seed = today.hash()
-	var offers: Array = []
-	var used: Dictionary = {}
-	while offers.size() < 8 and ids.size() > 0:
-		var cid: int = int(ids[rng.randi_range(0, ids.size() - 1)])
-		if used.has(cid):
-			continue
-		used[cid] = true
-		var cfg = _cfg_by_id[cid]
-		var unit: int = _unit_price(cid)
-		var qty: int = 1
-		if unit < 500:
-			qty = int(ceil(500.0 / float(unit)))
-			qty = int(ceil(float(qty) / 5.0)) * 5
-			qty += 5 * rng.randi_range(0, 3)
-		offers.append({"card_id": cid, "qty": qty, "unit": unit, "price": unit * qty, "sold": false})
-	PlayerData.shop_day = today
-	PlayerData.shop_offers = offers
-	PlayerData.save_data()
+	PlayerData.ensure_daily_shop_offers()
+
 func _make_card_tile(cfg, offer: Dictionary, offer_index: int) -> Panel:
 	var accent: Color = CARD_RARITY.rarity_color_by_id(cfg.card_id)
 	var qty: int = int(offer.get("qty", 1))
 	var unit: int = int(offer.get("unit", 10 + int(cfg.cost) * 5))
 	var price: int = int(offer.get("price", unit * qty))
+	var is_free: bool = bool(offer.get("free", false)) and price <= 0 and not bool(offer.get("sold", false))
 	var p := Panel.new()
 	p.custom_minimum_size = Vector2(168, 286)
 	var sb := StyleBoxFlat.new()
 	sb.bg_color = Color(0.055, 0.075, 0.12, 0.97)
-	sb.border_color = accent
+	sb.border_color = Color(0.35, 0.95, 0.55) if is_free else accent
 	sb.set_border_width_all(3)
 	sb.set_corner_radius_all(13)
 	sb.shadow_color = Color(accent.r, accent.g, accent.b, 0.25)
@@ -334,10 +306,10 @@ func _make_card_tile(cfg, offer: Dictionary, offer_index: int) -> Panel:
 	tr.texture = tex
 	img_panel.add_child(tr)
 	var price_badge := Label.new()
-	price_badge.text = "🪙 %d/张" % unit
+	price_badge.text = "免费" if is_free else "🪙 %d/张" % unit
 	price_badge.position = Vector2(5, 5)
 	price_badge.add_theme_font_size_override("font_size", 13)
-	price_badge.add_theme_color_override("font_color", Color(1.0, 0.86, 0.36))
+	price_badge.add_theme_color_override("font_color", Color(0.45, 1.0, 0.62) if is_free else Color(1.0, 0.86, 0.36))
 	price_badge.add_theme_color_override("font_outline_color", Color(0, 0, 0))
 	price_badge.add_theme_constant_override("outline_size", 3)
 	img_panel.add_child(price_badge)
@@ -349,10 +321,10 @@ func _make_card_tile(cfg, offer: Dictionary, offer_index: int) -> Panel:
 	name_lbl.clip_text = true
 	v.add_child(name_lbl)
 	var total := Label.new()
-	total.text = "总价 🪙%d · ×%d张" % [price, qty]
+	total.text = "免费领取 · ×%d张" % qty if is_free else "总价 🪙%d · ×%d张" % [price, qty]
 	total.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	total.add_theme_font_size_override("font_size", 13)
-	total.add_theme_color_override("font_color", Color(1.0, 0.82, 0.36))
+	total.add_theme_color_override("font_color", Color(0.48, 1.0, 0.62) if is_free else Color(1.0, 0.82, 0.36))
 	v.add_child(total)
 	var owned := Label.new()
 	owned.text = "已拥有 %d" % PlayerData.get_card_quantity(cfg.card_id)
@@ -360,7 +332,7 @@ func _make_card_tile(cfg, offer: Dictionary, offer_index: int) -> Panel:
 	owned.add_theme_font_size_override("font_size", 11)
 	owned.add_theme_color_override("font_color", Color(0.66, 0.76, 0.88))
 	v.add_child(owned)
-	var btn := _grad_button("购买 ×%d" % qty, accent, Vector2(0, 40))
+	var btn := _grad_button("免费领取" if is_free else "购买 ×%d" % qty, Color(0.25, 0.82, 0.42) if is_free else accent, Vector2(0, 40))
 	btn.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	btn.pressed.connect(func(): _on_buy_offer(offer_index))
 	v.add_child(btn)
@@ -425,7 +397,7 @@ func _refresh():
 	for e in card_tiles:
 		var sold: bool = bool(e.offer.get("sold", false))
 		e.btn.disabled = sold or PlayerData.gold < int(e.price)
-		e.btn.text = "已售罄" if sold else "购买 ×%d" % int(e.offer.get("qty", 1))
+		e.btn.text = "已售罄" if sold else ("免费领取" if bool(e.offer.get("free", false)) else "购买 ×%d" % int(e.offer.get("qty", 1)))
 		e.owned.text = "已拥有 %d" % PlayerData.get_card_quantity(e.cfg.card_id)
 
 func _on_buy_offer(offer_index: int):
@@ -444,7 +416,10 @@ func _on_buy_offer(offer_index: int):
 	offer["sold"] = true
 	PlayerData.shop_offers[offer_index] = offer
 	PlayerData.save_data()
-	status_lbl.text = "已购买 %s ×%d" % [cfg.card_name if cfg else "卡牌", int(offer.qty)]
+	if bool(offer.get("free", false)):
+		status_lbl.text = "已免费领取 %s ×%d" % [cfg.card_name if cfg else "卡牌", int(offer.qty)]
+	else:
+		status_lbl.text = "已购买 %s ×%d" % [cfg.card_name if cfg else "卡牌", int(offer.qty)]
 	_refresh()
 
 func _on_buy_emote(id: String, cost: int):

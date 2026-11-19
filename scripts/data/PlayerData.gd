@@ -62,6 +62,8 @@ var _collection_rewards_cache: Array = []
 var avatar_seed: int = 0
 var avatar_index: int = 0
 var avatar_custom_path: String = ""
+var account_id: String = "default"          # 当前账号 id（default = 旧版单存档）
+var account_save_path: String = ""          # 当前账号本地存档路径（空=默认/环境目录）
 func _ready():
 	
 	load_data()
@@ -70,6 +72,46 @@ func _ready():
 	for i in range(130):
 		ai_levels[i] = get_ai_card_level()
 	
+func _data_root() -> String:
+	var env := OS.get_environment("CR_ACCOUNT_DATA_DIR")
+	return env.trim_suffix("/") if env != "" else "user://"
+
+
+func _default_save_path() -> String:
+	var env := OS.get_environment("CR_ACCOUNT_DATA_DIR")
+	return (env.trim_suffix("/") + "/player_data.cfg") if env != "" else SAVE_PATH
+
+
+func current_save_path() -> String:
+	return account_save_path if account_save_path != "" else _default_save_path()
+
+
+## 切换到指定账号的本地存档；首次登录会把旧版单存档迁移到该账号
+func use_account(acct_id: String, migrate_legacy := true) -> void:
+	account_id = acct_id
+	if acct_id == "" or acct_id == "default":
+		account_id = "default"
+		account_save_path = _default_save_path()
+	else:
+		account_save_path = "%s/accounts/%s/player_data.cfg" % [_data_root().trim_suffix("/"), acct_id]
+	DirAccess.make_dir_recursive_absolute(account_save_path.get_base_dir())
+	if migrate_legacy and acct_id != "default" and not FileAccess.file_exists(account_save_path) \
+			and FileAccess.file_exists(_default_save_path()):
+		var legacy := FileAccess.get_file_as_bytes(_default_save_path())
+		if legacy.size() > 0:
+			var f := FileAccess.open(account_save_path, FileAccess.WRITE)
+			if f:
+				f.store_buffer(legacy)
+				f.close()
+	load_data()
+	_ensure_avatar()
+	_ensure_starter_cards()
+	ai_levels.clear()
+	for i in range(130):
+		ai_levels[i] = get_ai_card_level()
+	save_data()
+
+
 func get_card_quantity(card_id: int) -> int:
 	return card_quantities.get(card_id, 0)
 
@@ -534,7 +576,7 @@ func get_chest_level() -> int:
 
 func load_data():
 	var config = ConfigFile.new()
-	var err = config.load(SAVE_PATH)
+	var err = config.load(current_save_path())
 
 	# 1. 文件不存在 → 使用默认值并保存
 	if err != OK:
@@ -611,6 +653,8 @@ func _apply_defaults():
 func save_data():
 	var config = ConfigFile.new()
 	config.set_value("meta", "version", SAVE_VERSION)
+	config.set_value("meta", "saved_at", int(Time.get_unix_time_from_system()))
+	config.set_value("meta", "account_id", account_id)
 	config.set_value("player", "name", player_name)
 	config.set_value("player", "name_chosen", name_chosen)
 	config.set_value("player", "challenge_state", challenge_state)
@@ -646,7 +690,11 @@ func save_data():
 	config.set_value("player", "use_custom_deck", use_custom_deck)
 	config.set_value("player", "test_mode", test_mode)
 	config.set_value("player", "deck_sort_mode", deck_sort_mode)
-	config.save(SAVE_PATH)
+	DirAccess.make_dir_recursive_absolute(current_save_path().get_base_dir())
+	config.save(current_save_path())
+	var am = get_node_or_null("/root/AccountManager")
+	if am and am.has_method("notify_local_save"):
+		am.notify_local_save()
 
 func _ensure_starter_cards() -> void:
 	# 新手固定六张：弓箭手、万箭齐发、骑士、亡灵、巨人、火球
@@ -784,6 +832,80 @@ func claim_all_collection_rewards() -> Array:
 		out.append(r)
 	save_data()
 	return out
+
+func _shop_unit_price(card_id: int) -> int:
+	match CARD_RARITY.rarity_of_id(card_id):
+		"common": return 10
+		"rare": return 50
+		"epic": return 200
+		"legendary": return 15000
+	return 10
+
+func ensure_daily_shop_offers() -> void:
+	var d := Time.get_date_dict_from_system()
+	var today := "%04d-%02d-%02d" % [int(d.year), int(d.month), int(d.day)]
+	var valid := shop_day == today and shop_offers.size() == 8
+	if valid:
+		for o in shop_offers:
+			if not o.has("unit") or int(o.get("unit", 0)) != _shop_unit_price(int(o.get("card_id", 0))):
+				valid = false
+				break
+	if not valid:
+		var bm = load("res://scripts/core/BattleManager.gd").new()
+		bm.load_card_configs()
+		var ids: Array = []
+		for cfg in bm.configs:
+			if cfg.card_id >= 4 and cfg.cost > 0:
+				ids.append(cfg.card_id)
+		bm.free()
+		var rng := RandomNumberGenerator.new()
+		rng.seed = today.hash()
+		shop_offers.clear()
+		var used: Dictionary = {}
+		while shop_offers.size() < 8 and ids.size() > 0:
+			var cid: int = int(ids[rng.randi_range(0, ids.size() - 1)])
+			if used.has(cid):
+				continue
+			used[cid] = true
+			var unit: int = _shop_unit_price(cid)
+			var qty: int = 1
+			if unit < 500:
+				qty = int(ceil(500.0 / float(unit)))
+				qty = int(ceil(float(qty) / 5.0)) * 5
+				qty += 5 * rng.randi_range(0, 3)
+			shop_offers.append({"card_id": cid, "qty": qty, "unit": unit, "price": unit * qty, "sold": false})
+		shop_day = today
+	# 确保每天恰好一个免费卡牌（原价 < 2000 金币）
+	var has_free := false
+	for o in shop_offers:
+		if bool(o.get("free", false)):
+			has_free = true
+			break
+	if not has_free:
+		var candidates: Array = []
+		for i in range(shop_offers.size()):
+			var o: Dictionary = shop_offers[i]
+			if bool(o.get("sold", false)):
+				continue
+			if int(o.get("price", 999999)) < 2000:
+				candidates.append(i)
+		if not candidates.is_empty():
+			var rng2 := RandomNumberGenerator.new()
+			rng2.seed = today.hash() + 991
+			var pick: int = int(candidates[rng2.randi_range(0, candidates.size() - 1)])
+			var chosen: Dictionary = shop_offers[pick]
+			chosen["original_price"] = int(chosen.get("price", 0))
+			chosen["price"] = 0
+			chosen["free"] = true
+			shop_offers[pick] = chosen
+	shop_day = today
+	save_data()
+
+func get_shop_free_pending_count() -> int:
+	for o in shop_offers:
+		if bool(o.get("free", false)) and not bool(o.get("sold", false)):
+			return 1
+	return 0
 
 func get_ai_allowed_cards() -> Array:
 	# 常规 AI 只允许：新手六卡 + 皇室征程中当前奖杯已解锁的卡牌。

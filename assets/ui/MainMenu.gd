@@ -32,9 +32,14 @@ var _chest_badge: Panel
 var _chest_count_lbl: Label
 
 func _ready():
+	if not AccountManager.is_authenticated and OS.get_environment("CR_SKIP_ACCOUNT") == "":
+		print("[Account] 未登录，进入登录界面")
+		get_tree().change_scene_to_file("res://scenes/account_login.tscn")
+		return
 	GameSettings.apply_volumes()
 	_font = load(ThemeHelper.DEFAULT_FONT_PATH)
 	set_process(true)
+	PlayerData.ensure_daily_shop_offers()
 	_build_ui()
 	_build_notifier()
 	_play_intro()
@@ -264,6 +269,9 @@ func _build_arena_panel() -> void:
 	panel.pressed.connect(_on_achievements_pressed)
 	_ui_root.add_child(panel)
 	_intro_nodes.append(panel)
+	var arena_pending := _unclaimed_count()
+	if arena_pending > 0:
+		_add_count_badge(panel, arena_pending, Vector2(672, 6))
 
 	var pad := MarginContainer.new()
 	pad.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
@@ -519,30 +527,45 @@ func _build_menu_grid() -> void:
 		grid.add_child(tile)
 		if String(e.title) == "宝箱":
 			_chest_tile = tile
-			_add_chest_badge(tile)
+		var pending := _pending_count_for(String(e.title))
+		if pending > 0:
+			_add_count_badge(tile, pending, Vector2(292, 6), String(e.title) == "宝箱")
 
-func _add_chest_badge(tile: Button) -> void:
-	_chest_badge = Panel.new()
-	_chest_badge.position = Vector2(292, 6)
-	_chest_badge.size = Vector2(44, 34)
-	_chest_badge.mouse_filter = Control.MOUSE_FILTER_IGNORE
+func _pending_count_for(title: String) -> int:
+	match title:
+		"商店":
+			return PlayerData.get_shop_free_pending_count()
+		"宝箱":
+			return PlayerData.chests.size()
+		"收藏":
+			return PlayerData.get_collection_reward_pending_count()
+	return 0
+
+func _add_count_badge(tile: Control, count: int, pos: Vector2, is_chest: bool = false) -> void:
+	var badge := Panel.new()
+	badge.position = pos
+	badge.size = Vector2(44, 34)
+	badge.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	var sb := StyleBoxFlat.new()
 	sb.bg_color = Color(0.86, 0.20, 0.18, 0.98)
 	sb.border_color = Color(1.0, 0.86, 0.42, 0.9)
 	sb.set_border_width_all(2)
 	sb.set_corner_radius_all(16)
-	_chest_badge.add_theme_stylebox_override("panel", sb)
-	tile.add_child(_chest_badge)
-	_chest_count_lbl = Label.new()
-	_chest_count_lbl.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	_chest_count_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	_chest_count_lbl.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-	_chest_count_lbl.add_theme_font_size_override("font_size", 19)
-	_chest_count_lbl.add_theme_color_override("font_color", Color.WHITE)
-	_chest_count_lbl.add_theme_constant_override("outline_size", 3)
-	_chest_count_lbl.add_theme_color_override("font_outline_color", Color(0.15, 0.03, 0.03))
-	_chest_badge.add_child(_chest_count_lbl)
-	_refresh_chest_badge()
+	badge.add_theme_stylebox_override("panel", sb)
+	tile.add_child(badge)
+	var lbl := Label.new()
+	lbl.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	lbl.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	lbl.add_theme_font_size_override("font_size", 19)
+	lbl.add_theme_color_override("font_color", Color.WHITE)
+	lbl.add_theme_constant_override("outline_size", 3)
+	lbl.add_theme_color_override("font_outline_color", Color(0.15, 0.03, 0.03))
+	lbl.text = str(mini(count, 99))
+	badge.add_child(lbl)
+	if is_chest:
+		_chest_badge = badge
+		_chest_count_lbl = lbl
 
 func _refresh_chest_badge() -> void:
 	if _chest_badge == null or _chest_count_lbl == null:
@@ -636,6 +659,8 @@ func _build_bottom_row() -> void:
 	row.add_theme_constant_override("separation", 26)
 	_ui_root.add_child(row)
 	row.add_child(_text_action("star", "新手教程", _on_tutorial_pressed))
+	row.add_child(_dot_sep())
+	row.add_child(_text_action("flask", "派对", _on_party_pressed))
 	row.add_child(_dot_sep())
 	row.add_child(_text_action("medal", "挑战", _on_challenges_pressed))
 	row.add_child(_dot_sep())
@@ -783,6 +808,10 @@ func _on_achievements_pressed():
 
 func _on_collection_pressed():
 	LoadingScreen.change_scene("res://scenes/collection.tscn", "正在加载收藏…")
+
+func _on_party_pressed():
+	get_tree().change_scene_to_file("res://scenes/party_select.tscn")
+
 
 func _on_challenges_pressed():
 	get_tree().change_scene_to_file("res://scenes/challenges.tscn")
