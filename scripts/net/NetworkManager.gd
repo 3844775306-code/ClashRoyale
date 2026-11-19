@@ -332,11 +332,7 @@ func submit_network_swap_draft(picks: Array, rejects: Array) -> void:
 
 
 func _build_network_swap_decks() -> void:
-	var order: Array = [1]
-	var pids: Array = players.keys()
-	pids.sort()
-	for pid in pids:
-		order.append(int(pid))
+	var order: Array = _draft_required_peers()
 	network_draft_decks.clear()
 	var used: Array = []
 	var all_cards: Array = []
@@ -385,13 +381,21 @@ func submit_network_draft_deck(deck: Array) -> void:
 	_check_network_draft()
 
 
+func _draft_required_peers() -> Array:
+	var out: Array = [1]
+	for s in seats:
+		if not bool(s.get("ai", false)) and int(s.get("peer", 0)) > 1:
+			if not out.has(int(s.peer)):
+				out.append(int(s.peer))
+	return out
+
 func _check_network_draft() -> void:
 	if role != Role.HOST:
 		return
 	if network_draft_swap:
 		if not network_draft_picks.has(1) or not network_draft_rejects.has(1):
 			return
-		for pid in players.keys():
+		for pid in _draft_required_peers():
 			if int(pid) == 1:
 				continue
 			if not network_draft_picks.has(int(pid)) or not network_draft_rejects.has(int(pid)):
@@ -400,7 +404,7 @@ func _check_network_draft() -> void:
 	else:
 		if not network_draft_decks.has(1):
 			return
-		for pid in players.keys():
+		for pid in _draft_required_peers():
 			if int(pid) == 1:
 				continue
 			if not network_draft_decks.has(int(pid)):

@@ -1483,7 +1483,7 @@ func load_card_configs():
 		_make_card("圣水戈仑",       106, 3, 1,  Config.UnitType.GROUND, 1400, 100, 1500, 0.5, 0, Config.TargetType.BUILDING_ONLY, 0.9, 1, 6.0, 1.2, 0, [], [100, 2, 100000], 1),
 		_make_card("毒药法术",       107, 4, 1,  Config.UnitType.GROUND, 1, 55, 8000, 3.5, 3.5, Config.TargetType.ALL, 0, 1, 3.5, 3.5, 0, [], [], 7),
 		_make_card("可疑草丛",       108, 2, 1,  Config.UnitType.GROUND, 700, 0, 0, 0, 0, Config.TargetType.GROUND_ONLY, 1.2, 1, 6.0, 0.8, 0, [], [62, 2, 100000], 1),
-		_make_card("哥布林钻机",     109, 4, 1,  Config.UnitType.BUILDING, 900, 0, 0, 0, 0, Config.TargetType.ALL, 0, 1, 0, 1.0, 0, [], [62, 1, 3000], 1),
+		_make_card("哥布林钻机",     109, 4, 1,  Config.UnitType.BUILDING, 900, 0, 0, 0, 0, Config.TargetType.ALL, 0, 1, 0, 1.0, 0, [], [39, 1, 3000], 1),
 		_make_card("野蛮人滚桶",     110, 2, 1,  Config.UnitType.GROUND, 1, 260, 0, 2.5, 2.5, Config.TargetType.GROUND_ONLY, 0, 1, 2.5, 2.5, 0, [], [], 1),
 		_make_card("符文巨人",       111, 4, 1,  Config.UnitType.GROUND, 1300, 110, 1800, 0.8, 0, Config.TargetType.BUILDING_ONLY, 1.0, 1, 6.0, 1.2, 0, [], [], 1),
 		_make_card("藤蔓法术",       112, 3, 1,  Config.UnitType.GROUND, 1, 120, 0, 3.0, 3.0, Config.TargetType.ALL, 0, 1, 3.0, 3.0, 0, [], [], 2),
