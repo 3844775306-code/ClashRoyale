@@ -461,6 +461,7 @@ func start_match() -> void:
 		"room_code": room_code,
 		"seats": _seat_public(),
 		"arena": PlayerData.get_arena(),
+		"draft_seed": randi(),
 	}
 	for pid in players.keys():
 		if pid == 1:

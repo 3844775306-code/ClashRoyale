@@ -24,6 +24,10 @@ var _own_rejects: Array = []
 var _round := 0
 var _pool: Array = []
 var _used: Array = []
+var _player_pool: Array = []
+var _ai_pool: Array = []
+var _player_cursor: int = 0
+var _ai_cursor: int = 0
 var _player: Array = []
 var _enemy: Array = []
 var _picked_row: HBoxContainer
@@ -48,6 +52,8 @@ func _ready() -> void:
 	_choices = int(mode.get("draft_choices", 2 if _swap else 4))
 	_picks_total = int(mode.get("draft_picks", 4 if _swap else 8))
 	_load_configs()
+	if _swap:
+		_setup_swap_pool()
 	UiComponents.add_background(self)
 	if _net_draft:
 		UiComponents.make_header(self, "联机双向选卡" if _swap else "联机选卡", _on_back, true)
@@ -173,16 +179,41 @@ func _draw_offer() -> Array:
 	return offer
 
 
+func _setup_swap_pool() -> void:
+	# 双向选卡：先随机挑出 8×人数 张唯一卡，再给每个玩家分配 8 张
+	var need: int = 8 * (4 if _net_draft else 2)
+	var full: Array = _pool.duplicate()
+	if _net_draft:
+		full.sort()
+	var rng := RandomNumberGenerator.new()
+	if _net_draft:
+		rng.seed = int(NetworkManager.match_info.get("draft_seed", 73019))
+	else:
+		rng.randomize()
+	# 确定性 Fisher-Yates，保证联机双方拿到同一份 8×人数 卡池
+	var shuffled: Array = []
+	while not full.is_empty():
+		var idx: int = rng.randi_range(0, full.size() - 1)
+		shuffled.append(full[idx])
+		full.remove_at(idx)
+	full = shuffled
+	if full.size() > need:
+		full.resize(need)
+	if _net_draft:
+		var slot: int = int(NetworkManager.local_slot)
+		var start: int = slot * 8
+		_player_pool = full.slice(start, mini(start + 8, full.size()))
+	else:
+		_player_pool = full.slice(0, 8)
+		_ai_pool = full.slice(8, 16)
+	_player_cursor = 0
+	_ai_cursor = 0
+
 func _draw_swap_offers() -> Array:
-	var player_offer: Array = []
-	var ai_offer: Array = []
-	for cid in _remaining_cards():
-		if player_offer.size() < _choices:
-			player_offer.append(cid)
-		elif ai_offer.size() < _choices:
-			ai_offer.append(cid)
-		else:
-			break
+	var player_offer: Array = _player_pool.slice(_player_cursor, mini(_player_cursor + _choices, _player_pool.size()))
+	_player_cursor += player_offer.size()
+	var ai_offer: Array = _ai_pool.slice(_ai_cursor, mini(_ai_cursor + _choices, _ai_pool.size()))
+	_ai_cursor += ai_offer.size()
 	for cid in player_offer + ai_offer:
 		_used.append(cid)
 	return [player_offer, ai_offer]
