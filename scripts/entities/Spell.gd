@@ -172,7 +172,7 @@ func apply_damage():
 					if card_id == 104 and unit.health > 0:
 						unit.knockback(global_position, -0.55)
 					if card_id in [11, 31] and unit.config.type != Config.UnitType.BUILDING and unit.health > 0:
-						var kb_dist: float = clampf(1.15 / maxf(unit.config.size, 0.25), 0.35, 1.6)
+						var kb_dist: float = clampf(1.15 / maxf(unit.config.size, 0.25), 0.35, 1.6) * 0.45
 						unit.knockback(global_position, kb_dist)
 					
 

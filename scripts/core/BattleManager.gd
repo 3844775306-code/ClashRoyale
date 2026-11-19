@@ -623,7 +623,7 @@ func _resolve_battle_mode() -> void:
 		Config.ARENA_TOUCHDOWN_HEIGHT if win_condition == "touchdown" else Config.ARENA_BASE_HEIGHT)
 	mode_elixir_rate = float(battle_mode.get("elixir", 1.0))
 	fixed_level_override = 11 if String(battle_mode.get("level", "own")) == "fixed" else -1
-	if party_mode:
+	if party_mode or PlayerData.test_mode:
 		fixed_level_override = 11
 	commando_mode = bool(battle_mode.get("commando", false))
 	if commando_mode:
@@ -1632,7 +1632,7 @@ func spawn_initial_towers():
 	if player_type not in [1, 2]:
 		player_type = 1
 	var enemy_type: int = 1 if randi() % 2 == 0 else 2
-	var king_level: int = 11 if (party_mode or fixed_level_override > 0) else PlayerData.get_tower_level()
+	var king_level: int = 11 if (party_mode or fixed_level_override > 0 or PlayerData.test_mode) else PlayerData.get_tower_level()
 	var tower_data = []
 	if network_host_mode:
 		tower_data = _network_tower_data()
