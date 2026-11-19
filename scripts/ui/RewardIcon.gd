@@ -8,6 +8,8 @@ var card_name: String = ""
 var card_id: int = 0
 var accent: Color = Color(0.96, 0.72, 0.24)
 var _texture: Texture2D = null
+static var _official_map: Dictionary = {}
+static var _official_loaded: bool = false
 
 func setup(p_kind: String, p_amount: int = 1, p_card_name: String = "", p_card_id: int = 0) -> void:
 	kind = p_kind
@@ -15,7 +17,11 @@ func setup(p_kind: String, p_amount: int = 1, p_card_name: String = "", p_card_i
 	card_name = p_card_name
 	card_id = p_card_id
 	if kind == "card" or kind == "wild":
-		var path := "res://assets/cards_web/%s.png" % card_name
+		var path := ""
+		if card_id > 0:
+			path = _official_path(card_id)
+		if path == "" or not ResourceLoader.exists(path):
+			path = "res://assets/cards_web/%s.png" % card_name
 		if not ResourceLoader.exists(path):
 			path = "res://assets/cards_rendered/%s.png" % card_name
 		if ResourceLoader.exists(path):
@@ -23,6 +29,16 @@ func setup(p_kind: String, p_amount: int = 1, p_card_name: String = "", p_card_i
 		if card_id > 0:
 			accent = CARD_RARITY.rarity_color_by_id(card_id)
 	queue_redraw()
+
+static func _official_path(card_id: int) -> String:
+	if not _official_loaded:
+		_official_loaded = true
+		var f := FileAccess.open("res://data/official_card_art.json", FileAccess.READ)
+		if f:
+			var parsed = JSON.parse_string(f.get_as_text())
+			if parsed is Dictionary:
+				_official_map = parsed
+	return String(_official_map.get(str(card_id), ""))
 
 func _draw() -> void:
 	var w: float = size.x

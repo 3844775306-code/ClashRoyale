@@ -13,6 +13,7 @@ func _ready():
 	var scroll := UiComponents.make_content_scroll(self)
 	content = UiComponents.make_content_vbox()
 	scroll.add_child(content)
+	PlayerData.sync_global_mail()
 	_build_summary()
 	_build_list()
 	UiComponents.fade_in(self)

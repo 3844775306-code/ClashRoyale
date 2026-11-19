@@ -64,6 +64,7 @@ var card_mastery: Dictionary = {}
 var mailbox: Array = []
 var mail_alert_pending: String = ""
 var mail_version_seen: String = ""
+var _global_mail_busy: bool = false
 var season_key: String = ""
 var season_crowns: int = 0
 var season_claimed: Array = []
@@ -80,6 +81,7 @@ func _ready():
 	_ensure_season()
 	_ensure_starter_cards()
 	_ensure_default_mail()
+	call_deferred("sync_global_mail")
 	for i in range(130):
 		ai_levels[i] = get_ai_card_level()
 	
@@ -1227,6 +1229,7 @@ func claim_all_season_rewards() -> Array:
 
 const APP_VERSION := "1.2.0"
 const UPDATE_URL := "https://github.com/3844775306-code/ClashRoyale/releases/tag/v1.2.0"
+const GLOBAL_MAIL_URL := "https://raw.githubusercontent.com/3844775306-code/ClashRoyale/main/data/global_mail.json"
 
 func add_mail(title: String, body: String, reward: Dictionary = {}, sender: String = "官方", kind: String = "official", extra: Dictionary = {}) -> void:
 	var mail := {
@@ -1273,6 +1276,40 @@ func _grant_mail_reward(r: Dictionary) -> void:
 	if String(r.get("emote", "")) != "":
 		add_emote(String(r.emote))
 	save_data()
+
+func sync_global_mail() -> void:
+	if _global_mail_busy:
+		return
+	_global_mail_busy = true
+	var req := HTTPRequest.new()
+	add_child(req)
+	req.request_completed.connect(func(_result, code, _headers, body):
+		_global_mail_busy = false
+		req.queue_free()
+		if code < 200 or code >= 300:
+			return
+		var parsed = JSON.parse_string(body.get_string_from_utf8())
+		if not (parsed is Array):
+			return
+		for item in parsed:
+			if not (item is Dictionary):
+				continue
+			var gid := String(item.get("id", ""))
+			if gid == "":
+				continue
+			var exists := false
+			for m in mailbox:
+				if String(m.get("global_id", "")) == gid:
+					exists = true
+					break
+			if exists:
+				continue
+			var reward: Dictionary = item.get("reward", {})
+			add_mail(String(item.get("title", "官方公告")), String(item.get("body", "")),
+				reward, String(item.get("sender", "官方")), String(item.get("kind", "official")),
+				{"global_id": gid, "url": String(item.get("url", ""))})
+	)
+	req.request(GLOBAL_MAIL_URL)
 
 func _ensure_default_mail() -> void:
 	var has_update := false

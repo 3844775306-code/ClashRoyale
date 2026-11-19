@@ -450,7 +450,7 @@ func _refresh_my_clan():
 
 
 func _poll_clan() -> void:
-	if _polling or current_tab != 0 or clan_home_box == null or not clan_home_box.visible:
+	if not is_inside_tree() or _polling or current_tab != 0 or clan_home_box == null or not clan_home_box.visible:
 		return
 	_polling = true
 	ClanManager.invalidate_cache()
@@ -1087,7 +1087,7 @@ func _show_mail_alert_if_any() -> void:
 	_show_mail_alert(msg)
 
 func _show_mail_alert(text: String) -> void:
-	if text == "":
+	if text == "" or not is_inside_tree():
 		return
 	var panel := Panel.new()
 	panel.position = Vector2(90, 700)

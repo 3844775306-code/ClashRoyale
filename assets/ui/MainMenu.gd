@@ -240,6 +240,7 @@ func _build_ui() -> void:
 	add_child(_ui_root)
 
 	UiComponents.make_header(_ui_root, "", Callable(), true)
+	_build_mail_button()
 	_build_title()
 	_build_card_fan()
 	_build_arena_panel()
@@ -302,6 +303,40 @@ func _center_block(top_anchor: float, height: float, width: float) -> Control:
 # ============================================================
 # 标题
 # ============================================================
+func _build_mail_button() -> void:
+	_mail_btn = Button.new()
+	_mail_btn.focus_mode = Control.FOCUS_NONE
+	_mail_btn.anchor_left = 1.0
+	_mail_btn.anchor_right = 1.0
+	_mail_btn.anchor_top = 0.0
+	_mail_btn.anchor_bottom = 0.0
+	_mail_btn.offset_left = -78
+	_mail_btn.offset_right = -16
+	_mail_btn.offset_top = 92
+	_mail_btn.offset_bottom = 156
+	_mail_btn.add_theme_stylebox_override("normal", _shadow_sb(Color(0.04, 0.06, 0.12, 0.90), 18, 1, Color(GOLD.r, GOLD.g, GOLD.b, 0.45), 8, 0.35))
+	_mail_btn.add_theme_stylebox_override("hover", _shadow_sb(Color(0.07, 0.10, 0.19, 0.96), 18, 1, Color(GOLD.r, GOLD.g, GOLD.b, 0.75), 10, 0.4))
+	_mail_btn.add_theme_stylebox_override("pressed", _sb(Color(0.03, 0.045, 0.09, 0.95), 18, 1, Color(GOLD.r, GOLD.g, GOLD.b, 0.5)))
+	_mail_btn.add_theme_stylebox_override("focus", _sb(Color(0, 0, 0, 0), 18))
+	_mail_btn.pressed.connect(_on_mailbox_pressed)
+	_ui_root.add_child(_mail_btn)
+	var ic := _icon("chest", 28.0, GOLD)
+	ic.position = Vector2(18, 10)
+	_mail_btn.add_child(ic)
+	var lbl := _label("邮箱", 11, GOLD_LIGHT)
+	lbl.position = Vector2(10, 40)
+	lbl.size = Vector2(44, 16)
+	lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_mail_btn.add_child(lbl)
+	var pending := PlayerData.get_mail_pending_count()
+	if pending > 0:
+		_add_count_badge(_mail_btn, pending, Vector2(42, 0), false, true)
+	_mail_timer = Timer.new()
+	_mail_timer.wait_time = 5.0
+	_mail_timer.timeout.connect(_poll_mail)
+	add_child(_mail_timer)
+	_mail_timer.start()
+
 func _build_title() -> void:
 	var block := _center_block(0.095, 216.0, 760.0)
 	_intro_nodes.append(block)
@@ -898,16 +933,6 @@ func _build_bottom_row() -> void:
 	row.add_child(_dot_sep())
 	row.add_child(_text_action("medal", "挑战", _on_challenges_pressed))
 	row.add_child(_dot_sep())
-	_mail_btn = _text_action("chest", "邮箱", _on_mailbox_pressed)
-	row.add_child(_mail_btn)
-	var mail_pending := PlayerData.get_mail_pending_count()
-	if mail_pending > 0:
-		_add_count_badge(_mail_btn, mail_pending, Vector2(66, 0), false, true)
-	_mail_timer = Timer.new()
-	_mail_timer.wait_time = 5.0
-	_mail_timer.timeout.connect(_poll_mail)
-	add_child(_mail_timer)
-	_mail_timer.start()
 	row.add_child(_dot_sep())
 	row.add_child(_text_action("quit", "退出", _on_quit_pressed))
 

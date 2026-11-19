@@ -101,6 +101,9 @@ func guest_login():
 			get_tree().get_first_node_in_group("ui_notifier").show_message(err_msg)
 # 从排行榜读取某玩家的库存 (callback 返回 Dictionary{ card_id: quantity })
 func get_player_inventory(player_id: int, callback: Callable):
+	if not is_logged_in() or player_id <= 0:
+		callback.call(false, {})
+		return
 	var leaderboard_key = "player_inventory_%s" % player_id
 	var request = LL_Leaderboards.GetScoreList.new(leaderboard_key, 1)
 	var response = await request.send()
@@ -122,6 +125,9 @@ func save_player_inventory(player_id: int, inventory: Dictionary, callback: Call
 		callback.call(response.success, response.error if not response.success else null)
 # ---------- 获取当前玩家所在部落 ----------
 func sync_my_inventory(callback: Callable = Callable()) -> void:
+	if not is_logged_in() or get_player_id() <= 0:
+		if callback.is_valid(): callback.call(false)
+		return
 	get_player_inventory(get_player_id(), func(success, inventory):
 		if success and inventory is Dictionary and not inventory.is_empty():
 			for cid in inventory.keys():
