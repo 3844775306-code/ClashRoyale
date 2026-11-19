@@ -749,7 +749,7 @@ func _apply_defaults():
 	test_mode = false
 	deck_sort_mode = "level"
 
-func save_data():
+func build_save_config() -> ConfigFile:
 	var config = ConfigFile.new()
 	config.set_value("meta", "version", SAVE_VERSION)
 	config.set_value("meta", "saved_at", int(Time.get_unix_time_from_system()))
@@ -798,12 +798,26 @@ func save_data():
 	config.set_value("player", "use_custom_deck", use_custom_deck)
 	config.set_value("player", "test_mode", test_mode)
 	config.set_value("player", "deck_sort_mode", deck_sort_mode)
+	return config
+
+
+func save_data():
+	var config := build_save_config()
+
 	DirAccess.make_dir_recursive_absolute(current_save_path().get_base_dir())
 	config.save(current_save_path())
 	var am = get_node_or_null("/root/AccountManager")
 	if am and am.has_method("notify_local_save"):
 		am.notify_local_save()
 
+
+
+func get_save_text() -> String:
+	var p := current_save_path()
+	var text := FileAccess.get_file_as_string(p)
+	if text != "":
+		return text
+	return build_save_config().encode_to_text()
 func _ensure_starter_cards() -> void:
 	# 新手固定六张：弓箭手、万箭齐发、骑士、亡灵、巨人、火球
 	var STARTER: Array = STARTER_CARDS

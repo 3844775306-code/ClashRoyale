@@ -687,6 +687,9 @@ func _supabase_upload_cloud() -> bool:
 		PlayerData.save_data()
 		text = FileAccess.get_file_as_string(path)
 	if text == "":
+		# 即使文件系统暂时不可写，也把当前内存中的账号状态序列化上传
+		text = PlayerData.get_save_text()
+	if text == "":
 		last_error = "本地存档为空：%s" % path
 		return false
 	var meta := {
