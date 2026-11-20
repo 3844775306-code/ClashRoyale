@@ -12,6 +12,12 @@ const OFFER_PREFIX := "rtc_offer:"
 const ANSWER_PREFIX := "rtc_answer:"
 const ICE_PREFIX := "rtc_ice:"
 const TURN_CFG := "user://webrtc_turn.cfg"
+
+func _turn_cfg_path() -> String:
+	var am = get_node_or_null("/root/AccountManager")
+	if am and am.has_method("shared_data_path"):
+		return String(am.shared_data_path("webrtc_turn.cfg"))
+	return TURN_CFG
 const HOST_ID := 1
 
 var active := false
@@ -33,11 +39,17 @@ func _ready() -> void:
 
 func turn_config() -> Dictionary:
 	var cfg := ConfigFile.new()
-	cfg.load(TURN_CFG)
+	cfg.load(_turn_cfg_path())
+	var env_url := OS.get_environment("CR_TURN_URL").strip_edges()
+	var mode := String(cfg.get_value("turn", "mode", "manual"))
+	if env_url != "":
+		mode = "manual"
 	return {
-		"url": OS.get_environment("CR_TURN_URL").strip_edges() if OS.get_environment("CR_TURN_URL") != "" else String(cfg.get_value("turn", "url", "")),
+		"url": env_url if env_url != "" else String(cfg.get_value("turn", "url", "")),
 		"user": OS.get_environment("CR_TURN_USER") if OS.get_environment("CR_TURN_USER") != "" else String(cfg.get_value("turn", "user", "")),
 		"pass": OS.get_environment("CR_TURN_PASS") if OS.get_environment("CR_TURN_PASS") != "" else String(cfg.get_value("turn", "pass", "")),
+		"mode": mode,
+		"expires": int(cfg.get_value("turn", "expires", 0)),
 	}
 
 
@@ -46,12 +58,83 @@ func save_turn_config(url: String, user: String, password: String) -> void:
 	cfg.set_value("turn", "url", url.strip_edges())
 	cfg.set_value("turn", "user", user.strip_edges())
 	cfg.set_value("turn", "pass", password)
-	cfg.save(TURN_CFG)
+	cfg.set_value("turn", "mode", "manual")
+	cfg.set_value("turn", "expires", 0)
+	cfg.save(_turn_cfg_path())
+
+
+func _save_cloudflare_turn(url: String, user: String, password: String, expires: int) -> void:
+	var cfg := ConfigFile.new()
+	cfg.set_value("turn", "url", url)
+	cfg.set_value("turn", "user", user)
+	cfg.set_value("turn", "pass", password)
+	cfg.set_value("turn", "mode", "cloudflare")
+	cfg.set_value("turn", "expires", expires)
+	cfg.save(_turn_cfg_path())
+
+
+func _pick_ice_url(urls: Array) -> String:
+	var all: Array = []
+	for u in urls:
+		if u is Array:
+			for x in u: all.append(String(x))
+		else:
+			all.append(String(u))
+	for u in all:
+		if u.begins_with("turns:") and u.contains(":443") and u.contains("transport=tcp"):
+			return u
+	for u in all:
+		if u.begins_with("turns:") and u.contains(":443"):
+			return u
+	for u in all:
+		if u.begins_with("turn:"):
+			return u
+	return all[0] if not all.is_empty() else ""
+
+
+func fetch_cloudflare_turn(ttl: int = 7200) -> Dictionary:
+	if not AccountManager.is_supabase_authenticated():
+		return {"ok": false, "error": "请先登录 Supabase"}
+	var r: Dictionary = await SupabaseAPI.edge_function("turn-credentials", {"ttl": ttl})
+	if not bool(r.get("ok", false)):
+		return {"ok": false, "error": String(r.get("error", "Cloudflare TURN 获取失败"))}
+	var servers: Array = Array(r.get("iceServers", []))
+	for s in servers:
+		if not (s is Dictionary): continue
+		var urls: Array = Array(s.get("urls", []))
+		var url := _pick_ice_url(urls)
+		if url == "" or not url.contains("turn"):
+			continue
+		var user := String(s.get("username", ""))
+		var cred := String(s.get("credential", s.get("password", "")))
+		if user == "" or cred == "":
+			continue
+		var exp := int(r.get("expires_at", int(Time.get_unix_time_from_system()) + ttl))
+		_save_cloudflare_turn(url, user, cred, exp)
+		return {"ok": true, "url": url, "expires_at": exp}
+	return {"ok": false, "error": "Cloudflare 未返回 TURN 凭据"}
+
+
+func _ensure_turn() -> void:
+	var c := turn_config()
+	if String(c.get("mode", "")) != "cloudflare":
+		return
+	var exp := int(c.get("expires", 0))
+	if exp > int(Time.get_unix_time_from_system()) + 120:
+		return
+	var r: Dictionary = await fetch_cloudflare_turn()
+	if not bool(r.get("ok", false)):
+		status.emit("Cloudflare TURN 刷新失败：%s" % String(r.get("error", "")))
 
 
 func turn_summary() -> String:
 	var c := turn_config()
-	return "TURN 已配置" if String(c.get("url", "")) != "" else "TURN 未配置"
+	if String(c.get("url", "")) == "":
+		return "TURN 未配置"
+	if String(c.get("mode", "")) == "cloudflare":
+		var left := maxi(0, int(c.get("expires", 0)) - int(Time.get_unix_time_from_system()))
+		return "Cloudflare TURN（剩余 %d 分钟）" % int(left / 60)
+	return "TURN 已配置"
 
 
 func _ice_servers() -> Array:
@@ -92,6 +175,7 @@ func host_room() -> bool:
 	if not SupabaseAPI.is_ready():
 		failed.emit("请先登录 Supabase 账号")
 		return false
+	await _ensure_turn()
 	is_host = true
 	local_id = HOST_ID
 	room_code = OS.get_environment("CR_RTC_ROOM").strip_edges()
@@ -113,6 +197,7 @@ func join_room(code: String) -> bool:
 	if not SupabaseAPI.is_ready():
 		failed.emit("请先登录 Supabase 账号")
 		return false
+	await _ensure_turn()
 	is_host = false
 	room_code = code.strip_edges()
 	if room_code == "":

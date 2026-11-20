@@ -110,6 +110,17 @@ func get_value(key: String) -> Dictionary:
 		return v if v is Dictionary else {}
 	return {}
 
+func edge_function(name: String, body: Dictionary = {}) -> Dictionary:
+	var res: Array = await _request(HTTPClient.METHOD_POST, "/functions/v1/" + name, body)
+	if int(res[1]) < 200 or int(res[1]) >= 300:
+		var err = _parse(res)
+		var msg := ""
+		if err is Dictionary:
+			msg = String(err.get("error", err.get("msg", "")))
+		return {"ok": false, "error": msg if msg != "" else "Edge Function 请求失败"}
+	var data = _parse(res)
+	return data if data is Dictionary else {"ok": false, "error": "返回格式错误"}
+
 func delete_key(key: String) -> bool:
 	var res: Array = await _request(HTTPClient.METHOD_DELETE,
 		"/rest/v1/%s?key=eq.%s" % [TABLE, key])

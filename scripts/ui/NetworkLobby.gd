@@ -284,12 +284,24 @@ func _open_turn_dialog() -> void:
 	var url := LineEdit.new(); url.placeholder_text = "TURN URL"; url.text = String(cfg.get("url", "")); box.add_child(url)
 	var user := LineEdit.new(); user.placeholder_text = "TURN 用户名"; user.text = String(cfg.get("user", "")); box.add_child(user)
 	var passw := LineEdit.new(); passw.placeholder_text = "TURN 密码"; passw.secret = true; passw.text = String(cfg.get("pass", "")); box.add_child(passw)
+	var cf := UiComponents.make_primary_button("使用 Cloudflare 自动获取", Callable(), Vector2(0, 44))
+	cf.pressed.connect(func():
+		cf.disabled = true
+		var r: Dictionary = await WebRTCNet.fetch_cloudflare_turn()
+		cf.disabled = false
+		if bool(r.get("ok", false)):
+			_update_turn_status()
+			dlg.hide()
+		else:
+			hint.text = "获取失败：%s" % String(r.get("error", "未知错误"))
+	)
+	box.add_child(cf)
 	dlg.add_child(box)
 	dlg.confirmed.connect(func():
 		WebRTCNet.save_turn_config(url.text, user.text, passw.text)
 		_update_turn_status())
 	add_child(dlg)
-	dlg.popup_centered(Vector2i(660, 340))
+	dlg.popup_centered(Vector2i(660, 420))
 
 func _webrtc_host_pressed() -> void:
 	if NetworkManager.role != NetworkManager.Role.NONE:

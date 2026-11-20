@@ -109,6 +109,9 @@ func _boot() -> void:
 	auto_login_pending = false
 	session_changed.emit()
 
+func shared_data_path(name: String) -> String:
+	return _data_path(name)
+
 func has_saved_session() -> bool:
 	var s := _load_session()
 	return not s.is_empty() and int(s.get("expires", 0)) >= int(Time.get_unix_time_from_system())
