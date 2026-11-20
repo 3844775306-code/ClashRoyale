@@ -12,6 +12,7 @@ var _host_info: Label
 var _ip_edit: LineEdit
 var _code_edit: LineEdit
 var _webrtc_code_edit: LineEdit
+var _turn_status: Label
 var _uid_label: Label
 var _seats_box: VBoxContainer
 var _start_btn: Button
@@ -27,6 +28,7 @@ func _ready():
 	UiComponents.make_header(self, "联机房间", func(): get_tree().change_scene_to_file("res://scenes/menu.tscn"), true)
 	_build_initial()
 	_build_room()
+	_update_turn_status()
 	NetworkManager.lobby_status.connect(_on_status)
 	NetworkManager.guest_joined.connect(_on_guest_joined)
 	NetworkManager.seats_changed.connect(_refresh_seats)
@@ -147,6 +149,14 @@ func _build_initial() -> void:
 	var wj := UiComponents.make_primary_button("跨网加入", _webrtc_join_pressed, Vector2(0, 52))
 	wj.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	wrow.add_child(wj)
+	var trow := HBoxContainer.new()
+	trow.add_theme_constant_override("separation", 10)
+	wv.add_child(trow)
+	_turn_status = _label("", 12, Color(0.72,0.82,0.95))
+	_turn_status.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	trow.add_child(_turn_status)
+	var tbtn := UiComponents.make_secondary_button("TURN 设置", _open_turn_dialog, Vector2(130, 36))
+	trow.add_child(tbtn)
 	_status = _label("", 15, Color(0.9,0.95,1.0))
 	_initial_box.add_child(_status)
 
@@ -256,6 +266,30 @@ func _refresh_custom_panel() -> void:
 			NetworkManager.sync_room()
 			_room_status.text = "自定义规则已同步")
 	_custom_box.add_child(panel)
+
+func _update_turn_status() -> void:
+	if _turn_status:
+		_turn_status.text = "跨网中继：" + WebRTCNet.turn_summary()
+
+func _open_turn_dialog() -> void:
+	var dlg := AcceptDialog.new()
+	dlg.title = "TURN 中继设置（可选）"
+	dlg.ok_button_text = "保存"
+	dlg.add_cancel_button("取消")
+	var box := VBoxContainer.new()
+	box.add_theme_constant_override("separation", 8)
+	var hint := _label("严格 NAT 下需要 TURN。例：turn:xxx:3478?transport=udp", 12, Color(0.7,0.8,0.95))
+	box.add_child(hint)
+	var cfg := WebRTCNet.turn_config()
+	var url := LineEdit.new(); url.placeholder_text = "TURN URL"; url.text = String(cfg.get("url", "")); box.add_child(url)
+	var user := LineEdit.new(); user.placeholder_text = "TURN 用户名"; user.text = String(cfg.get("user", "")); box.add_child(user)
+	var passw := LineEdit.new(); passw.placeholder_text = "TURN 密码"; passw.secret = true; passw.text = String(cfg.get("pass", "")); box.add_child(passw)
+	dlg.add_child(box)
+	dlg.confirmed.connect(func():
+		WebRTCNet.save_turn_config(url.text, user.text, passw.text)
+		_update_turn_status())
+	add_child(dlg)
+	dlg.popup_centered(Vector2i(660, 340))
 
 func _webrtc_host_pressed() -> void:
 	if NetworkManager.role != NetworkManager.Role.NONE:

@@ -1,5 +1,5 @@
 extends Node
-# WebRTC 1v1 跨局域网连接：Supabase 交换 SDP/ICE，DataChannel 承载现有联机消息。
+# 跨网 WebRTC 传输：房主可接受多个 Guest（2v2 最多 3 个客户端）。
 
 signal status(text: String)
 signal connected(peer_id: int)
@@ -7,101 +7,84 @@ signal failed(reason: String)
 signal message_received(method: String, args: Array, sender_id: int)
 
 const ROOM_PREFIX := "rtc_room:"
+const CLAIM_PREFIX := "rtc_claim:"
+const OFFER_PREFIX := "rtc_offer:"
 const ANSWER_PREFIX := "rtc_answer:"
 const ICE_PREFIX := "rtc_ice:"
+const TURN_CFG := "user://webrtc_turn.cfg"
 const HOST_ID := 1
-const GUEST_ID := 2
 
 var active := false
 var is_host := false
 var room_code := ""
 var local_id := 0
-var remote_id := 0
-
-var _pc: WebRTCPeerConnection
-var _control: WebRTCDataChannel
-var _fast: WebRTCDataChannel
-var _control_open := false
-var _fast_open := false
-var _connected_emitted := false
-var _offer_done := false
-var _answer_done := false
-var _answer_written := false
-var _room_written := false
-var _remote_set := false
-var _gathering_done := false
-var _pending_offer := ""
-var _pending_answer := ""
-var _ice_seen: Dictionary = {}
-var _ice_seq := 0
+var sessions: Dictionary = {}
+var _guest_slot := 0
 var _poll_acc := 0.0
 var _polling := false
 var _started_at := 0
-var _pending_ice: Array = []
+var _ice_seen: Dictionary = {}
+var _ice_seq := 0
 
 
 func _ready() -> void:
 	set_process(false)
 
 
+func turn_config() -> Dictionary:
+	var cfg := ConfigFile.new()
+	cfg.load(TURN_CFG)
+	return {
+		"url": OS.get_environment("CR_TURN_URL").strip_edges() if OS.get_environment("CR_TURN_URL") != "" else String(cfg.get_value("turn", "url", "")),
+		"user": OS.get_environment("CR_TURN_USER") if OS.get_environment("CR_TURN_USER") != "" else String(cfg.get_value("turn", "user", "")),
+		"pass": OS.get_environment("CR_TURN_PASS") if OS.get_environment("CR_TURN_PASS") != "" else String(cfg.get_value("turn", "pass", "")),
+	}
+
+
+func save_turn_config(url: String, user: String, password: String) -> void:
+	var cfg := ConfigFile.new()
+	cfg.set_value("turn", "url", url.strip_edges())
+	cfg.set_value("turn", "user", user.strip_edges())
+	cfg.set_value("turn", "pass", password)
+	cfg.save(TURN_CFG)
+
+
+func turn_summary() -> String:
+	var c := turn_config()
+	return "TURN 已配置" if String(c.get("url", "")) != "" else "TURN 未配置"
+
+
 func _ice_servers() -> Array:
 	var out: Array = [{"urls": ["stun:stun.cloudflare.com:3478", "stun:stun.l.google.com:19302"]}]
-	var turn_url := OS.get_environment("CR_TURN_URL").strip_edges()
-	if turn_url != "":
-		out.append({
-			"urls": [turn_url],
-			"username": OS.get_environment("CR_TURN_USER"),
-			"credential": OS.get_environment("CR_TURN_PASS"),
-		})
+	var c := turn_config()
+	if String(c.get("url", "")) != "":
+		out.append({"urls": [String(c.get("url", ""))], "username": String(c.get("user", "")), "credential": String(c.get("pass", ""))})
 	return out
 
 
-func _reset_local() -> void:
-	if _pc:
-		_pc.close()
-	_pc = null
-	_control = null
-	_fast = null
-	_control_open = false
-	_fast_open = false
-	_connected_emitted = false
-	_offer_done = false
-	_answer_done = false
-	_answer_written = false
-	_room_written = false
-	_remote_set = false
-	_gathering_done = false
-	_pending_offer = ""
-	_pending_answer = ""
-	_ice_seen.clear()
-	_ice_seq = 0
-	_poll_acc = 0.0
-	_polling = false
-	_pending_ice.clear()
-	active = false
-	set_process(false)
-
-
-func _make_pc() -> void:
-	_pc = WebRTCPeerConnection.new()
-	var err := _pc.initialize({"ice_servers": _ice_servers()})
+func _new_session(peer_id: int, remote_id: int, host_side: bool) -> Dictionary:
+	var pc := WebRTCPeerConnection.new()
+	var s := {
+		"peer_id": peer_id, "remote_id": remote_id, "pc": pc,
+		"control": null, "fast": null, "connected": false,
+		"offer": "", "answer": "", "offer_ready": false, "answer_ready": false,
+		"offer_written": false, "answer_written": false, "remote_set": false,
+		"pending_ice": [],
+	}
+	var err := pc.initialize({"ice_servers": _ice_servers()})
 	if err != OK:
 		failed.emit("WebRTC 初始化失败")
-	_pc.session_description_created.connect(_on_sdp)
-	_pc.ice_candidate_created.connect(_on_ice)
-	_pc.data_channel_received.connect(_on_data_channel)
-	if is_host:
-		_control = _pc.create_data_channel("control", {})
-		_fast = _pc.create_data_channel("fast", {"ordered": false, "maxRetransmits": 0})
-
-func _on_data_channel(channel: WebRTCDataChannel) -> void:
-	if channel == null:
-		return
-	var label := channel.get_label()
-	if label == "control":
-		_control = channel
-	elif label == "fast":
-		_fast = channel
+		return s
+	if host_side:
+		s["control"] = pc.create_data_channel("control", {})
+		s["fast"] = pc.create_data_channel("fast", {"ordered": false, "maxRetransmits": 0})
+		pc.session_description_created.connect(_on_host_sdp.bind(s))
+		pc.ice_candidate_created.connect(_on_ice.bind(s))
+	else:
+		pc.data_channel_received.connect(_on_guest_channel.bind(s))
+		pc.session_description_created.connect(_on_guest_sdp.bind(s))
+		pc.ice_candidate_created.connect(_on_ice.bind(s))
+	return s
 
 
 func host_room() -> bool:
@@ -111,16 +94,17 @@ func host_room() -> bool:
 		return false
 	is_host = true
 	local_id = HOST_ID
-	remote_id = GUEST_ID
 	room_code = OS.get_environment("CR_RTC_ROOM").strip_edges()
 	if room_code == "":
 		room_code = "%06d" % randi_range(100000, 999999)
 	active = true
 	_started_at = Time.get_ticks_msec()
-	_make_pc()
-	_pc.create_offer()
+	await SupabaseAPI.upsert(ROOM_PREFIX + room_code, {
+		"host_id": String(AccountManager.account_id), "host_name": PlayerData.player_name,
+		"created": int(Time.get_unix_time_from_system()), "turn": turn_summary(),
+	})
 	set_process(true)
-	status.emit("已创建跨网房间，等待好友加入：%s" % room_code)
+	status.emit("已创建跨网房间 %s（可加入 3 人）" % room_code)
 	return true
 
 
@@ -130,170 +114,227 @@ func join_room(code: String) -> bool:
 		failed.emit("请先登录 Supabase 账号")
 		return false
 	is_host = false
-	local_id = GUEST_ID
-	remote_id = HOST_ID
 	room_code = code.strip_edges()
 	if room_code == "":
 		return false
 	active = true
 	_started_at = Time.get_ticks_msec()
 	status.emit("正在连接房间 %s…" % room_code)
-	var room: Dictionary = {}
-	for _i in range(12):
-		room = await SupabaseAPI.get_value(ROOM_PREFIX + room_code)
-		if not room.is_empty() and String(room.get("offer", "")) != "":
-			break
-		await get_tree().create_timer(0.5).timeout
-	if room.is_empty() or String(room.get("offer", "")) == "":
-		failed.emit("房间不存在或房主尚未就绪")
+	var room: Dictionary = await SupabaseAPI.get_value(ROOM_PREFIX + room_code)
+	if room.is_empty():
+		failed.emit("房间不存在")
 		active = false
 		return false
-	_make_pc()
-	_pending_offer = String(room.get("offer", ""))
-	_pc.set_remote_description("offer", _pending_offer)
-	_remote_set = true
+	var claims: Array = await SupabaseAPI.list_prefix(CLAIM_PREFIX + room_code + ":", 10)
+	var used: Array = []
+	for row in claims:
+		var key := String(row.get("key", ""))
+		var parts := key.split(":")
+		if parts.size() >= 3:
+			used.append(int(parts[2]))
+	var slot := 0
+	for cand in [2, 3, 4]:
+		if not used.has(cand):
+			slot = cand
+			break
+	if slot == 0:
+		failed.emit("房间已满")
+		active = false
+		return false
+	_guest_slot = slot
+	local_id = slot
+	await SupabaseAPI.upsert(CLAIM_PREFIX + room_code + ":" + str(slot), {
+		"guest_id": String(AccountManager.account_id), "guest_name": PlayerData.player_name,
+		"slot": slot, "created": int(Time.get_unix_time_from_system()),
+	})
+	var offer := ""
+	for _i in range(16):
+		var of: Dictionary = await SupabaseAPI.get_value(OFFER_PREFIX + room_code + ":" + str(slot))
+		offer = String(of.get("offer", ""))
+		if offer != "": break
+		await get_tree().create_timer(0.5).timeout
+	if offer == "":
+		failed.emit("房主未响应")
+		active = false
+		return false
+	var s := _new_session(slot, HOST_ID, false)
+	sessions[slot] = s
+	s.pc.set_remote_description("offer", offer)
+	s["remote_set"] = true
+	status.emit("已提交加入，等待 WebRTC 连接…")
 	set_process(true)
 	return true
 
 
-func _on_sdp(type: String, sdp: String) -> void:
-	if type == "offer":
-		_pending_offer = sdp
-		_pc.set_local_description("offer", sdp)
-		_offer_done = true
-	elif type == "answer":
-		_pending_answer = sdp
-		_pc.set_local_description("answer", sdp)
-		_answer_done = true
+func _on_host_sdp(type: String, sdp: String, s: Dictionary) -> void:
+	if type != "offer": return
+	s["offer"] = sdp
+	s["offer_ready"] = true
+	s.pc.set_local_description("offer", sdp)
 
 
-func _on_ice(mid: String, index: int, name: String) -> void:
-	if room_code == "":
-		return
+func _on_guest_sdp(type: String, sdp: String, s: Dictionary) -> void:
+	if type != "answer": return
+	s["answer"] = sdp
+	s["answer_ready"] = true
+	s.pc.set_local_description("answer", sdp)
+
+
+func _on_guest_channel(channel: WebRTCDataChannel, s: Dictionary) -> void:
+	if channel == null: return
+	var label := channel.get_label()
+	if label == "control": s["control"] = channel
+	elif label == "fast": s["fast"] = channel
+
+
+func _on_ice(mid: String, index: int, name: String, s: Dictionary) -> void:
+	if room_code == "": return
 	_ice_seq += 1
-	var key := ICE_PREFIX + room_code + ":" + ("host" if is_host else "guest") + ":" + str(_ice_seq)
-	var data := {"mid": mid, "index": index, "name": name, "role": "host" if is_host else "guest"}
+	var role := "host" if is_host else "guest"
+	var key := ICE_PREFIX + room_code + ":" + str(int(s.get("peer_id", 0))) + ":" + role + ":" + str(_ice_seq)
 	_ice_seen[key] = true
-	SupabaseAPI.upsert(key, data)
+	SupabaseAPI.upsert(key, {"mid": mid, "index": index, "name": name, "role": role, "slot": int(s.get("peer_id", 0)), "seq": _ice_seq})
 
 
 func _process(delta: float) -> void:
-	if not active:
-		return
-	if _pc:
-		_pc.poll()
-	_drain_channel(_control)
-	_drain_channel(_fast)
-	_update_open()
-	if _connected_emitted:
-		return
+	if not active: return
+	for s in sessions.values():
+		if s.get("pc"): s.pc.poll()
+		_drain_session(s)
+		_update_session(s)
 	_poll_acc += delta
 	if _poll_acc >= 0.6 and not _polling:
 		_poll_acc = 0.0
 		_polling = true
 		await _poll_signaling()
 		_polling = false
-	if Time.get_ticks_msec() - _started_at > 45000 and not _connected_emitted:
+	if Time.get_ticks_msec() - _started_at > 60000 and not _any_connected():
 		failed.emit("连接超时，请检查网络或配置 TURN")
 		_reset_local()
 
 
-func _update_open() -> void:
-	if _control == null:
-		return
-	if not _control_open and _control.get_ready_state() == WebRTCDataChannel.STATE_OPEN:
-		_control_open = true
-	if _fast and not _fast_open and _fast.get_ready_state() == WebRTCDataChannel.STATE_OPEN:
-		_fast_open = true
-	if _control_open and _fast_open and not _connected_emitted:
-		_connected_emitted = true
-		status.emit("WebRTC 已连接")
-		connected.emit(remote_id)
+func _any_connected() -> bool:
+	for s in sessions.values():
+		if bool(s.get("connected", false)): return true
+	return false
+
+
+func _update_session(s: Dictionary) -> void:
+	var c: WebRTCDataChannel = s.get("control")
+	var f: WebRTCDataChannel = s.get("fast")
+	if c == null or f == null: return
+	if c.get_ready_state() != WebRTCDataChannel.STATE_OPEN: return
+	if f.get_ready_state() != WebRTCDataChannel.STATE_OPEN: return
+	if bool(s.get("connected", false)): return
+	s["connected"] = true
+	status.emit("WebRTC 已连接：玩家 %d" % int(s.get("peer_id", 0)))
+	connected.emit(int(s.get("peer_id", 0)))
 
 
 func _poll_signaling() -> void:
-	if room_code == "" or not active:
-		return
+	if not active or room_code == "": return
 	if is_host:
-		if _offer_done and not _room_written:
-			_room_written = true
-			await SupabaseAPI.upsert(ROOM_PREFIX + room_code, {
-				"host_id": String(AccountManager.account_id),
-				"host_name": PlayerData.player_name,
-				"offer": _pending_offer,
-				"created": int(Time.get_unix_time_from_system()),
-			})
-		if not _remote_set:
-			var ans: Dictionary = await SupabaseAPI.get_value(ANSWER_PREFIX + room_code)
-			var answer := String(ans.get("answer", ""))
-			if answer != "":
-				_pc.set_remote_description("answer", answer)
-				_remote_set = true
+		var claims: Array = await SupabaseAPI.list_prefix(CLAIM_PREFIX + room_code + ":", 10)
+		for row in claims:
+			var key := String(row.get("key", ""))
+			var parts := key.split(":")
+			if parts.size() < 3: continue
+			var slot := int(parts[2])
+			if sessions.has(slot): continue
+			var s := _new_session(slot, slot, true)
+			sessions[slot] = s
+			s.pc.create_offer()
+		for slot in sessions.keys():
+			var s: Dictionary = sessions[slot]
+			if bool(s.get("offer_ready", false)) and not bool(s.get("offer_written", false)):
+				s["offer_written"] = true
+				await SupabaseAPI.upsert(OFFER_PREFIX + room_code + ":" + str(slot), {"offer": String(s.get("offer", "")), "slot": slot})
+			if not bool(s.get("remote_set", false)):
+				var ans: Dictionary = await SupabaseAPI.get_value(ANSWER_PREFIX + room_code + ":" + str(slot))
+				if String(ans.get("answer", "")) != "":
+					s.pc.set_remote_description("answer", String(ans["answer"]))
+					s["remote_set"] = true
+					for c in s.get("pending_ice", []):
+						s.pc.add_ice_candidate(String(c.get("mid", "")), int(c.get("index", 0)), String(c.get("name", "")))
+					s["pending_ice"] = []
 	else:
-		if _answer_done and not _answer_written:
-			_answer_written = true
-			await SupabaseAPI.upsert(ANSWER_PREFIX + room_code, {
-				"guest_id": String(AccountManager.account_id),
-				"guest_name": PlayerData.player_name,
-				"answer": _pending_answer,
-				"created": int(Time.get_unix_time_from_system()),
-			})
+		for slot in sessions.keys():
+			var s: Dictionary = sessions[slot]
+			if bool(s.get("answer_ready", false)) and not bool(s.get("answer_written", false)):
+				s["answer_written"] = true
+				await SupabaseAPI.upsert(ANSWER_PREFIX + room_code + ":" + str(slot), {"answer": String(s.get("answer", "")), "slot": slot})
 	await _poll_ice()
-	if _remote_set:
-		for c in _pending_ice:
-			_pc.add_ice_candidate(String(c.get("mid", "")), int(c.get("index", 0)), String(c.get("name", "")))
-		_pending_ice.clear()
 
 
 func _poll_ice() -> void:
-	var rows: Array = await SupabaseAPI.list_prefix(ICE_PREFIX + room_code + ":", 200)
+	var rows: Array = await SupabaseAPI.list_prefix(ICE_PREFIX + room_code + ":", 300)
 	for row in rows:
 		var key := String(row.get("key", ""))
-		if key == "" or _ice_seen.has(key):
-			continue
-		var v = row.get("value", {})
-		if not (v is Dictionary):
-			continue
-		var role := String(v.get("role", ""))
-		if (is_host and role == "host") or (not is_host and role == "guest"):
-			_ice_seen[key] = true
-			continue
+		if _ice_seen.has(key): continue
 		_ice_seen[key] = true
-		if _remote_set:
-			_pc.add_ice_candidate(String(v.get("mid", "")), int(v.get("index", 0)), String(v.get("name", "")))
+		var v = row.get("value", {})
+		if not (v is Dictionary): continue
+		var slot := int(v.get("slot", 0))
+		var role := String(v.get("role", ""))
+		if is_host and role == "host": continue
+		if not is_host and role == "guest": continue
+		var s: Dictionary = sessions.get(slot, {})
+		if s.is_empty(): continue
+		if bool(s.get("remote_set", false)):
+			s.pc.add_ice_candidate(String(v.get("mid", "")), int(v.get("index", 0)), String(v.get("name", "")))
 		else:
-			_pending_ice.append(v)
+			var arr: Array = s.get("pending_ice", [])
+			arr.append(v)
+			s["pending_ice"] = arr
 
 
-func _apply_ice_from_dc() -> void:
-	pass
+func _drain_session(s: Dictionary) -> void:
+	for channel in [s.get("control"), s.get("fast")]:
+		var dc: WebRTCDataChannel = channel
+		if dc == null: continue
+		while dc.get_available_packet_count() > 0:
+			var msg = bytes_to_var(dc.get_packet())
+			if msg is Dictionary:
+				var sender := int(s.get("peer_id", 0)) if is_host else HOST_ID
+				message_received.emit(String(msg.get("m", "")), Array(msg.get("a", [])), sender)
 
-
-func is_room_connected() -> bool:
-	return _connected_emitted
 
 func send_message(method: String, args: Array, target: int = 0) -> void:
-	if not active or _control == null or not _control_open:
-		return
+	if not active: return
 	var payload := var_to_bytes({"m": method, "a": args})
-	var channel := _control
-	if method == "net_snapshot" and _fast_open:
-		channel = _fast
-	channel.put_packet(payload)
+	var list: Array = []
+	if is_host:
+		if target == 0:
+			list = sessions.values()
+		elif sessions.has(target):
+			list = [sessions[target]]
+	else:
+		list = sessions.values()
+	for s in list:
+		var dc: WebRTCDataChannel = s.get("fast") if method == "net_snapshot" else s.get("control")
+		if dc != null and dc.get_ready_state() == WebRTCDataChannel.STATE_OPEN and dc.put_packet(payload) != OK:
+			pass
 
 
 func broadcast_message(method: String, args: Array) -> void:
 	send_message(method, args, 0)
 
 
-func _drain_channel(channel: WebRTCDataChannel) -> void:
-	if channel == null:
-		return
-	while channel.get_available_packet_count() > 0:
-		var bytes := channel.get_packet()
-		var msg = bytes_to_var(bytes)
-		if msg is Dictionary:
-			message_received.emit(String(msg.get("m", "")), Array(msg.get("a", [])), remote_id)
+func is_room_connected() -> bool:
+	return _any_connected()
+
+
+func _reset_local() -> void:
+	for s in sessions.values():
+		if s.get("pc"): s.pc.close()
+	sessions.clear()
+	_guest_slot = 0
+	_ice_seen.clear()
+	_ice_seq = 0
+	_poll_acc = 0.0
+	_polling = false
+	active = false
+	set_process(false)
 
 
 func close_room() -> void:
