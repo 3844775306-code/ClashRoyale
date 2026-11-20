@@ -859,15 +859,8 @@ func ensure_local_save() -> Dictionary:
 	save_data()
 	if FileAccess.file_exists(normal):
 		return {"ok": true, "path": normal}
-	# 子目录不可写时退化为 user:// 根目录下的单文件账号存档
-	var fb := fallback_save_path(account_id)
-	account_save_path = fb
-	ensure_save_dir(fb)
-	save_data()
-	var ok := FileAccess.file_exists(fb)
-	if not ok:
-		last_save_error = "无法写入：%s" % fb
-	return {"ok": ok, "path": fb if ok else normal}
+	last_save_error = "无法写入账号目录：%s" % normal
+	return {"ok": false, "path": normal}
 
 func save_data():
 	var config := build_save_config()

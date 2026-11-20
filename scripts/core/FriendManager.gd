@@ -563,12 +563,35 @@ func _broadcast_presence(payload: String) -> void:
 			_send.put_packet(data)
 
 
+func _shared_root_for(scoped_id: int) -> String:
+	var am = get_node_or_null("/root/AccountManager")
+	if am and am.has_method("account_shared_dir"):
+		var d := String(am.account_shared_dir(scoped_id))
+		if d != "":
+			return d
+	return LOCAL_SHARED_DIR
+
 func _local_packet_dir() -> String:
-	return LOCAL_SHARED_DIR + "/friend_packets"
+	return _shared_root_for(int(ClanManager.get_player_id())) + "/friend_packets"
+
+func _ensure_dir(path: String) -> void:
+	if path.begins_with("user://"):
+		DirAccess.make_dir_recursive_absolute(ProjectSettings.globalize_path(path))
+	else:
+		DirAccess.make_dir_recursive_absolute(path)
+
+func _path_exists(path: String) -> bool:
+	return DirAccess.dir_exists_absolute(ProjectSettings.globalize_path(path)) if path.begins_with("user://") else DirAccess.dir_exists_absolute(path)
+
+func _remove_path(path: String) -> void:
+	if path.begins_with("user://"):
+		DirAccess.remove_absolute(ProjectSettings.globalize_path(path))
+	else:
+		DirAccess.remove_absolute(path)
 
 func _queue_local_packet(target_id: String, data: Dictionary) -> void:
-	var dir := _local_packet_dir()
-	DirAccess.make_dir_recursive_absolute(ProjectSettings.globalize_path(dir))
+	var dir := _shared_root_for(int(target_id)) + "/friend_packets"
+	_ensure_dir(dir)
 	var path := dir + "/%s_%d_%d.json" % [target_id, Time.get_ticks_usec(), randi() % 1000]
 	var f := FileAccess.open(path, FileAccess.WRITE)
 	if f:
@@ -577,7 +600,7 @@ func _queue_local_packet(target_id: String, data: Dictionary) -> void:
 
 func _drain_local_packets() -> void:
 	var dir := _local_packet_dir()
-	if not DirAccess.dir_exists_absolute(ProjectSettings.globalize_path(dir)):
+	if not _path_exists(dir):
 		return
 	var da := DirAccess.open(dir)
 	if da == null:
@@ -592,11 +615,11 @@ func _drain_local_packets() -> void:
 		var parsed = JSON.parse_string(f.get_as_text())
 		f.close()
 		if not (parsed is Dictionary):
-			DirAccess.remove_absolute(ProjectSettings.globalize_path(path))
+			_remove_path(path)
 			continue
 		var d: Dictionary = parsed
 		if String(d.get("target", "")) == str(ClanManager.get_player_id()):
-			DirAccess.remove_absolute(ProjectSettings.globalize_path(path))
+			_remove_path(path)
 			handle_friend_packet(d)
 
 func _process(delta: float) -> void:

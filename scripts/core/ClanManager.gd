@@ -160,11 +160,29 @@ func sync_my_inventory(callback: Callable = Callable()) -> void:
 const LOCAL_SHARED_DIR := "user://local_shared"
 
 func _local_gift_path(player_id: int) -> String:
+	var am = get_node_or_null("/root/AccountManager")
+	if am and am.has_method("account_shared_dir"):
+		var d := String(am.account_shared_dir(player_id))
+		if d != "":
+			return d + "/gifts.json"
 	return LOCAL_SHARED_DIR + "/gifts_%s.json" % player_id
 
+func _ensure_shared_dir(path: String) -> void:
+	var d := path.get_base_dir()
+	if d.begins_with("user://"):
+		DirAccess.make_dir_recursive_absolute(ProjectSettings.globalize_path(d))
+	else:
+		DirAccess.make_dir_recursive_absolute(d)
+
+func _remove_shared_file(path: String) -> void:
+	if path.begins_with("user://"):
+		_remove_shared_file(path)
+	else:
+		DirAccess.remove_absolute(path)
+
 func _queue_local_gift(to_player_id: int, card_id: int, amount: int, sender: String, gift_id: String) -> void:
-	DirAccess.make_dir_recursive_absolute(ProjectSettings.globalize_path(LOCAL_SHARED_DIR))
 	var path := _local_gift_path(to_player_id)
+	_ensure_shared_dir(path)
 	var arr: Array = []
 	if FileAccess.file_exists(path):
 		var rf := FileAccess.open(path, FileAccess.READ)
@@ -189,7 +207,7 @@ func _drain_local_gifts() -> Array:
 			if parsed is Array:
 				arr = parsed
 			rf.close()
-		DirAccess.remove_absolute(ProjectSettings.globalize_path(path))
+		_remove_shared_file(path)
 	return arr
 
 func _deliver_gift_mail(g: Dictionary) -> void:

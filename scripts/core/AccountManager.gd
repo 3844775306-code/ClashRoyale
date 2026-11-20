@@ -259,7 +259,7 @@ func _finish_login(email: String, username: String, from_recent: bool) -> Dictio
 	account_id = _user_id
 	if _user_id == "":
 		return {"ok": false, "error": "云端账号 ID 无效"}
-	var save_path := _data_path("saves/%s.cfg" % _user_id)
+	var save_path := _data_path("accounts/%s/player_data.cfg" % _user_id)
 	var abs_save := ProjectSettings.globalize_path(save_path)
 	var had_local := FileAccess.file_exists(save_path)
 	debug_log("FINISH_LOCAL_BEFORE", "path=%s abs=%s exists=%s" % [save_path, abs_save, str(had_local)])
@@ -595,6 +595,24 @@ func scoped_player_id() -> int:
 		if h > 0:
 			return h
 	return absi(account_id.hash())
+
+func scoped_id_for_account(uid: String) -> int:
+	var clean := uid.replace("-", "")
+	if clean.length() >= 12:
+		var h := clean.substr(0, 12).hex_to_int()
+		if h > 0:
+			return h
+	return absi(uid.hash())
+
+func account_shared_dir(scoped_id: int) -> String:
+	var cfg := _load_index()
+	for section in cfg.get_sections():
+		var uid := String(cfg.get_value(section, "user_id", ""))
+		if uid == "":
+			continue
+		if scoped_id_for_account(uid) == scoped_id:
+			return _data_path("accounts/%s/local_shared" % uid)
+	return ""
 
 func _local_saved_at() -> int:
 	var cfg := ConfigFile.new()
