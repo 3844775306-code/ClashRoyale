@@ -18,6 +18,7 @@ var _results: VBoxContainer
 var _friends_box: VBoxContainer
 var _requests_box: VBoxContainer
 var _nearby_box: VBoxContainer
+var _online_box: VBoxContainer
 var _status: Label
 var _font: Font
 var _online_lbl: Label
@@ -33,6 +34,8 @@ func _ready() -> void:
 	FriendManager.presence_changed.connect(_refresh_friends)
 	FriendManager.presence_changed.connect(_refresh_nearby)
 	FriendManager.requests_changed.connect(_refresh_all)
+	if PresenceManager and not PresenceManager.presence_changed.is_connected(_refresh_online_players):
+		PresenceManager.presence_changed.connect(_refresh_online_players)
 
 
 func _build() -> void:
@@ -148,7 +151,7 @@ func _build() -> void:
 	_requests_box.add_theme_constant_override("separation", 6)
 	content.add_child(_requests_box)
 
-	content.add_child(_section("我的好友", "绿点表示同局域网在线"))
+	content.add_child(_section("我的好友", "绿点表示在线"))
 	_friends_box = VBoxContainer.new()
 	_friends_box.add_theme_constant_override("separation", 6)
 	content.add_child(_friends_box)
@@ -157,6 +160,11 @@ func _build() -> void:
 	_nearby_box = VBoxContainer.new()
 	_nearby_box.add_theme_constant_override("separation", 6)
 	content.add_child(_nearby_box)
+
+	content.add_child(_section("在线玩家", "所有通过 Supabase 在线的玩家"))
+	_online_box = VBoxContainer.new()
+	_online_box.add_theme_constant_override("separation", 6)
+	content.add_child(_online_box)
 
 	# 底部
 	_status = _label("", 12, MUTED)
@@ -192,11 +200,24 @@ func _section(title: String, hint: String) -> Control:
 
 func _refresh_all() -> void:
 	_refresh_requests()
+	_refresh_online_players()
 	_refresh_friends()
 	_refresh_nearby()
 	if _search_edit != null and _search_edit.text.strip_edges() != "" and _results.get_child_count() > 0:
 		_on_search()
 
+
+func _refresh_online_players() -> void:
+	if _online_box == null:
+		return
+	for c in _online_box.get_children():
+		c.queue_free()
+	var players: Array = PresenceManager.online_players() if PresenceManager else []
+	if players.is_empty():
+		_online_box.add_child(_empty_row("暂无在线玩家", "玩家登录后会自动出现在这里"))
+		return
+	for p in players:
+		_online_box.add_child(_result_row(p))
 
 func _on_search() -> void:
 	var q := _search_edit.text.strip_edges()

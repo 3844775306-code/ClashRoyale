@@ -1,4 +1,5 @@
 extends Node
+signal presence_changed
 # Supabase 在线状态：定期心跳写入 presence:<scoped_id>，客户端定期拉取。
 # 在线判定：last_seen 与当前时间相差 <= ONLINE_WINDOW 秒。
 
@@ -87,6 +88,7 @@ func _pull() -> void:
 	_pulling = true
 	var rows: Array = await SupabaseAPI.list_prefix(PREFIX, 500)
 	var now := int(Time.get_unix_time_from_system())
+	var before := JSON.stringify(records)
 	for row in rows:
 		if not (row is Dictionary):
 			continue
@@ -102,7 +104,27 @@ func _pull() -> void:
 		else:
 			records[pid] = v
 	_pulling = false
+	if JSON.stringify(records) != before:
+		presence_changed.emit()
 
+
+func online_players() -> Array:
+	var out: Array = []
+	var me := _my_id()
+	for pid in records.keys():
+		if String(pid) == me:
+			continue
+		if not is_online(String(pid)):
+			continue
+		var v = records[pid]
+		if not (v is Dictionary):
+			continue
+		var p: Dictionary = v.duplicate(true)
+		p["player_id"] = String(pid)
+		p["name"] = String(v.get("name", "玩家"))
+		out.append(p)
+	out.sort_custom(func(a, b): return String(a.get("name", "")) < String(b.get("name", "")))
+	return out
 
 func is_known(pid: String) -> bool:
 	return records.has(pid)

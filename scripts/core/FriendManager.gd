@@ -30,6 +30,9 @@ var _invite_layer: CanvasLayer
 var _request_layer: CanvasLayer
 var _friends_updated_at: int = 0
 var _friends_cloud_pending := false
+var _req_acc := 0.0
+var _req_syncing := false
+const REQ_PREFIX := "friend_req:"
 
 
 func _ready() -> void:
@@ -47,6 +50,7 @@ func _on_session_changed() -> void:
 	load_friends()
 	if AccountManager.is_supabase_authenticated():
 		await _sync_friends_from_cloud()
+		await _sync_cloud_requests()
 
 
 func is_online(pid: String) -> bool:
@@ -297,15 +301,11 @@ func send_friend_request(profile: Dictionary) -> bool:
 		return false
 	outgoing_requests[pid] = p
 	save_friends()
-	var req_data := {
-		"type": "cr_friend_request", "target": pid,
-		"from_id": str(ClanManager.get_player_id()),
-		"from_profile": _self_profile(),
-		"ts": int(Time.get_unix_time_from_system()),
-	}
-	_broadcast_packet(req_data)
-	_queue_local_packet(pid, req_data)
-	_send_to_ip(String(online_peers.get(pid, {}).get("ip", "")), req_data)
+	_push_cloud_request({
+		"from": str(ClanManager.get_player_id()), "to": pid,
+		"from_profile": _self_profile(), "to_profile": p,
+		"status": "pending", "ts": now,
+	})
 	requests_changed.emit()
 	return true
 
@@ -318,15 +318,12 @@ func accept_request(pid: String) -> bool:
 	incoming_requests.erase(pid)
 	save_friends()
 	var me := _self_profile()
-	_accept_notices[pid] = {"profile": me, "expires": int(Time.get_unix_time_from_system()) + 60}
-	var accept_data := {
-		"type": "cr_friend_accept", "target": pid,
-		"from_id": str(ClanManager.get_player_id()),
-		"from_profile": me,
-		"ts": int(Time.get_unix_time_from_system()),
-	}
-	_broadcast_packet(accept_data)
-	_queue_local_packet(pid, accept_data)
+	var key := String(req.get("_key", _request_key(pid, str(ClanManager.get_player_id()))))
+	_push_cloud_request({
+		"from": pid, "to": str(ClanManager.get_player_id()),
+		"from_profile": Dictionary(req.get("profile", req)).duplicate(true), "to_profile": me,
+		"status": "accepted", "ts": int(Time.get_unix_time_from_system()),
+	})
 	requests_changed.emit()
 	return true
 
@@ -337,16 +334,68 @@ func reject_request(pid: String) -> bool:
 	incoming_requests.erase(pid)
 	_rejected[pid] = int(Time.get_unix_time_from_system())
 	save_friends()
-	var reject_data := {
-		"type": "cr_friend_reject", "target": pid,
-		"from_id": str(ClanManager.get_player_id()),
-		"ts": int(Time.get_unix_time_from_system()),
-	}
-	_broadcast_packet(reject_data)
-	_queue_local_packet(pid, reject_data)
+	var key := _request_key(pid, str(ClanManager.get_player_id()))
+	_push_cloud_request({
+		"from": pid, "to": str(ClanManager.get_player_id()),
+		"status": "rejected", "ts": int(Time.get_unix_time_from_system()),
+	})
 	requests_changed.emit()
 	return true
 
+
+func _request_key(from_id: String, to_id: String) -> String:
+	return REQ_PREFIX + from_id + ":" + to_id
+
+func _push_cloud_request(value: Dictionary) -> void:
+	if not AccountManager.is_supabase_authenticated():
+		return
+	await SupabaseAPI.upsert(_request_key(String(value.get("from", "")), String(value.get("to", ""))), value)
+
+func _sync_cloud_requests() -> void:
+	if _req_syncing or not AccountManager.is_supabase_authenticated():
+		return
+	_req_syncing = true
+	var rows: Array = await SupabaseAPI.list_prefix(REQ_PREFIX, 300)
+	var my_id := str(ClanManager.get_player_id())
+	var incoming: Dictionary = {}
+	var outgoing: Dictionary = {}
+	var changed := false
+	for row in rows:
+		if not (row is Dictionary):
+			continue
+		var v = row.get("value", {})
+		if not (v is Dictionary):
+			continue
+		var from_id := String(v.get("from", ""))
+		var to_id := String(v.get("to", ""))
+		var status := String(v.get("status", "pending"))
+		var key := String(row.get("key", _request_key(from_id, to_id)))
+		if to_id == my_id and from_id != my_id:
+			if status == "pending":
+				var prof: Dictionary = Dictionary(v.get("from_profile", {})).duplicate(true)
+				incoming[from_id] = {"id": from_id, "profile": prof, "_key": key}
+			elif status == "accepted":
+				if incoming_requests.has(from_id):
+					changed = true
+			if status == "rejected":
+				changed = true
+		elif from_id == my_id and to_id != my_id:
+			if status == "pending":
+				outgoing[to_id] = Dictionary(v.get("to_profile", {})).duplicate(true)
+			elif status == "accepted":
+				var prof2: Dictionary = Dictionary(v.get("to_profile", {})).duplicate(true)
+				if not prof2.is_empty():
+					_add_friend(prof2)
+					changed = true
+			elif status == "rejected":
+				changed = true
+	if JSON.stringify(incoming) != JSON.stringify(incoming_requests) or JSON.stringify(outgoing) != JSON.stringify(outgoing_requests):
+		changed = true
+	incoming_requests = incoming
+	outgoing_requests = outgoing
+	_req_syncing = false
+	if changed:
+		requests_changed.emit()
 
 func remove_friend(pid: String) -> void:
 	for i in range(friends.size() - 1, -1, -1):
@@ -677,6 +726,11 @@ func _drain_local_packets() -> void:
 			handle_friend_packet(d)
 
 func _process(delta: float) -> void:
+	_req_acc += delta
+	if _req_acc >= 6.0:
+		_req_acc = 0.0
+		if AccountManager.is_supabase_authenticated():
+			_sync_cloud_requests()
 	_drain_local_packets()
 	# 同局域网在线状态心跳
 	_presence_acc += delta
