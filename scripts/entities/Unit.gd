@@ -89,6 +89,7 @@ var accelerate: float = 1.0      # 冲锋修正
 var accumulate: float = 1.0      # 灼烧攻击修正
 var move_direction: Vector2 = Vector2.ZERO  # 朝向角度（2D平面）# 目标与攻击
 var target: Unit = null
+var _melee_contact_target: Unit = null
 var attack_cooldown: float = 0.0
 var spawn_cooldown: float = 0.0
 var last_lose_health_time: float = 0.0  # 建筑扣血计时# 国王塔激活系统
@@ -424,55 +425,68 @@ func _physics_process(delta):
 		if target and (target.health <= 0 or target.hid ==1 or (distance_to(target) > _vision_range() and not _keep_demolisher_tower)) :
 			# 目标死亡/丢失：保留当前攻击冷却，不重置（这里刻意不改 attack_cooldown）
 			target = null
+		if target and _incoming_damage(target) >= target.health:
+			# 已经被飞行中的子弹锁定击杀，视为即将死亡，不再浪费时间
+			target = null
 		if not target:
 			attacked_list = []
 			find_target(self)
 		if target:
 			var dist = distance_to(target)
-			if config.card_id == 108 and dist <= 1.0:
-				die()
-				return
-			if dist > config.attack_range or (config.card_id == 105 and _demolisher_charge_started):
-				if not follow:
-					if config.move_type >=5 :
-						var bridge_only: bool = _needs_bridge_crossing(target)
-						if bridge_only:
-							_move_towards(target.global_position, delta)
-						elif jump ==0 and _special_action_cd <= 0.0 and 3.5<=dist and dist<=config.move_type:
-							jump_timer = now
-							jump = config.move_type-4
-						elif jump > 0 and (now - jump_timer) >= 800*jump:
-							if jump < 3:
-								global_position = target.global_position*0.8+global_position*0.2
-							else:
-								if target.config.type == Config.UnitType.BUILDING:
+			# 近战被火球/推挤挪出攻击距离：重新选一次目标
+			if config.attack_range <= 1.5:
+				if _melee_contact_target == target and dist > config.attack_range + 0.20:
+					target = null
+					attacked_list = []
+					_melee_contact_target = null
+					find_target(self)
+				elif dist <= config.attack_range:
+					_melee_contact_target = target
+			if target == null:
+				_move_forward(delta)
+			else:
+				dist = distance_to(target)
+				if dist > config.attack_range or (config.card_id == 105 and _demolisher_charge_started):
+					if not follow:
+						if config.move_type >=5 :
+							var bridge_only: bool = _needs_bridge_crossing(target)
+							if bridge_only:
+								_move_towards(target.global_position, delta)
+							elif jump ==0 and _special_action_cd <= 0.0 and 3.5<=dist and dist<=config.move_type:
+								jump_timer = now
+								jump = config.move_type-4
+							elif jump > 0 and (now - jump_timer) >= 800*jump:
+								if jump < 3:
 									global_position = target.global_position*0.8+global_position*0.2
 								else:
-									target.global_position = target.global_position*0.2+global_position*0.8
-								target.slow_factor = 10
-								target.froze_timer = now
-							_separate_overlap()
-							_attack()
-							if jump < 3:
+									if target.config.type == Config.UnitType.BUILDING:
+										global_position = target.global_position*0.8+global_position*0.2
+									else:
+										target.global_position = target.global_position*0.2+global_position*0.8
+									target.slow_factor = 10
+									target.froze_timer = now
+								_separate_overlap()
 								_attack()
-							jump=0
-							_special_action_cd = 1.2
+								if jump < 3:
+									_attack()
+								jump=0
+								_special_action_cd = 1.2
+							else:
+								# 超级骑士等 move_type>=5 单位：超出跳跃距离时必须继续走，
+								# 否则会卡在 5 格外原地不动。
+								_move_towards(target.global_position, delta)
 						else:
-							# 超级骑士等 move_type>=5 单位：超出跳跃距离时必须继续走，
-							# 否则会卡在 5 格外原地不动。
 							_move_towards(target.global_position, delta)
 					else:
-						_move_towards(target.global_position, delta)
+						global_position = follow.global_position
 				else:
-					global_position = follow.global_position
-			else:
-				if config.damage > 0 and attack_cooldown <= 0:
-					_attack()
-				elif _is_charge_attacker() and accelerate >= 1.2 and config.damage > 0 and (now - _charge_attack_time) > 400.0:
-					# 冲锋单位：碰到目标立即攻击，不等冷却
-					_charge_attack_time = now
-					_charge_bypass = true
-					_attack()
+					if config.damage > 0 and attack_cooldown <= 0:
+						_attack()
+					elif _is_charge_attacker() and accelerate >= 1.2 and config.damage > 0 and (now - _charge_attack_time) > 400.0:
+						# 冲锋单位：碰到目标立即攻击，不等冷却
+						_charge_attack_time = now
+						_charge_bypass = true
+						_attack()
 		else:
 			if not follow:
 				_move_forward(delta)
@@ -964,6 +978,45 @@ func _vision_range() -> float:
 	return config.horizon
 
 
+func _incoming_damage(tgt) -> float:
+	if battle == null or tgt == null:
+		return 0.0
+	var total := 0.0
+	for b in battle.bullets.get_children():
+		if b == null or b.is_queued_for_deletion():
+			continue
+		if b.target == tgt and float(b.damage) > 0.0:
+			total += float(b.damage)
+	return total
+
+
+func _steer_around_buildings(desired: Vector2) -> Vector2:
+	if battle == null or config.type == Config.UnitType.AIR or desired.length() < 0.01:
+		return desired
+	var look := desired.normalized()
+	var steer := Vector2.ZERO
+	var origin := Vector2(global_position.x, global_position.z)
+	for u in battle.units.get_children():
+		if u == null or u == target or u.config == null:
+			continue
+		if u.config.type != Config.UnitType.BUILDING or u.health <= 0.0:
+			continue
+		var rel := Vector2(u.global_position.x - origin.x, u.global_position.z - origin.y)
+		var along := rel.dot(look)
+		if along <= 0.0 or along > 4.5:
+			continue
+		var lateral := absf(rel.x * look.y - rel.y * look.x)
+		var clearance: float = float(u.config.size) + float(config.size) + 0.55
+		if lateral >= clearance:
+			continue
+		var side: float = 1.0 if (rel.x * look.y - rel.y * look.x) >= 0.0 else -1.0
+		var perp := Vector2(-look.y, look.x) * side
+		steer += perp * ((clearance - lateral) / maxf(clearance, 0.01)) * 1.6
+	if steer.length() < 0.01:
+		return desired
+	return (look + steer).normalized()
+
+
 func find_target(origin):
 	accumulate = 1.0
 	var potential = []
@@ -993,6 +1046,8 @@ func find_target(origin):
 			Config.TargetType.BUILDING_ONLY:
 				if obj.config.type != Config.UnitType.BUILDING:
 					continue
+		if _incoming_damage(obj) >= obj.health:
+			continue
 		potential.append([obj, dist])
 	if potential.size() > 0:
 		potential.sort_custom(func(a, b): return a[1] < b[1])
@@ -1023,7 +1078,7 @@ func _move_towards(pos: Vector3, delta):
 	if battle != null and String(battle.win_condition) == "touchdown":
 		var tdir := Vector2(pos.x - global_position.x, pos.z - global_position.z)
 		if tdir.length() > 0.01:
-			move_direction = tdir.normalized()
+			move_direction = _steer_around_buildings(tdir)
 			var step0: float = speed * floor(accelerate) * delta / slow_factor
 			step0 *= 1.0 + quick * 0.01
 			step0 /= fix_factor
@@ -1050,7 +1105,7 @@ func _move_towards(pos: Vector3, delta):
 				target_pos = Vector3(bridge_x, global_position.y, Config.ARENA_ORIGIN.z + Config.ARENA_HEIGHT * 0.5 + 0.5)
 	var dir = Vector2(target_pos.x - global_position.x, target_pos.z - global_position.z)
 	if dir.length() > 0.01:
-		move_direction = dir.normalized()
+		move_direction = _steer_around_buildings(dir)
 		var step = speed * floor(accelerate) * delta
 		step /= slow_factor
 		step *= 1+quick*0.01
@@ -1705,9 +1760,12 @@ func _separate_overlap():
 			var effective_dist = dist_vec.length() - (config.size + area.config.size)
 			if effective_dist < 0:
 				# 体积越大越难被挤动（模型高度作为体型权重）
-				var self_h: float = visual_root.scale.y if visual_root else 1.0
-				var other_h: float = area.visual_root.scale.y if area.visual_root else 1.0
-				var push_ratio: float = other_h / maxf(self_h + other_h, 0.01)
+				# 质量与体型平方成正比：大单位更难被推动
+				var self_s: float = maxf(config.size, 0.1)
+				var other_s: float = maxf(area.config.size, 0.1)
+				var self_mass: float = self_s * self_s
+				var other_mass: float = other_s * other_s
+				var push_ratio: float = other_mass / maxf(self_mass + other_mass, 0.01)
 				var push = dist_vec.normalized() * (-effective_dist * push_ratio * 1.15)
 				var old_pos: Vector3 = global_position
 				global_position += Vector3(push.x, 0, push.z)

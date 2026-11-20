@@ -480,13 +480,16 @@ func _show_room_list() -> void:
 		info.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 		rh.add_child(info)
 		var join := UiComponents.make_primary_button("加入", Callable(), Vector2(82, 40))
+		var j_code := code
+		var j_transport := String(d.get("transport", ""))
+		var j_ip := String(d.get("ip", ""))
 		join.pressed.connect(func():
 			layer.queue_free()
-			if String(d.get("transport", "")) == "webrtc":
-				_webrtc_code_edit.text = code
+			if j_transport == "webrtc":
+				_webrtc_code_edit.text = j_code
 				_webrtc_join_pressed()
 			else:
-				NetworkManager.join_host(String(d.get("ip", "")), 24500, code))
+				NetworkManager.join_host(j_ip, 24500, j_code))
 		rh.add_child(join)
 		list.add_child(rp)
 	if count == 0:
