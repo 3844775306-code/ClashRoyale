@@ -50,6 +50,9 @@ func _on_session_changed() -> void:
 
 
 func is_online(pid: String) -> bool:
+	var pm = get_node_or_null("/root/PresenceManager")
+	if pm and pm.is_known(pid):
+		return pm.is_online(pid)
 	var p = online_peers.get(pid, null)
 	if not (p is Dictionary):
 		return false

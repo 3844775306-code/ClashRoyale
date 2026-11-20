@@ -60,7 +60,13 @@ func battle_setup() -> void:
 	var pid := String(profile.get("player_id", profile.get("id", "")))
 	var is_self := pid != "" and pid == str(ClanManager.get_player_id())
 	var online := FriendManager.is_online(pid) if pid != "" else false
-	info.add_child(_label("在线" if online else "离线", 12, Color(0.48, 1.0, 0.62) if online else Color(0.58, 0.66, 0.78)))
+	var pm = get_node_or_null("/root/PresenceManager")
+	if pm and pid != "":
+		online = pm.is_online(pid)
+	var status_text := "在线" if online else "离线"
+	if pm and pid != "" and not online:
+		status_text = pm.last_seen_text(pid)
+	info.add_child(_label(status_text, 12, Color(0.48, 1.0, 0.62) if online else Color(0.58, 0.66, 0.78)))
 	info.add_child(_label("ID %s" % (pid if pid != "" else "未知"), 12, ThemeHelper.COLORS.text_muted))
 	var role := String(profile.get("role", ""))
 	if role != "":

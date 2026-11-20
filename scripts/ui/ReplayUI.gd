@@ -185,12 +185,12 @@ func _load_replays():
 	var total: int = player_items.size() + self_items.size()
 	_info.text = "本机 %d 局 · 玩家 %d / AI自对弈 %d" % [total, player_items.size(), self_items.size()]
 	var head := Label.new()
-	head.text = "📁 本机回放（上）"
+	head.text = "本机回放（上）"
 	head.add_theme_font_size_override("font_size", 17)
 	head.add_theme_color_override("font_color", ThemeHelper.COLORS.gold)
 	_list_box.add_child(head)
 	if total == 0:
-		var empty := UiComponents.make_empty_state("🎞", "暂无本机录像", "完成一局对战或点击生成自对弈")
+		var empty := UiComponents.make_empty_state("录像", "暂无本机录像", "完成一局对战或点击生成自对弈")
 		empty.custom_minimum_size = Vector2(0, 180)
 		_list_box.add_child(empty)
 	else:
@@ -210,7 +210,7 @@ func _add_cloud_section() -> void:
 	_list_box.add_child(sep)
 	var head := HBoxContainer.new()
 	var title := Label.new()
-	title.text = "☁ 云端回放（下）"
+	title.text = "云端回放（下）"
 	title.add_theme_font_size_override("font_size", 17)
 	title.add_theme_color_override("font_color", Color(0.62, 0.86, 1.0))
 	title.size_flags_horizontal = Control.SIZE_EXPAND_FILL
@@ -358,12 +358,12 @@ func _make_replay_row(data: Dictionary, filename: String) -> Control:
 	title.add_theme_color_override("font_color", Color(0.55, 1.0, 0.62) if won == 0 else (Color(1.0, 0.55, 0.52) if won == 1 else Color(0.8, 0.75, 0.5)))
 	vb.add_child(title)
 	var line1 := Label.new()
-	line1.text = "🕒 %s   ⏱ %s   💾 %s" % [_fmt_time(String(meta.get("started_at", filename))), _fmt_duration(float(meta.get("duration", 0.0))), _fmt_size(_file_size("%s/%s" % [String(data.get("_source_dir", _replay_dir())), filename]))]
+	line1.text = "时间 %s   时长 %s   大小 %s" % [_fmt_time(String(meta.get("started_at", filename))), _fmt_duration(float(meta.get("duration", 0.0))), _fmt_size(_file_size("%s/%s" % [String(data.get("_source_dir", _replay_dir())), filename]))]
 	line1.add_theme_font_size_override("font_size", 11)
 	line1.add_theme_color_override("font_color", Color(0.76, 0.82, 0.92))
 	vb.add_child(line1)
 	var line2 := Label.new()
-	line2.text = "👥 %s" % _players_line(meta)
+	line2.text = "玩家 %s" % _players_line(meta)
 	line2.add_theme_font_size_override("font_size", 11)
 	line2.add_theme_color_override("font_color", Color(0.92, 0.86, 0.68))
 	line2.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
@@ -371,14 +371,14 @@ func _make_replay_row(data: Dictionary, filename: String) -> Control:
 	vb.add_child(line2)
 	var line3 := Label.new()
 	var act_n: int = Array(data.get("actions", [])).size()
-	line3.text = "⚔ %s   🎬 %d 手%s" % [String(meta.get("arena_name", "竞技场")), act_n, "   📌 已保存" if bool(data.get("permanent", false)) else ""]
+	line3.text = "模式 %s   出牌 %d 手%s" % [String(meta.get("arena_name", "竞技场")), act_n, "   已保存" if bool(data.get("permanent", false)) else ""]
 	line3.add_theme_font_size_override("font_size", 10)
 	line3.add_theme_color_override("font_color", ThemeHelper.COLORS.text_muted)
 	vb.add_child(line3)
 	var btn_box := HBoxContainer.new()
 	btn_box.add_theme_constant_override("separation", 4)
 	hbox.add_child(btn_box)
-	var play := UiComponents.make_primary_button("▶", func(): _open_replay(data), Vector2(52, 38))
+	var play := UiComponents.make_primary_button("播放", func(): _open_replay(data), Vector2(52, 38))
 	btn_box.add_child(play)
 	var perm := UiComponents.make_secondary_button("保存" if not bool(data.get("permanent", false)) else "已存", func(): _toggle_permanent(filename, data), Vector2(58, 36))
 	perm.add_theme_font_size_override("font_size", 11)
@@ -419,7 +419,7 @@ func _make_cloud_row(key: String, v: Dictionary) -> Control:
 	t.add_theme_color_override("font_color", Color(0.72, 0.9, 1.0))
 	vb.add_child(t)
 	var sub := Label.new()
-	sub.text = "🕒 %s   ⏱ %s   💾 %s   👥 %s" % [_fmt_time(String(meta.get("started_at", ""))), _fmt_duration(float(meta.get("duration", 0.0))), _fmt_size(int(v.get("size", 0))), _players_line(meta)]
+	sub.text = "时间 %s   时长 %s   大小 %s   玩家 %s" % [_fmt_time(String(meta.get("started_at", ""))), _fmt_duration(float(meta.get("duration", 0.0))), _fmt_size(int(v.get("size", 0))), _players_line(meta)]
 	sub.add_theme_font_size_override("font_size", 10)
 	sub.add_theme_color_override("font_color", ThemeHelper.COLORS.text_muted)
 	sub.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
@@ -427,7 +427,7 @@ func _make_cloud_row(key: String, v: Dictionary) -> Control:
 	var btn := HBoxContainer.new()
 	btn.add_theme_constant_override("separation", 4)
 	hbox.add_child(btn)
-	var play := UiComponents.make_primary_button("▶", func(): _open_replay(v.get("data", {})), Vector2(50, 36))
+	var play := UiComponents.make_primary_button("播放", func(): _open_replay(v.get("data", {})), Vector2(50, 36))
 	btn.add_child(play)
 	var dl := UiComponents.make_secondary_button("下载", func(): _download_cloud(key, v), Vector2(58, 36))
 	dl.add_theme_font_size_override("font_size", 11)
@@ -584,12 +584,12 @@ func _open_replay(data: Dictionary):
 	_build_hands(meta)
 	_build_controls(meta)
 	_playing = true
-	_play_btn.text = "⏸ 暂停"
+	_play_btn.text = "暂停"
 	var seek_env := OS.get_environment("CR_REPLAY_SEEK")
 	if seek_env != "" and _snapshot_mode:
 		_play_t = clampf(float(seek_env), 0.0, _duration)
 		_playing = false
-		_play_btn.text = "▶ 播放"
+		_play_btn.text = "播放"
 		_apply_snapshot_at(_play_t)
 	var seek2 := OS.get_environment("CR_REPLAY_SEEK2")
 	if seek2 != "" and _snapshot_mode:
@@ -772,7 +772,7 @@ func _build_controls(meta: Dictionary):
 	_time_lbl.add_theme_color_override("font_color", Color(0.9, 0.9, 1.0))
 	_time_lbl.z_index = 7
 	_viewer.add_child(_time_lbl)
-	_play_btn = UiComponents.make_primary_button("⏸ 暂停", _toggle_play, Vector2(150, 50))
+	_play_btn = UiComponents.make_primary_button("暂停", _toggle_play, Vector2(150, 50))
 	_play_btn.position = Vector2(150, 1348)
 	_play_btn.z_index = 8
 	_viewer.add_child(_play_btn)
@@ -799,7 +799,7 @@ func _toggle_play():
 	_playing = not _playing
 	if not _snapshot_mode:
 		_battle.process_mode = Node.PROCESS_MODE_INHERIT if _playing else Node.PROCESS_MODE_DISABLED
-	_play_btn.text = "⏸ 暂停" if _playing else "▶ 播放"
+	_play_btn.text = "暂停" if _playing else "播放"
 
 func _restart():
 	_close_viewer()
@@ -810,7 +810,7 @@ func _on_scrub(v: float):
 		return
 	_play_t = clampf(v, 0.0, _duration)
 	_playing = false
-	_play_btn.text = "▶ 播放"
+	_play_btn.text = "播放"
 	_seeking = true
 	_next_emote = 0
 	for ch in _emote_layer.get_children():
@@ -886,7 +886,7 @@ func _process(_delta):
 	if _battle.game_over or now >= _duration:
 		_ended = true
 		_playing = false
-		_play_btn.text = "▶ 重播"
+		_play_btn.text = "重播"
 		_progress.set_value_no_signal(minf(_duration, now))
 		_battle.process_mode = Node.PROCESS_MODE_DISABLED
 
@@ -896,7 +896,7 @@ func _process_snapshot(delta: float) -> void:
 		_play_t = _duration
 		_playing = false
 		_ended = true
-		_play_btn.text = "▶ 重播"
+		_play_btn.text = "重播"
 	_apply_snapshot_at(_play_t)
 
 func _apply_snapshot_at(t: float) -> void:
