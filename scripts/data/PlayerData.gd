@@ -443,6 +443,21 @@ func upgrade_card(card_id: int) -> bool:
 	return true
 
 # --- 卡牌升级费用（展示用） ---
+func get_upgradeable_card_count() -> int:
+	var n := 0
+	for key in card_quantities.keys():
+		var cid: int = int(key)
+		if not is_card_owned(cid):
+			continue
+		var lv: int = get_card_level(cid)
+		if lv >= Config.LEVEL_MAX:
+			continue
+		var cost_gold: int = calculate_upgrade_gold(cid, lv)
+		var need_cards: int = calculate_upgrade_cards_needed(cid, lv)
+		if cost_gold > 0 and need_cards > 0 and gold >= cost_gold and get_card_quantity(cid) >= need_cards:
+			n += 1
+	return n
+
 func calculate_upgrade_gold(card_id: int, level: int) -> int:
 	return CARD_RARITY.gold_needed_by_id(card_id, level + 1)
 

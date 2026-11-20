@@ -756,6 +756,8 @@ func _pending_count_for(title: String) -> int:
 			return PlayerData.chests.size()
 		"收藏":
 			return PlayerData.get_collection_reward_pending_count() + PlayerData.get_mastery_claimable_count()
+		"卡组配置":
+			return PlayerData.get_upgradeable_card_count()
 	return 0
 
 func _add_count_badge(tile: Control, count: int, pos: Vector2, is_chest: bool = false, is_mail: bool = false) -> void:

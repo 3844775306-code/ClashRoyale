@@ -34,8 +34,14 @@ func _ready():
 	_root.add_child(bg)
 
 	_panel = Panel.new()
-	_panel.position = Vector2(100, 570)
-	_panel.size = Vector2(600, 460)
+	_panel.anchor_left = 0.5
+	_panel.anchor_right = 0.5
+	_panel.anchor_top = 0.5
+	_panel.anchor_bottom = 0.5
+	_panel.offset_left = -300
+	_panel.offset_right = 300
+	_panel.offset_top = -230
+	_panel.offset_bottom = 230
 	var sb := StyleBoxFlat.new()
 	sb.bg_color = Color(0.055, 0.075, 0.15, 0.97)
 	sb.border_color = Color(0.95, 0.76, 0.34, 0.9)
@@ -97,7 +103,7 @@ func show_loading(text: String = "加载中…") -> void:
 	_visible = true
 	_t = 0.0
 	_panel.scale = Vector2(0.92, 0.92)
-	_panel.pivot_offset = _panel.size * 0.5
+	_panel.pivot_offset = Vector2(300, 230)
 	var tw := create_tween()
 	tw.tween_property(_panel, "scale", Vector2.ONE, 0.22).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
 	set_process(true)
@@ -114,7 +120,8 @@ func _process(delta):
 	_t += delta
 	var n := int(_t * 2.6) % 4
 	_dots.text = ".".repeat(n)
-	_panel.position.y = 570.0 + sin(_t * 1.4) * 3.0
+	_panel.offset_top = -230 + sin(_t * 1.4) * 3.0
+	_panel.offset_bottom = 230 + sin(_t * 1.4) * 3.0
 
 func change_scene(path: String, text: String = "加载中…") -> void:
 	show_loading(text)

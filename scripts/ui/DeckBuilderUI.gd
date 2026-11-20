@@ -652,6 +652,7 @@ func _on_upgrade(cid: int):
 		_render_table()
 		_apply_sort()
 		_update_top_info()
+		UiComponents.refresh_topbar()
 		_show_upgrade_animation(cid, old_lv, new_lv)
 	else:
 		_set_status("升级失败：金币或卡牌不足")

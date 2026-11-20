@@ -18,9 +18,15 @@ static func play(host: Control, title: String, subtitle: String, reward: Diction
 	dim.color = Color(0, 0, 0, 0.55)
 	overlay.add_child(dim)
 	var panel := Panel.new()
-	panel.position = Vector2(190, 610)
-	panel.size = Vector2(420, 380)
-	panel.pivot_offset = panel.size * 0.5
+	panel.anchor_left = 0.5
+	panel.anchor_right = 0.5
+	panel.anchor_top = 0.5
+	panel.anchor_bottom = 0.5
+	panel.offset_left = -210
+	panel.offset_right = 210
+	panel.offset_top = -190
+	panel.offset_bottom = 190
+	panel.pivot_offset = Vector2(210, 190)
 	var sb := StyleBoxFlat.new()
 	sb.bg_color = Color(0.10, 0.10, 0.18, 0.98)
 	sb.border_color = Color(1.0, 0.78, 0.28, 0.95)

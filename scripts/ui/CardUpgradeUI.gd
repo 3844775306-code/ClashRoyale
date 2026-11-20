@@ -1,6 +1,7 @@
 # scripts/ui/CardUpgradeUI.gd
 # 卡牌升级界面：等级徽章 + 稀有度色 + 升级进度条 + 花费 + 升级按钮
 extends Control
+const CLAIM_ANIM = preload("res://scripts/ui/ClaimAnimation.gd")
 
 const MAX_LEVEL := 16   # 与 Config.LEVEL_MAX 一致
 
@@ -406,8 +407,14 @@ func _get_card_config(card_id: int) -> CardData:
 
 
 func _on_upgrade_pressed(card_id: int):
+	var old_lv := PlayerData.get_card_level(card_id)
 	if PlayerData.upgrade_card(card_id):
+		var new_lv := PlayerData.get_card_level(card_id)
 		_refresh_ui()
+		UiComponents.refresh_topbar()
+		CLAIM_ANIM.play(self, "升级成功", "卡牌等级 Lv.%d → Lv.%d" % [old_lv, new_lv], {
+			"kind": "card", "card_id": card_id, "card_name": "卡牌", "amount": 1,
+		})
 
 
 func _on_return_pressed():
