@@ -46,6 +46,7 @@ var my_clan_data: Dictionary = {}
 var current_chat: Array = []
 var _last_search_clans: Array = []
 var _pending_chat: Array = []
+var _chat_initial_scrolled: bool = false
 var _poll_timer: Timer
 var _polling: bool = false
 
@@ -507,8 +508,13 @@ func _on_chat_history(success, chat) -> void:
 	if not is_inside_tree():
 		return
 	if success and chat is Array:
-		current_chat = _merge_pending_chat(chat)
-		_update_chat_display()
+		var merged: Array = _merge_pending_chat(chat)
+		var changed: bool = merged != current_chat
+		current_chat = merged
+		if changed:
+			_update_chat_display()
+		# 打开部落即视为已读；主菜单红点随之清除
+		ClanManager.mark_chat_read(my_clan_data)
 
 
 func _refresh_members():
@@ -625,12 +631,25 @@ func _role_text(role: String) -> String:
 # ==================== 聊天 ====================
 
 func _update_chat_display():
+	var sc = get_meta("chat_scroll", null)
+	var old_scroll: int = 0
+	var was_bottom: bool = true
+	if sc is ScrollContainer:
+		old_scroll = int(sc.scroll_vertical)
+		was_bottom = old_scroll >= int(sc.get_v_scroll_bar().max_value) - 4
 	for child in chat_list.get_children():
 		child.queue_free()
 	var ordered: Array = current_chat.duplicate()
 	ordered.sort_custom(func(a, b): return float(a.get("timestamp", 0.0)) < float(b.get("timestamp", 0.0)))
 	for msg in ordered:
 		chat_list.add_child(_create_chat_node(msg))
+	if not _chat_initial_scrolled and not ordered.is_empty():
+		_chat_initial_scrolled = true
+		_scroll_chat_to_latest()
+	elif was_bottom:
+		_scroll_chat_to_latest()
+	elif old_scroll > 0 and sc is ScrollContainer:
+		_restore_chat_scroll(old_scroll)
 
 func _merge_pending_chat(server_chat: Array) -> Array:
 	var merged: Array = server_chat.duplicate()
@@ -660,6 +679,32 @@ func _card_name_for_id(card_id: int) -> String:
 		bm.load_card_configs()
 	var cfg = bm.get_config(card_id) if bm else null
 	return String(cfg.card_name) if cfg else "卡牌"
+
+func _restore_chat_scroll(value: int) -> void:
+	var sc = get_meta("chat_scroll", null)
+	if not (sc is ScrollContainer):
+		return
+	await get_tree().process_frame
+	if not is_inside_tree() or not is_instance_valid(sc):
+		return
+	sc.scroll_vertical = value
+
+
+func _scroll_chat_to_latest() -> void:
+	var sc = get_meta("chat_scroll", null)
+	if not (sc is ScrollContainer):
+		return
+	await get_tree().process_frame
+	await get_tree().process_frame
+	await get_tree().create_timer(0.12).timeout
+	if not is_inside_tree() or not is_instance_valid(sc):
+		return
+	sc.scroll_vertical = 1000000
+	# 文字自动换行会让内容高度在随后几帧才稳定，再补一次滚动到底
+	await get_tree().create_timer(0.25).timeout
+	if is_inside_tree() and is_instance_valid(sc):
+		sc.scroll_vertical = 1000000
+
 
 func _create_chat_node(msg: Dictionary) -> Control:
 	var sender_name := String(msg.get("player_name", "玩家"))

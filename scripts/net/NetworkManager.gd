@@ -50,6 +50,8 @@ var ready_peers: Dictionary = {}
 var clients_all_ready: bool = false
 var _required_peers: Array = []
 var _pending_code: String = ""
+var webrtc_mode: bool = false
+var _webrtc_sender: int = 0
 
 # 兼容旧 1V1 字段
 var guest_peer_id: int = 0
@@ -63,7 +65,33 @@ func _ready():
 	multiplayer.server_disconnected.connect(_on_server_disconnected)
 	multiplayer.peer_connected.connect(_on_peer_connected)
 	multiplayer.peer_disconnected.connect(_on_peer_disconnected)
+	WebRTCNet.message_received.connect(_on_webrtc_message)
+	WebRTCNet.connected.connect(_on_webrtc_connected)
+	WebRTCNet.failed.connect(func(reason): lobby_status.emit(reason))
 	set_process(false)
+
+func _sender_id() -> int:
+	return _webrtc_sender if webrtc_mode else _sender_id()
+
+func _rpc_send(peer: int, method: String, args: Array) -> void:
+	if webrtc_mode:
+		if peer == 0:
+			WebRTCNet.broadcast_message(method, args)
+		else:
+			WebRTCNet.send_message(method, args, peer)
+	else:
+		callv("rpc_id", [peer, method] + args)
+
+func _on_webrtc_message(method: String, args: Array, sender_id: int) -> void:
+	_webrtc_sender = sender_id
+	callv(method, args)
+	_webrtc_sender = 0
+
+func _on_webrtc_connected(peer_id: int) -> void:
+	if role == Role.HOST:
+		_on_peer_connected(peer_id)
+	elif role == Role.GUEST:
+		_on_connected_to_server()
 
 func get_local_ip() -> String:
 	for addr in IP.get_local_addresses():
@@ -159,7 +187,7 @@ func _broadcast_seats() -> void:
 	var data := _seat_public()
 	for pid in players.keys():
 		if pid != 1:
-			rpc_id(pid, "room_seats", data, room_code, mode_name(), party_rule, BATTLE_MODES.custom_config() if party_rule == "custom" else {})
+			_rpc_send(pid, "room_seats", [data, room_code, mode_name(), party_rule, BATTLE_MODES.custom_config() if party_rule == "custom" else {}])
 	lobby_status.emit("席位已更新：%s" % mode_name())
 
 @rpc("authority", "call_remote", "reliable")
@@ -176,13 +204,13 @@ func room_seats(data: Array, code: String, mode: String, rule: String = "standar
 	lobby_status.emit("房间 %s · %s" % [room_code, room_mode])
 
 func claim_seat(team: int, idx: int) -> void:
-	rpc_id(1, "request_claim_seat", team, idx)
+	_rpc_send(1, "request_claim_seat", [team, idx])
 
 @rpc("any_peer", "call_remote", "reliable")
 func request_claim_seat(team: int, idx: int) -> void:
 	if role != Role.HOST:
 		return
-	var pid := multiplayer.get_remote_sender_id()
+	var pid := _sender_id()
 	if not players.has(pid):
 		return
 	var target: Dictionary = {}
@@ -214,7 +242,7 @@ func remove_seat(team: int, idx: int) -> bool:
 	var target: Dictionary = team_seats[idx]
 	var pid := int(target.get("peer", 0))
 	if pid > 1:
-		rpc_id(pid, "you_are_kicked")
+		_rpc_send(pid, "you_are_kicked", [])
 		players.erase(pid)
 		if peer:
 			peer.disconnect_peer(pid)
@@ -232,7 +260,7 @@ func remove_seat(team: int, idx: int) -> bool:
 func destroy_room() -> void:
 	if role != Role.HOST:
 		return
-	rpc("room_destroyed")
+	_rpc_send(0, "room_destroyed", [])
 	reset_net()
 	lobby_status.emit("房间已销毁")
 	room_closed.emit()
@@ -293,7 +321,7 @@ func submit_local_draft_deck(deck: Array) -> void:
 	else:
 		if OS.get_environment("CR_MODE_DEBUG") != "":
 			print("[DraftNet] guest submit deck=", str(d))
-		rpc_id(1, "submit_network_draft_deck", d)
+		_rpc_send(1, "submit_network_draft_deck", [d])
 
 
 func submit_local_swap_draft(picks: Array, rejects: Array) -> void:
@@ -314,14 +342,14 @@ func submit_local_swap_draft(picks: Array, rejects: Array) -> void:
 	else:
 		if OS.get_environment("CR_MODE_DEBUG") != "":
 			print("[DraftNet] guest swap picks=", str(p), " rejects=", str(r))
-		rpc_id(1, "submit_network_swap_draft", p, r)
+		_rpc_send(1, "submit_network_swap_draft", [p, r])
 
 
 @rpc("any_peer", "call_remote", "reliable")
 func submit_network_swap_draft(picks: Array, rejects: Array) -> void:
 	if role != Role.HOST:
 		return
-	var pid := multiplayer.get_remote_sender_id()
+	var pid := _sender_id()
 	var p: Array = []
 	for cid in picks:
 		if p.size() < 4:
@@ -376,7 +404,7 @@ func _build_network_swap_decks() -> void:
 func submit_network_draft_deck(deck: Array) -> void:
 	if role != Role.HOST:
 		return
-	var pid := multiplayer.get_remote_sender_id()
+	var pid := _sender_id()
 	var d: Array = []
 	for cid in deck:
 		if d.size() < 8:
@@ -417,7 +445,7 @@ func _check_network_draft() -> void:
 				return
 	if OS.get_environment("CR_MODE_DEBUG") != "":
 		print("[DraftNet] all ready, begin")
-	rpc("network_draft_begin")
+	_rpc_send(0, "network_draft_begin", [])
 	network_draft_started.emit()
 
 
@@ -428,7 +456,7 @@ func network_draft_begin() -> void:
 
 func send_touchdown_break(round_no: int, score_a: int, score_b: int) -> void:
 	if role == Role.HOST:
-		rpc("touchdown_break", round_no, score_a, score_b)
+		_rpc_send(0, "touchdown_break", [round_no, score_a, score_b])
 
 
 @rpc("authority", "call_remote", "reliable")
@@ -438,7 +466,7 @@ func touchdown_break(round_no: int, score_a: int, score_b: int) -> void:
 
 func send_touchdown_break_end() -> void:
 	if role == Role.HOST:
-		rpc("touchdown_break_end")
+		_rpc_send(0, "touchdown_break_end", [])
 
 
 @rpc("authority", "call_remote", "reliable")
@@ -481,7 +509,7 @@ func start_match() -> void:
 		var info := base.duplicate(true)
 		info["local_slot"] = st * 2 + si
 		info["local_team"] = st
-		rpc_id(pid, "match_start", info)
+		_rpc_send(pid, "match_start", [info])
 	match_info = base.duplicate(true)
 	match_info["local_slot"] = 0
 	match_info["local_team"] = 0
@@ -496,9 +524,9 @@ func start_match() -> void:
 func request_join(code: String, deck: Array, levels: Dictionary, pname: String, tower_choice: int = 1, avatar_seed: int = 0, avatar_index: int = 0) -> void:
 	if role != Role.HOST:
 		return
-	var pid := multiplayer.get_remote_sender_id()
+	var pid := _sender_id()
 	if code.strip_edges() != room_code:
-		rpc_id(pid, "join_rejected", "房间码错误")
+		_rpc_send(pid, "join_rejected", ["房间码错误"])
 		return
 	if not players.has(pid):
 		var d: Array = []
@@ -510,7 +538,7 @@ func request_join(code: String, deck: Array, levels: Dictionary, pname: String, 
 			guest_name = pname
 			guest_deck = d.duplicate()
 			guest_levels = levels.duplicate(true)
-	rpc_id(pid, "join_accepted", room_code, mode_name())
+	_rpc_send(pid, "join_accepted", [room_code, mode_name()])
 	_broadcast_seats()
 	seats_changed.emit()
 	lobby_status.emit("%s 已进入房间（%d 人）" % [pname, players.size()])
@@ -541,7 +569,7 @@ func match_start(info: Dictionary) -> void:
 func net_deploy_request(card_id: int, x: float, z: float) -> void:
 	if role != Role.HOST:
 		return
-	var pid := multiplayer.get_remote_sender_id()
+	var pid := _sender_id()
 	if not players.has(pid):
 		return
 	var slot := -1
@@ -555,7 +583,7 @@ func net_deploy_request(card_id: int, x: float, z: float) -> void:
 	if b and b.has_method("network_remote_deploy_slot"):
 		var reason: String = b.network_remote_deploy_slot(slot, card_id, x, z)
 		if reason != "":
-			rpc_id(pid, "net_deploy_rejected", reason)
+			_rpc_send(pid, "net_deploy_rejected", [reason])
 
 @rpc("authority", "call_remote", "reliable")
 func net_deploy_rejected(reason: String) -> void:
@@ -574,13 +602,13 @@ func all_clients_ready() -> bool:
 
 func client_ready() -> void:
 	if role == Role.GUEST:
-		rpc_id(1, "net_client_ready")
+		_rpc_send(1, "net_client_ready", [])
 
 @rpc("any_peer", "call_remote", "reliable")
 func net_client_ready() -> void:
 	if role != Role.HOST:
 		return
-	ready_peers[multiplayer.get_remote_sender_id()] = true
+	ready_peers[_sender_id()] = true
 	var all_ok := true
 	for pid in _required_peers:
 		if not ready_peers.has(pid):
@@ -592,7 +620,7 @@ func net_client_ready() -> void:
 
 func request_deploy(card_id: int, x: float, z: float) -> void:
 	if role == Role.GUEST and peer:
-		rpc_id(1, "net_deploy_request", card_id, x, z)
+		_rpc_send(1, "net_deploy_request", [card_id, x, z])
 
 func _guest_pids() -> Array:
 	var out: Array = []
@@ -605,7 +633,7 @@ func send_snapshot(snap: Dictionary) -> void:
 	if role == Role.HOST and peer:
 		var data := var_to_bytes(snap)
 		for pid in _guest_pids():
-			rpc_id(pid, "net_snapshot", data)
+			_rpc_send(pid, "net_snapshot", [data])
 
 @rpc("authority", "call_remote", "reliable")
 func net_snapshot(data: PackedByteArray) -> void:
@@ -621,24 +649,24 @@ func net_emote(id: String, team: int) -> void:
 		if b and b.hud:
 			b.hud.show_emote(id, team)
 		for pid in _guest_pids():
-			rpc_id(pid, "net_emote", id, team)
+			_rpc_send(pid, "net_emote", [id, team])
 	else:
 		emote_received.emit(id, team)
 
 func send_emote(id: String, team: int) -> void:
 	if role == Role.GUEST:
-		rpc_id(1, "net_emote", id, team)
+		_rpc_send(1, "net_emote", [id, team])
 
 func broadcast_emote(id: String, team: int) -> void:
 	if role == Role.HOST:
 		for pid in _guest_pids():
-			rpc_id(pid, "net_emote", id, team)
+			_rpc_send(pid, "net_emote", [id, team])
 
 func send_entry_start() -> void:
 	if role != Role.HOST:
 		return
 	for pid in _guest_pids():
-		rpc_id(pid, "net_entry_start")
+		_rpc_send(pid, "net_entry_start", [])
 
 @rpc("authority", "call_remote", "reliable")
 func net_entry_start() -> void:
@@ -648,7 +676,7 @@ func send_countdown(seconds: float) -> void:
 	if role != Role.HOST:
 		return
 	for pid in _guest_pids():
-		rpc_id(pid, "net_countdown", seconds)
+		_rpc_send(pid, "net_countdown", [seconds])
 
 @rpc("authority", "call_remote", "reliable")
 func net_countdown(seconds: float) -> void:
@@ -658,7 +686,7 @@ func send_match_end(winner: int, crowns: Array, duration: float = 0.0, extra: Di
 	if role != Role.HOST:
 		return
 	for pid in _guest_pids():
-		rpc_id(pid, "net_match_end", winner, crowns, duration, extra)
+		_rpc_send(pid, "net_match_end", [winner, crowns, duration, extra])
 
 @rpc("authority", "call_remote", "reliable")
 func net_match_end(winner: int, crowns: Array, duration: float = 0.0, extra: Dictionary = {}) -> void:
@@ -676,7 +704,7 @@ func _on_connected_to_server():
 	for cid in deck:
 		levels[str(int(cid))] = PlayerData.get_card_level(int(cid))
 	print("NET guest connected, request join")
-	rpc_id(1, "request_join", _pending_code, deck, levels, PlayerData.player_name, PlayerData.tower_choice, PlayerData.avatar_seed, PlayerData.avatar_index)
+	_rpc_send(1, "request_join", [_pending_code, deck, levels, PlayerData.player_name, PlayerData.tower_choice, PlayerData.avatar_seed, PlayerData.avatar_index])
 	lobby_status.emit("已连接，正在加入房间…")
 
 func _on_connection_failed():
@@ -715,7 +743,45 @@ func _on_peer_disconnected(pid: int):
 				# 找到断线玩家原席位对应的全局 slot
 				pass
 
+func start_host_webrtc() -> bool:
+	reset_net()
+	webrtc_mode = true
+	role = Role.HOST
+	room_code = WebRTCNet.room_code
+	room_mode = "1v1"
+	host_deck = PlayerData.get_active_deck().duplicate()
+	host_levels = {}
+	for cid in host_deck:
+		host_levels[str(int(cid))] = PlayerData.get_card_level(int(cid))
+	players.clear()
+	players[1] = {"name": PlayerData.player_name, "deck": host_deck, "levels": host_levels, "seated": true, "tower_choice": PlayerData.tower_choice, "avatar_seed": PlayerData.avatar_seed, "avatar_index": PlayerData.avatar_index}
+	seats.clear()
+	seats.append({"team": 0, "idx": 0, "peer": 1, "name": PlayerData.player_name, "ai": false, "deck": host_deck, "levels": host_levels, "tower_choice": PlayerData.tower_choice, "avatar_seed": PlayerData.avatar_seed, "avatar_index": PlayerData.avatar_index})
+	var ai_nm := _random_ai_name()
+	seats.append({"team": 1, "idx": 0, "peer": 0, "name": ai_nm, "ai": true, "deck": PlayerData.get_ai_default_deck(), "levels": {}, "tower_choice": 1, "avatar_seed": absi(hash(ai_nm)), "avatar_index": randi() % 12, "trophies": 1200})
+	local_seat_team = 0
+	local_seat_idx = 0
+	local_slot = 0
+	set_process(true)
+	lobby_status.emit("WebRTC 房间已创建：%s" % room_code)
+	return true
+
+func join_host_webrtc() -> bool:
+	reset_net()
+	webrtc_mode = true
+	role = Role.GUEST
+	room_code = WebRTCNet.room_code
+	_pending_code = room_code
+	set_process(true)
+	lobby_status.emit("正在加入 WebRTC 房间 %s…" % room_code)
+	if WebRTCNet.is_room_connected():
+		call_deferred("_on_connected_to_server")
+	return true
+
 func reset_net():
+	if webrtc_mode:
+		WebRTCNet.close_room()
+		webrtc_mode = false
 	if peer:
 		peer.close()
 	peer = null

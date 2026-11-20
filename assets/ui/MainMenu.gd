@@ -34,6 +34,11 @@ var _mail_btn: Button
 var _mail_badge: Panel
 var _mail_count_lbl: Label
 var _mail_timer: Timer
+var _clan_tile: Button = null
+var _clan_badge: Panel = null
+var _clan_count_lbl: Label = null
+var _clan_timer: Timer
+var _clan_unread_req := false
 var _intro_instance: Control = null
 var _intro_finished: bool = false
 
@@ -744,9 +749,47 @@ func _build_menu_grid() -> void:
 		grid.add_child(tile)
 		if String(e.title) == "宝箱":
 			_chest_tile = tile
+		if String(e.title) == "部落":
+			_clan_tile = tile
 		var pending := _pending_count_for(String(e.title))
 		if pending > 0:
 			_add_count_badge(tile, pending, Vector2(292, 6), String(e.title) == "宝箱")
+	# 部落未读消息：主菜单红点数字
+	_clan_timer = Timer.new()
+	_clan_timer.wait_time = 10.0
+	_clan_timer.one_shot = false
+	_clan_timer.timeout.connect(_poll_clan_unread)
+	add_child(_clan_timer)
+	_clan_timer.start()
+	call_deferred("_poll_clan_unread")
+
+func _poll_clan_unread() -> void:
+	if not is_inside_tree() or _clan_tile == null or _clan_unread_req:
+		return
+	_clan_unread_req = true
+	ClanManager.get_unread_chat_count(Callable(self, "_on_clan_unread_loaded"))
+
+
+func _on_clan_unread_loaded(n: int) -> void:
+	_clan_unread_req = false
+	if is_inside_tree():
+		_set_clan_unread(int(n))
+
+
+func _set_clan_unread(n: int) -> void:
+	if _clan_tile == null:
+		return
+	if n <= 0:
+		if _clan_badge:
+			_clan_badge.visible = false
+		return
+	if _clan_badge == null or not is_instance_valid(_clan_badge):
+		_add_count_badge(_clan_tile, n, Vector2(292, 6), false, false, true)
+	if _clan_badge:
+		_clan_badge.visible = true
+	if _clan_count_lbl:
+		_clan_count_lbl.text = str(mini(n, 99))
+
 
 func _pending_count_for(title: String) -> int:
 	match title:
@@ -760,7 +803,7 @@ func _pending_count_for(title: String) -> int:
 			return PlayerData.get_upgradeable_card_count()
 	return 0
 
-func _add_count_badge(tile: Control, count: int, pos: Vector2, is_chest: bool = false, is_mail: bool = false) -> void:
+func _add_count_badge(tile: Control, count: int, pos: Vector2, is_chest: bool = false, is_mail: bool = false, is_clan: bool = false) -> void:
 	var badge := Panel.new()
 	badge.position = pos
 	badge.size = Vector2(44, 34)
@@ -788,6 +831,9 @@ func _add_count_badge(tile: Control, count: int, pos: Vector2, is_chest: bool = 
 	elif is_mail:
 		_mail_badge = badge
 		_mail_count_lbl = lbl
+	elif is_clan:
+		_clan_badge = badge
+		_clan_count_lbl = lbl
 
 func _refresh_chest_badge() -> void:
 	if _chest_badge == null or _chest_count_lbl == null:

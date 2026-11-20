@@ -1,10 +1,15 @@
 extends Control
 
+const CardVisualCatalog = preload("res://scripts/visuals/CardVisualCatalog.gd")
+const UnitModelKit = preload("res://scripts/visuals/UnitModelKit.gd")
+
 const BATTLE_MODES := preload("res://scripts/core/BattleModes.gd")
 
 var _ru
 var _opened := false
 var _selected_card := -1
+var _ghost: Node3D = null
+var _ghost_red := false
 var _pending: Array = []
 var _status: Label
 var _wait_t := 0.0
@@ -218,6 +223,8 @@ func _sync_guest_state(m: Dictionary) -> void:
 		var team_idx: int = NetworkManager.local_team
 		if team_idx < hs1.size() and not Array(hs1[team_idx]).is_empty():
 			desired = Array(hs1[team_idx]).duplicate()
+	if _selected_card >= 0 and _ghost:
+		_refresh_guest_ghost_red()
 	if not desired.is_empty() or b.player_hand.is_empty():
 		b.network_guest_sync_hand(desired)
 	# 联机多人：给玩家卡桌上方显示队友手牌（精简版）
@@ -365,9 +372,77 @@ func _show_result(title: String, sub: String, win: bool) -> void:
 func _on_card_selected(cid: int):
 	_selected_card = cid
 	_status.text = "已选卡 %d，点击战场部署" % cid
+	_show_guest_ghost(cid)
+
+
+func _show_guest_ghost(cid: int) -> void:
+	_clear_guest_ghost()
+	if _ru == null or _ru._battle == null:
+		return
+	var b = _ru._battle
+	var cfg = b.get_config(cid)
+	if cfg == null or b.SPELL_IDS.has(cid) or cid == 110 or cid == 109:
+		return   # 法术没有单位模型预览
+	var spec: Dictionary = CardVisualCatalog.spec_for(cfg.card_name, Config.Team.PLAYER, cfg.attack_range)
+	var vis := UnitModelKit.create_unit(spec)
+	_ghost = Node3D.new()
+	_ghost.add_child(vis)
+	var z: float = Config.ARENA_ORIGIN.z + Config.ARENA_HEIGHT * (0.75 if NetworkManager.local_team == 0 else 0.25)
+	_ghost.position = Vector3(0, 1.0, z)
+	b.add_child(_ghost)
+	_refresh_guest_ghost_red()
+
+
+func _refresh_guest_ghost_red() -> void:
+	if _ghost == null or _ru == null or _ru._battle == null or _selected_card < 0:
+		return
+	var b = _ru._battle
+	var cfg = b.get_config(_selected_card)
+	if cfg == null:
+		return
+	_ghost_red = b.player_elixir < b.card_cost(cfg)
+	var mat := StandardMaterial3D.new()
+	mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	mat.albedo_color = Color(1.0, 0.18, 0.14, 0.55)
+	mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	_set_ghost_overlay(_ghost, mat if _ghost_red else null)
+
+
+func _set_ghost_overlay(n: Node, mat: Material) -> void:
+	if n is MeshInstance3D:
+		(n as MeshInstance3D).material_overlay = mat
+	for c in n.get_children():
+		_set_ghost_overlay(c, mat)
+
+
+func _clear_guest_ghost() -> void:
+	if _ghost and is_instance_valid(_ghost):
+		_ghost.queue_free()
+	_ghost = null
+
+
+func _move_guest_ghost(screen_pos: Vector2) -> void:
+	if _ghost == null or _ru == null or _ru._battle == null:
+		return
+	var b = _ru._battle
+	var cam = b.get_viewport().get_camera_3d()
+	if cam == null:
+		return
+	var from: Vector3 = cam.project_ray_origin(screen_pos)
+	var to: Vector3 = from + cam.project_ray_normal(screen_pos) * 100.0
+	var hit = b.get_world_3d().direct_space_state.intersect_ray(PhysicsRayQueryParameters3D.create(from, to))
+	if hit and hit.collider and hit.collider.name == "GroundPlane":
+		_ghost.position = Vector3(hit.position.x, 1.0, hit.position.z)
+
 
 func _input(event):
 	if not _opened or _selected_card < 0 or _ru == null or _ru._battle == null:
+		return
+	if event is InputEventScreenDrag:
+		_move_guest_ghost(event.position)
+		return
+	if event is InputEventMouseMotion:
+		_move_guest_ghost(event.position)
 		return
 	var pos := Vector2.ZERO
 	var pressed := false
@@ -390,11 +465,17 @@ func _input(event):
 	var hit = _ru._battle.get_world_3d().direct_space_state.intersect_ray(PhysicsRayQueryParameters3D.create(from, to))
 	if hit and hit.collider and hit.collider.name == "GroundPlane":
 		var wp: Vector3 = hit.position
+		var cfg = _ru._battle.get_config(_selected_card)
+		if cfg == null or _ru._battle.player_elixir < _ru._battle.card_cost(cfg):
+			_status.text = "圣水不足"
+			_clear_guest_ghost()
+			return
 		var center_z: float = Config.ARENA_ORIGIN.z + Config.ARENA_HEIGHT * 0.5
 		var center_x: float = Config.ARENA_ORIGIN.x + Config.ARENA_WIDTH * 0.5
 		NetworkManager.request_deploy(_selected_card, center_x * 2.0 - wp.x, center_z * 2.0 - wp.z)
 		_selected_card = -1
 		_ru.live_selected_card = -1
+		_clear_guest_ghost()
 
 func _mirror(snap: Dictionary) -> Dictionary:
 	if NetworkManager.local_team == 0:

@@ -482,6 +482,9 @@ func update_drag(screen_pos: Vector2):
 		else:
 			valid = is_valid_placement(drag_card.config, p, Config.Team.PLAYER)
 		drag_valid = valid
+		# 圣水不足时仍显示预览模型，但整体标红；实际部署由 end_drag 的费用检查拦截
+		var affordable: bool = player_elixir >= card_cost(cfg)
+		var show_ok: bool = valid and affordable
 		if roll_preview:
 			var rw: float = 3.9 if cfg.card_id == 91 else 2.6
 			var rl: float = 10.1 if cfg.card_id == 91 else 4.5
@@ -508,13 +511,13 @@ func update_drag(screen_pos: Vector2):
 				_roll_arrow.position = Vector3(0, 0.10, -rl * 0.5 - 0.55)
 				_roll_arrow.rotation = Vector3(-PI * 0.5, 0, 0)
 			if _roll_mat:
-				_roll_mat.albedo_color = Color(0.30, 1.0, 0.50, 0.42) if valid else Color(1.0, 0.22, 0.18, 0.42)
+				_roll_mat.albedo_color = Color(0.30, 1.0, 0.50, 0.42) if show_ok else Color(1.0, 0.22, 0.18, 0.42)
 			if _roll_edge_mat:
-				_roll_edge_mat.albedo_color = Color(0.55, 1.0, 0.60, 0.95) if valid else Color(1.0, 0.35, 0.25, 0.95)
+				_roll_edge_mat.albedo_color = Color(0.55, 1.0, 0.60, 0.95) if show_ok else Color(1.0, 0.35, 0.25, 0.95)
 		# 更新预览颜色（共用半透明材质）
 		if drag_preview.get_child_count() > 0:
-			_set_preview_alpha(drag_preview.get_child(0), 0.65 if valid else 0.85)
-			_set_preview_tint(drag_preview.get_child(0), not valid)
+			_set_preview_alpha(drag_preview.get_child(0), 0.65 if show_ok else 0.85)
+			_set_preview_tint(drag_preview.get_child(0), not show_ok)
 		if drag_preview.get_child_count() > 0:
 			(drag_preview.get_child(0) as Node3D).visible = not SPELL_IDS.has(cfg.card_id) and cfg.card_id != 91 and cfg.card_id != 110
 	else:
@@ -529,6 +532,9 @@ func end_drag(screen_pos: Vector2):
 		return
 	if network_guest_mode:
 		if not drag_card:
+			return
+		if player_elixir < card_cost(drag_card.config):
+			cancel_drag()
 			return
 		var gpos := Vector3.ZERO
 		var gcam = get_viewport().get_camera_3d()
@@ -1456,8 +1462,8 @@ func load_card_configs():
 		_make_card("法师", 7, 5, 1, Config.UnitType.GROUND, 755, 281, 1400, 5, 1.2000000000000002, Config.TargetType.ALL, 1.2, 1, 5.5, 0.6666666666666667, 0, [], [], 1, [], []),
 		_make_card("亡灵", 8, 3, 3, Config.UnitType.AIR, 230, 107, 1100, 2, 0, Config.TargetType.ALL, 1.6, 1, 3, 0.4, 0, [], [], 1, [], []),
 		_make_card("巨人", 9, 5, 1, Config.UnitType.GROUND, 4090, 253, 1500, 0.4, 0, Config.TargetType.BUILDING_ONLY, 0.7, 0, 6, 1, 0, [], [], 1, [], []),
-		_make_card("万箭齐发", 10, 3, 1, Config.UnitType.GROUND, 1, 366, 0, 3.5, 3.5, Config.TargetType.ALL, 0, 1, 0, 3.5, 0, [], [], 1, [], []),
-		_make_card("火球", 11, 4, 1, Config.UnitType.GROUND, 1, 688, 0, 2.5, 2.5, Config.TargetType.ALL, 0, 0, 0, 2.5, 0, [], [], 1, [], []),
+		_make_card("万箭齐发", 10, 3, 1, Config.UnitType.GROUND, 0, 366, 0, 3.5, 3.5, Config.TargetType.ALL, 0, 1, 0, 3.5, 0, [], [], 1, [], []),
+		_make_card("火球", 11, 4, 1, Config.UnitType.GROUND, 0, 688, 0, 2.5, 2.5, Config.TargetType.ALL, 0, 0, 0, 2.5, 0, [], [], 1, [], []),
 		_make_card("瓦基丽武神", 12, 4, 1, Config.UnitType.GROUND, 1907, 266, 1500, 0.4, 1.25, Config.TargetType.GROUND_ONLY, 1.1, 1, 3, 0.6666666666666667, 0, [], [], 1, [], []),
 		_make_card("迷你皮卡", 13, 4, 1, Config.UnitType.GROUND, 1433, 755, 1600, 0.25, 0, Config.TargetType.GROUND_ONLY, 1.6, 1, 3.5, 0.6666666666666667, 0, [], [], 1, [], []),
 		_make_card("飞龙宝宝", 14, 4, 1, Config.UnitType.AIR, 1152, 161, 1500, 3, 0.9, Config.TargetType.ALL, 1.2, 1, 3.5, 0.75, 0, [], [], 1, [], []),
@@ -1466,7 +1472,7 @@ func load_card_configs():
 		_make_card("野猪骑士", 17, 4, 1, Config.UnitType.GROUND, 1697, 317, 1600, 0.25, 0, Config.TargetType.BUILDING_ONLY, 1.6, 3, 6, 0.8333333333333335, 0, [], [], 1, [], []),
 		_make_card("寒冰法师", 18, 3, 1, Config.UnitType.GROUND, 688, 89, 1700, 5, 0.8, Config.TargetType.ALL, 1.2, 1, 5, 0.5, 0, [84, 1.75, 3, 3, -1], [], 3, [], []),
 		_make_card("女巫", 19, 5, 1, Config.UnitType.GROUND, 839, 135, 1100, 5, 0.8, Config.TargetType.ALL, 1.2, 1, 5.5, 0.8333333333333335, 0, [], [5, 4, 7000], 1, [], []),
-		_make_card("电击法术", 20, 2, 1, Config.UnitType.GROUND, 1, 192, 0, 2.5, 2.5, Config.TargetType.ALL, 0, 0, 0, 2.5, 0, [], [], 2, [], []),
+		_make_card("电击法术", 20, 2, 1, Config.UnitType.GROUND, 0, 192, 0, 2.5, 2.5, Config.TargetType.ALL, 0, 0, 0, 2.5, 0, [], [], 2, [], []),
 		_make_card("特斯拉电磁塔", 21, 4, 1, Config.UnitType.BUILDING, 1152, 220, 1100, 5, 0, Config.TargetType.ALL, 0, 1, 5, 0.8333333333333335, 0, [], [], 1, [], []),
 		_make_card("蝙蝠", 22, 2, 5, Config.UnitType.AIR, 81, 81, 1300, 0.4, 0, Config.TargetType.ALL, 1.6, 1, 3.5, 0.25, 0, [], [], 1, [], []),
 		_make_card("黑暗王子", 23, 4, 1, Config.UnitType.GROUND, 1200, 266, 1300, 0.4, 1, Config.TargetType.GROUND_ONLY, 1.2, 2, 3.5, 0.75, 240, [], [], 1, [], []),
@@ -1477,7 +1483,7 @@ func load_card_configs():
 		_make_card("电磁炮", 28, 6, 1, Config.UnitType.GROUND, 1451, 1331, 4000, 4.5, 1.4000000000000001, Config.TargetType.GROUND_ONLY, 0.8, 1, 5, 0.8333333333333335, 0, [], [], 5, [], []),
 		_make_card("野蛮人精锐", 29, 6, 2, Config.UnitType.GROUND, 1341, 384, 1400, 0.6000000000000001, 0, Config.TargetType.GROUND_ONLY, 1.5, 1, 3.5, 0.75, 0, [], [], 1, [], []),
 		_make_card("戈仑冰人", 30, 2, 1, Config.UnitType.GROUND, 1315, 84, 2500, 0.25, 0, Config.TargetType.BUILDING_ONLY, 0.7, 1, 2.5, 0.8333333333333335, 0, [84, 1.3, 3, 3, 100], [], 3, [], []),
-		_make_card("大雪球", 31, 2, 1, Config.UnitType.GROUND, 1, 179, 0, 2.5, 2.5, Config.TargetType.ALL, 0, 1, 0, 2.5, 0, [], [], 3, [], []),
+		_make_card("大雪球", 31, 2, 1, Config.UnitType.GROUND, 0, 179, 0, 2.5, 2.5, Config.TargetType.ALL, 0, 1, 0, 2.5, 0, [], [], 3, [], []),
 		_make_card("吹箭哥布林", 32, 3, 1, Config.UnitType.GROUND, 261, 156, 800, 6, 0, Config.TargetType.ALL, 1.6, 1, 6.5, 0.6666666666666667, 0, [], [], 1, [], []),
 		_make_card("地狱之塔", 33, 5, 1, Config.UnitType.BUILDING, 1748, 43, 400, 5.5, 0, Config.TargetType.ALL, 0, 1, 5.5, 1, 0, [], [], 4, [], []),
 		_make_card("皇家巨人", 34, 6, 1, Config.UnitType.GROUND, 3164, 307, 1700, 4.5, 0, Config.TargetType.BUILDING_ONLY, 0.7, 1, 5, 1.3333333333333335, 0, [], [], 1, [], []),
@@ -1486,7 +1492,7 @@ func load_card_configs():
 		_make_card("暗夜女巫", 37, 4, 1, Config.UnitType.GROUND, 906, 314, 1300, 0.75, 0, Config.TargetType.GROUND_ONLY, 1.2, 1, 2.5, 0.8333333333333335, 0, [], [22, 2, 5000], 1, [], []),
 		_make_card("皇家野猪", 38, 5, 4, Config.UnitType.GROUND, 837, 74, 1200, 0.25, 0, Config.TargetType.BUILDING_ONLY, 1.6, 3, 6, 0.8333333333333335, 0, [], [], 1, [], []),
 		_make_card("哥布林", 39, 2, 4, Config.UnitType.GROUND, 202, 120, 1100, 0.25, 0, Config.TargetType.GROUND_ONLY, 1.6, 1, 2, 0.5, 0, [], [], 1, [], []),
-		_make_card("哥布林飞桶", 40, 3, 1, Config.UnitType.GROUND, 1, 0, 0, 1.5, 1.5, Config.TargetType.GROUND_ONLY, 0, 0, 0, 0.6666666666666667, 0, [], [39, 3, 0], 1, [], []),
+		_make_card("哥布林飞桶", 40, 3, 1, Config.UnitType.GROUND, 0, 0, 0, 1.5, 1.5, Config.TargetType.GROUND_ONLY, 0, 0, 0, 0.6666666666666667, 0, [], [39, 3, 0], 1, [], []),
 		_make_card("骷髅巨人", 41, 6, 1, Config.UnitType.GROUND, 3617, 276, 1300, 0.25, 0, Config.TargetType.GROUND_ONLY, 1.2, 1, 2.5, 1.1666666666666667, 0, [535, 1.5, 1, 3, 3000], [], 1, [], []),
 		_make_card("攻城炸弹人", 42, 2, 2, Config.UnitType.GROUND, 330, 1, 500, 0.25, 2, Config.TargetType.BUILDING_ONLY, 2.1, 1, 6, 0.5833333333333334, -1, [350, 2, 1, 3, 0], [], 1, [], []),
 		_make_card("烟花炮手", 43, 3, 1, Config.UnitType.GROUND, 304, 64, 3000, 6, 1.4000000000000001, Config.TargetType.ALL, 1.6, 1, 6.5, 0.5833333333333334, 0, [], [], 1, [], [15, 5, 20, 2, 1]),
@@ -1494,7 +1500,7 @@ func load_card_configs():
 		_make_card("雷电精灵", 45, 1, 1, Config.UnitType.GROUND, 230, 99, 1300, 2.5, 0, Config.TargetType.ALL, 2, 1, 2.5, 0.6666666666666667, -1, [], [], 2, [9, 2], []),
 		_make_card("治疗精灵", 46, 1, 1, Config.UnitType.GROUND, 230, 110, 1300, 2.5, 0, Config.TargetType.ALL, 2, 1, 3.5, 0.6666666666666667, -1, [400, 2.5, 8, 3, 100], [], 8, [], []),
 		_make_card("战斗天使", 47, 4, 1, Config.UnitType.GROUND, 1717, 148, 1500, 0.75, 0, Config.TargetType.GROUND_ONLY, 1.2, 1, 3, 0.75, 0, [120, 2.5, 8, 3, 0], [], 1, [], []),
-		_make_card("雷电法术", 48, 6, 1, Config.UnitType.GROUND, 1, 1057, 0, 3.5, 3.5, Config.TargetType.ALL, 0, 0, 0, 3.5, 0, [], [], 2, [3, 3], []),
+		_make_card("雷电法术", 48, 6, 1, Config.UnitType.GROUND, 0, 1057, 0, 3.5, 3.5, Config.TargetType.ALL, 0, 0, 0, 3.5, 0, [], [], 2, [3, 3], []),
 		_make_card("野蛮人小屋", 49, 6, 1, Config.UnitType.BUILDING, 1164, 0, 0, 0, 0, Config.TargetType.ALL, 0, 1, 0, 1, 0, [], [57, 3, 15000], 1, [], []),
 		_make_card("烈焰精灵", 50, 1, 1, Config.UnitType.GROUND, 230, 207, 1300, 2.5, 2, Config.TargetType.ALL, 2, 1, 3.5, 0.5, -1, [], [], 1, [], []),
 		_make_card("烈焰熔炉", 51, 4, 1, Config.UnitType.GROUND, 727, 179, 1700, 5.5, 0, Config.TargetType.ALL, 1.2, 1, 6.5, 0.75, 0, [], [50, 1, 7000], 1, [], []),
@@ -1523,21 +1529,21 @@ func load_card_configs():
 		_make_card("皇家卫队", 74, 7, 6, Config.UnitType.GROUND, 537, 133, 1300, 0.75, 0, Config.TargetType.GROUND_ONLY, 1.1, 1, 3, 0.6666666666666667, 240, [], [], 1, [], []),
 		_make_card("狂战士", 75, 2, 1, Config.UnitType.GROUND, 896, 102, 600, 1, 0, Config.TargetType.GROUND_ONLY, 1.6, 1, 2, 0.33333333333333337, 0, [], [], 1, [], []),
 		_make_card("三个火枪手", 76, 9, 3, Config.UnitType.GROUND, 883, 204, 1300, 6, 0, Config.TargetType.ALL, 1.2, 1, 6.5, 0.6666666666666667, 0, [], [], 1, [], []),
-		_make_card("火箭", 77, 6, 1, Config.UnitType.GROUND, 1, 1484, 0, 2, 2, Config.TargetType.ALL, 0, 1, 0, 2, 0, [], [], 1, [], []),
-		_make_card("狂暴法术", 78, 2, 1, Config.UnitType.GROUND, 1, 179, 4500, 3, 3, Config.TargetType.ALL, 1.6, 1, 3, 0.4, 0, [], [], 9, [], []),
+		_make_card("火箭", 77, 6, 1, Config.UnitType.GROUND, 0, 1484, 0, 2, 2, Config.TargetType.ALL, 0, 1, 0, 2, 0, [], [], 1, [], []),
+		_make_card("狂暴法术", 78, 2, 1, Config.UnitType.GROUND, 0, 179, 4500, 3, 3, Config.TargetType.ALL, 1.6, 1, 3, 0.4, 0, [], [], 9, [], []),
 		_make_card("狂暴樵夫", 79, 4, 1, Config.UnitType.GROUND, 1282, 256, 800, 0.8, 0, Config.TargetType.GROUND_ONLY, 2, 1, 2, 0.5, 0, [], [], 1, [], []),
-		_make_card("冰冻法术", 80, 4, 1, Config.UnitType.GROUND, 1, 148, 0, 3, 3, Config.TargetType.ALL, 1.2, 1, 5, 0.5, 0, [], [], 10, [], []),
+		_make_card("冰冻法术", 80, 4, 1, Config.UnitType.GROUND, 0, 148, 0, 3, 3, Config.TargetType.ALL, 1.2, 1, 5, 0.5, 0, [], [], 10, [], []),
 		_make_card("幻影刺客", 81, 3, 1, Config.UnitType.GROUND, 906, 194, 1000, 0.4, 0, Config.TargetType.GROUND_ONLY, 1.6, 6, 5.5, 0.75, 0, [], [], 1, [], []),
 		_make_card("熔岩猎犬", 82, 7, 1, Config.UnitType.AIR, 3581, 53, 1300, 3.5, 0, Config.TargetType.BUILDING_ONLY, 0.8, 1, 5.5, 0.41666666666666674, 0, [], [101, 6, 100000], 1, [], []),
 		_make_card("超级骑士", 83, 7, 1, Config.UnitType.GROUND, 3993, 268, 1700, 0.7000000000000001, 1.2, Config.TargetType.GROUND_ONLY, 1.2, 5, 6, 0.8333333333333335, 0, [537, 1.4, 1, 2, -1], [], 1, [], []),
 		_make_card("哥布林机甲", 84, 5, 1, Config.UnitType.GROUND, 2150, 212, 1200, 0.6000000000000001, 0, Config.TargetType.GROUND_ONLY, 1.2, 1, 3, 0.8333333333333335, 0, [], [99, 1, -1], 1, [], []),
-		_make_card("骷髅召唤", 85, 5, 1, Config.UnitType.GROUND, 1, 0, 7000, 4, 0, Config.TargetType.GROUND_ONLY, 1.6, 1, 2.5, 0.33333333333333337, 0, [], [], 1, [], []),
+		_make_card("骷髅召唤", 85, 5, 1, Config.UnitType.GROUND, 0, 0, 7000, 4, 0, Config.TargetType.GROUND_ONLY, 1.6, 1, 2.5, 0.33333333333333337, 0, [], [], 1, [], []),
 		_make_card("蛮羊骑士", 86, 5, 1, Config.UnitType.GROUND, 1697, 250, 1800, 0.4, 0, Config.TargetType.BUILDING_ONLY, 1.2, 2, 6, 0.5, 0, [], [98, 1, -1], 1, [], []),
 		_make_card("女巫婆婆", 87, 4, 1, Config.UnitType.GROUND, 529, 133, 1000, 5.5, 0, Config.TargetType.ALL, 1.2, 1, 6, 0.5, 0, [], [], 7, [], []),
 		_make_card("凤凰", 88, 4, 1, Config.UnitType.AIR, 1052, 217, 1000, 0.8, 0, Config.TargetType.ALL, 1.2, 1, 5, 0.33333333333333337, 0, [163, 1.2, 1, 3, 100], [102, 1, 100000], 1, [], []),
 		_make_card("渔夫", 89, 3, 1, Config.UnitType.GROUND, 870, 194, 1300, 0.6, 0, Config.TargetType.GROUND_ONLY, 1.2, 7, 5, 0.8333333333333335, 0, [], [], 1, [], []),
 		_make_card("皇家幽灵", 90, 3, 1, Config.UnitType.GROUND, 1210, 261, 1800, 0.6000000000000001, 0.7000000000000001, Config.TargetType.GROUND_ONLY, 1.6, 1, 3.5, 0.5, 0, [], [], 1, [], []),
-		_make_card("滚木", 91, 2, 1, Config.UnitType.GROUND, 1, 268, 800, 10.100000000000001, 3.9, Config.TargetType.GROUND_ONLY, 1.2, 1, 5, 0.6666666666666667, 0, [], [], 1, [], [0, 1, 20, 10.1, 5]),
+		_make_card("滚木", 91, 2, 1, Config.UnitType.GROUND, 0, 268, 800, 10.100000000000001, 3.9, Config.TargetType.GROUND_ONLY, 1.2, 1, 5, 0.6666666666666667, 0, [], [], 1, [], [0, 1, 20, 10.1, 5]),
 		_make_card("戈仑石人", 92, 8, 1, Config.UnitType.GROUND, 5120, 312, 2500, 0.4, 1, Config.TargetType.BUILDING_ONLY, 0.8, 1, 5, 0.75, 0, [225, 1.7, 1, 3, 100], [100, 2, 100000], 1, [], []),
 		_make_card("雷电巨人", 93, 7, 1, Config.UnitType.GROUND, 3855, 162, 2100, 0.6000000000000001, 0, Config.TargetType.BUILDING_ONLY, 1.2, 1, 3, 1, 0, [], [], 1, [], []),
 		_make_card("哥布林巨人", 94, 6, 1, Config.UnitType.GROUND, 3020, 176, 1500, 0.4, 0, Config.TargetType.BUILDING_ONLY, 1.1, 1, 6, 0.6666666666666667, 0, [], [62, 2, -1], 1, [], []),
@@ -1550,26 +1556,26 @@ func load_card_configs():
 		_make_card("熔岩幼犬", 101, 0, 1, Config.UnitType.AIR, 215, 81, 1700, 0.8, 0, Config.TargetType.ALL, 1.2, 1, 2.5, 0.33333333333333337, 0, [], [], 1, [], []),
 		_make_card("凤凰蛋", 102, 0, 1, Config.UnitType.GROUND, 317, 0, 3800, 0, 0, Config.TargetType.ALL, 0, 1, 50, 0.33333333333333337, 0, [], [88, 1, 7300], 1, [], []),
 		_make_card("小猪", 103, 0, 1, Config.UnitType.GROUND, 629, 53, 1200, 0.4, 0, Config.TargetType.BUILDING_ONLY, 2, 1, 5, 0.33333333333333337, 0, [], [], 1, [], []),
-		_make_card("飓风法术", 104, 3, 1, Config.UnitType.GROUND, 1, 84, 0, 2.5, 5.5, Config.TargetType.ALL, 0, 1, 2.5, 5.5, 0, [], [], 1, [], []),
+		_make_card("飓风法术", 104, 3, 1, Config.UnitType.GROUND, 0, 84, 0, 2.5, 5.5, Config.TargetType.ALL, 0, 1, 2.5, 5.5, 0, [], [], 1, [], []),
 		_make_card("哥布林爆破手", 105, 4, 1, Config.UnitType.GROUND, 1300, 186, 1100, 5, 1.3, Config.TargetType.GROUND_ONLY, 1.3, 1, 5.5, 1, 0, [], [], 1, [], []),
 		_make_card("圣水戈仑", 106, 3, 1, Config.UnitType.GROUND, 1569, 253, 1100, 0.5, 0, Config.TargetType.BUILDING_ONLY, 0.9, 1, 6, 1.2, 0, [], [124, 2, 100000], 1, [], []),
-		_make_card("毒药法术", 107, 4, 1, Config.UnitType.GROUND, 1, 92, 8000, 3.5, 3.5, Config.TargetType.ALL, 0, 1, 3.5, 3.5, 0, [], [], 7, [], []),
+		_make_card("毒药法术", 107, 4, 1, Config.UnitType.GROUND, 0, 92, 8000, 3.5, 3.5, Config.TargetType.ALL, 0, 1, 3.5, 3.5, 0, [], [], 7, [], []),
 		_make_card("可疑草丛", 108, 2, 1, Config.UnitType.GROUND, 81, 0, 0, 0, 0, Config.TargetType.GROUND_ONLY, 1.2, 1, 6, 0.8, 0, [], [126, 2, 100000], 1, [], []),
 		_make_card("哥布林钻机", 109, 4, 1, Config.UnitType.BUILDING, 1313, 0, 0, 0, 0, Config.TargetType.ALL, 0, 1, 0, 1, 0, [], [39, 1, 3000], 1, [], []),
-		_make_card("野蛮人滚桶", 110, 2, 1, Config.UnitType.GROUND, 1, 215, 0, 2.6, 2.6, Config.TargetType.GROUND_ONLY, 0, 1, 2.6, 2.6, 0, [], [], 1, [], []),
+		_make_card("野蛮人滚桶", 110, 2, 1, Config.UnitType.GROUND, 0, 215, 0, 2.6, 2.6, Config.TargetType.GROUND_ONLY, 0, 1, 2.6, 2.6, 0, [], [], 1, [], []),
 		_make_card("符文巨人", 111, 4, 1, Config.UnitType.GROUND, 2816, 153, 1500, 0.8, 0, Config.TargetType.BUILDING_ONLY, 1, 1, 6, 1.2, 0, [], [], 1, [], []),
-		_make_card("藤蔓法术", 112, 3, 1, Config.UnitType.GROUND, 1, 153, 2000, 2.5, 2.5, Config.TargetType.ALL, 0, 1, 2.5, 2.5, 0, [], [], 2, [], []),
-		_make_card("虚空法术", 113, 5, 1, Config.UnitType.GROUND, 1, 696, 3000, 2, 2, Config.TargetType.ALL, 0, 1, 2, 2, 0, [], [], 1, [], []),
+		_make_card("藤蔓法术", 112, 3, 1, Config.UnitType.GROUND, 0, 153, 2000, 2.5, 2.5, Config.TargetType.ALL, 0, 1, 2.5, 2.5, 0, [], [], 2, [], []),
+		_make_card("虚空法术", 113, 5, 1, Config.UnitType.GROUND, 0, 696, 3000, 2, 2, Config.TargetType.ALL, 0, 1, 2, 2, 0, [], [], 1, [], []),
 		_make_card("哥布林牢笼", 114, 4, 1, Config.UnitType.BUILDING, 780, 0, 0, 0, 0, Config.TargetType.BUILDING_ONLY, 0, 1, 0, 1, 0, [], [127, 1, 100000], 1, [], []),
-		_make_card("地震法术", 115, 3, 1, Config.UnitType.GROUND, 1, 81, 3000, 3.5, 3.5, Config.TargetType.GROUND_ONLY, 0, 1, 3.5, 3.5, 0, [], [], 1, [], []),
-		_make_card("哥布林魔咒", 116, 2, 1, Config.UnitType.GROUND, 1, 35, 6000, 3, 3, Config.TargetType.ALL, 0, 1, 3, 3, 0, [], [], 7, [], []),
+		_make_card("地震法术", 115, 3, 1, Config.UnitType.GROUND, 0, 81, 3000, 3.5, 3.5, Config.TargetType.GROUND_ONLY, 0, 1, 3.5, 3.5, 0, [], [], 1, [], []),
+		_make_card("哥布林魔咒", 116, 2, 1, Config.UnitType.GROUND, 0, 35, 6000, 3, 3, Config.TargetType.ALL, 0, 1, 3, 3, 0, [], [], 7, [], []),
 		_make_card("绿林团伙", 117, 5, 1, Config.UnitType.GROUND, 1832, 217, 1500, 0.5, 0, Config.TargetType.GROUND_ONLY, 1.2, 1, 6, 1, 0, [], [118, 2, -1], 1, [], []),
 		_make_card("绿林小妹", 118, 0, 1, Config.UnitType.GROUND, 261, 125, 1000, 5, 0, Config.TargetType.ALL, 1.2, 1, 5.5, 1, 0, [], [], 1, [], []),
 		_make_card("骷髅兵", 119, 1, 3, Config.UnitType.GROUND, 81, 81, 1100, 0.25, 0, Config.TargetType.GROUND_ONLY, 1.6, 1, 2, 0.3, 0, [], [], 1, [], []),
 		_make_card("圣水收集器", 120, 6, 1, Config.UnitType.BUILDING, 1070, 0, 0, 0, 0, Config.TargetType.ALL, 0, 1, 0, 0.75, 0, [], [], 1, [], []),
-		_make_card("哥布林团伙", 121, 3, 1, Config.UnitType.GROUND, 1, 0, 0, 0, 0, Config.TargetType.ALL, 0, 1, 0, 0.3, 0, [], [], 1, [], []),
-		_make_card("克隆法术", 122, 3, 1, Config.UnitType.GROUND, 1, 0, 0, 3, 3, Config.TargetType.ALL, 0, 1, 3, 3, 0, [], [], 1, [], []),
-		_make_card("镜像法术", 123, 0, 1, Config.UnitType.GROUND, 1, 0, 0, 3, 3, Config.TargetType.ALL, 0, 1, 3, 3, 0, [], [], 1, [], []),
+		_make_card("哥布林团伙", 121, 3, 1, Config.UnitType.GROUND, 0, 0, 0, 0, 0, Config.TargetType.ALL, 0, 1, 0, 0.3, 0, [], [], 1, [], []),
+		_make_card("克隆法术", 122, 3, 1, Config.UnitType.GROUND, 0, 0, 0, 3, 3, Config.TargetType.ALL, 0, 1, 3, 3, 0, [], [], 1, [], []),
+		_make_card("镜像法术", 123, 0, 1, Config.UnitType.GROUND, 0, 0, 0, 3, 3, Config.TargetType.ALL, 0, 1, 3, 3, 0, [], [], 1, [], []),
 		_make_card("圣水小戈仑", 124, 0, 1, Config.UnitType.GROUND, 762, 128, 1100, 0.5, 0, Config.TargetType.BUILDING_ONLY, 1.2, 1, 4.5, 0.8, 0, [], [125, 2, 100000], 1, [], []),
 		_make_card("圣水泡泡", 125, 0, 1, Config.UnitType.GROUND, 360, 64, 1100, 0.5, 0, Config.TargetType.BUILDING_ONLY, 1.5, 1, 3, 0.4, 0, [], [], 1, [], []),
 		_make_card("草丛哥布林", 126, 0, 1, Config.UnitType.GROUND, 337, 256, 1400, 0.5, 0, Config.TargetType.GROUND_ONLY, 1.2, 1, 4, 0.5, 0, [], [], 1, [], []),

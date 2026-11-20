@@ -11,6 +11,7 @@ var _room_bg: Panel
 var _host_info: Label
 var _ip_edit: LineEdit
 var _code_edit: LineEdit
+var _webrtc_code_edit: LineEdit
 var _uid_label: Label
 var _seats_box: VBoxContainer
 var _start_btn: Button
@@ -119,6 +120,33 @@ func _build_initial() -> void:
 	_code_edit.add_theme_font_size_override("font_size", 20)
 	jv.add_child(_code_edit)
 	jv.add_child(UiComponents.make_primary_button("加入房间", _join_pressed, Vector2(644, 58)))
+
+	# 跨网 WebRTC
+	var wc := UiComponents.make_card(Color(0.55, 0.75, 1.0))
+	wc.custom_minimum_size = Vector2(688, 250)
+	_initial_box.add_child(wc)
+	var wv := VBoxContainer.new()
+	wv.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	wv.offset_left = 22; wv.offset_top = 16; wv.offset_right = -22; wv.offset_bottom = -16
+	wv.add_theme_constant_override("separation", 8)
+	wc.add_child(wv)
+	wv.add_child(_label("跨网联机（WebRTC）", 22, Color(0.72,0.9,1.0)))
+	wv.add_child(_label("不需要同一 WiFi。房主先创建，好友输入 6 位房间码加入。", 13, Color(0.72,0.82,0.95)))
+	_webrtc_code_edit = LineEdit.new()
+	_webrtc_code_edit.placeholder_text = "6 位跨网房间码"
+	_webrtc_code_edit.custom_minimum_size = Vector2(644, 50)
+	_webrtc_code_edit.max_length = 6
+	_webrtc_code_edit.add_theme_font_size_override("font_size", 20)
+	wv.add_child(_webrtc_code_edit)
+	var wrow := HBoxContainer.new()
+	wrow.add_theme_constant_override("separation", 10)
+	wv.add_child(wrow)
+	var wh := UiComponents.make_primary_button("跨网创建", _webrtc_host_pressed, Vector2(0, 52))
+	wh.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	wrow.add_child(wh)
+	var wj := UiComponents.make_primary_button("跨网加入", _webrtc_join_pressed, Vector2(0, 52))
+	wj.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	wrow.add_child(wj)
 	_status = _label("", 15, Color(0.9,0.95,1.0))
 	_initial_box.add_child(_status)
 
@@ -228,6 +256,33 @@ func _refresh_custom_panel() -> void:
 			NetworkManager.sync_room()
 			_room_status.text = "自定义规则已同步")
 	_custom_box.add_child(panel)
+
+func _webrtc_host_pressed() -> void:
+	if NetworkManager.role != NetworkManager.Role.NONE:
+		return
+	_status.text = "正在创建跨网房间…"
+	var ok: bool = await WebRTCNet.host_room()
+	if not ok:
+		_status.text = "创建失败，请确认已登录 Supabase"
+		return
+	NetworkManager.start_host_webrtc()
+	_enter_room(true)
+	_room_status.text = "跨网房间码：%s（好友输入此码加入）" % WebRTCNet.room_code
+
+func _webrtc_join_pressed() -> void:
+	if NetworkManager.role != NetworkManager.Role.NONE:
+		return
+	var code := _webrtc_code_edit.text.strip_edges()
+	if code.length() != 6:
+		_status.text = "请输入 6 位跨网房间码"
+		return
+	_status.text = "正在连接跨网房间 %s…" % code
+	var ok: bool = await WebRTCNet.join_room(code)
+	if not ok:
+		_status.text = "连接失败，请检查房间码/网络"
+		return
+	NetworkManager.join_host_webrtc()
+	_status.text = "已提交加入，等待房主确认…"
 
 func _host_pressed() -> void:
 	if NetworkManager.role != NetworkManager.Role.NONE:

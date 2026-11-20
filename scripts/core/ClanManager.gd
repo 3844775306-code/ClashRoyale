@@ -9,6 +9,9 @@ const CARD_RARITY = preload("res://scripts/data/CardRarity.gd")
 const MAX_MEMBERS := 50
 const MAX_CHAT_MESSAGES := 100
 const CACHE_SECONDS := 12.0
+signal chat_unread_changed(count: int)
+var _chat_read: Dictionary = {}
+var _chat_read_loaded_path := ""
 var _clans_cache: Array = []
 var _cache_at: float = 0.0
 const CLAN_LEADERBOARD_KEY := "global_clan_list"
@@ -689,6 +692,99 @@ func send_chat_message(message: String, callback: Callable = Callable()):
 			clan["chat"].resize(MAX_CHAT_MESSAGES)
 		_update_clan_on_leaderboard(clan, callback)
 	)
+
+## 聊天未读：按账号在存档目录保存每个部落最后已读时间
+func _chat_read_path() -> String:
+	return PlayerData.current_save_path().get_base_dir() + "/clan_chat_read.cfg"
+
+
+func _ensure_chat_read() -> void:
+	var p := _chat_read_path()
+	if p == _chat_read_loaded_path:
+		return
+	_chat_read_loaded_path = p
+	_chat_read.clear()
+	var cfg := ConfigFile.new()
+	if cfg.load(p) == OK:
+		var d = cfg.get_value("chat", "read", {})
+		if d is Dictionary:
+			for k in d.keys():
+				_chat_read[String(k)] = float(d[k])
+
+
+func _save_chat_read() -> void:
+	var cfg := ConfigFile.new()
+	cfg.set_value("chat", "read", _chat_read)
+	cfg.save(_chat_read_path())
+
+
+func _my_joined_at(clan: Dictionary) -> float:
+	if clan == null:
+		return 0.0
+	var members: Dictionary = clan.get("members", {})
+	var key := str(get_player_id())
+	if members.has(key):
+		return float(Dictionary(members[key]).get("joined", 0.0))
+	return 0.0
+
+
+func count_unread_chat(clan) -> int:
+	if not (clan is Dictionary) or clan.is_empty():
+		return 0
+	_ensure_chat_read()
+	var key := String(clan.get("name", ""))
+	if key == "":
+		return 0
+	var last: float = float(_chat_read.get(key, -1.0))
+	if last < 0.0:
+		last = _my_joined_at(clan)
+	var my_id := str(get_player_id())
+	var my_name := get_player_name()
+	var n := 0
+	for m in clan.get("chat", []):
+		if not (m is Dictionary):
+			continue
+		var ts := float(m.get("timestamp", 0.0))
+		if ts <= last:
+			continue
+		var pid := str(m.get("player_id", ""))
+		var pname := String(m.get("player_name", ""))
+		if pid == my_id or (pid == "" and pname == my_name):
+			continue
+		n += 1
+	return n
+
+
+func mark_chat_read(clan) -> void:
+	if not (clan is Dictionary) or clan.is_empty():
+		return
+	_ensure_chat_read()
+	var key := String(clan.get("name", ""))
+	if key == "":
+		return
+	var latest := 0.0
+	for m in clan.get("chat", []):
+		if m is Dictionary:
+			latest = maxf(latest, float(m.get("timestamp", 0.0)))
+	if latest <= 0.0:
+		return
+	var old := float(_chat_read.get(key, -1.0))
+	if latest <= old:
+		return
+	_chat_read[key] = latest
+	_save_chat_read()
+	chat_unread_changed.emit(0)
+
+
+func get_unread_chat_count(callback: Callable) -> void:
+	get_my_clan(func(success, clan):
+		if not callback.is_valid():
+			return
+		if not success or clan == null:
+			callback.call(0)
+		else:
+			callback.call(count_unread_chat(clan)))
+
 
 ## 获取聊天记录（异步）
 func get_chat_history(callback: Callable):

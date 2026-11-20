@@ -2,6 +2,7 @@
 extends Panel
 class_name CardUI
 const CARD_BG_SHADER := preload("res://assets/shaders/card_bg.gdshader")
+const MENU_ICON := preload("res://assets/ui/menu/MenuIcon.gd")
 
 var config: CardData
 var index: int = 0
@@ -32,6 +33,7 @@ const CARD_W: float = 128
 const CARD_H: float = 164
 
 var _sel_frame: Panel
+var _stat_panel: Panel = null
 
 func setup(cfg: CardData, idx: int, bm: BattleManager):
 	config = cfg
@@ -179,36 +181,122 @@ func _gui_input(event):
 	if not battle: return
 	if event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_LEFT:
 		if event.pressed:
-			if battle.player_elixir >= battle.card_cost(config):
-				mouse_down_pos = event.position
-				drag_started = false
-				is_dragging = false
-				# 按下时立即选中（若已选中则保留，以便拖拽或单击部署）
-				if battle.selected_card != self:
-					battle.selected_card = self
+			mouse_down_pos = event.position
+			drag_started = false
+			is_dragging = false
+			# 圣水不足也允许选中/拖拽：拖到战场会显示红色预览，但不会实际部署
+			if battle.selected_card != self:
+				battle.selected_card = self
+			_show_stat_popup()
 			accept_event()
 		else:
 			if is_dragging:
 				battle.end_drag(get_global_mouse_position())
-				# 拖拽结束会取消选中
 			else:
-				# 单击释放：如果已经选中了自己，什么都不做（保持选中等待玩家点击战场）
-				pass
+				_show_stat_popup()
 			is_dragging = false
 			drag_started = false
 			accept_event()
 	elif event is InputEventMouseMotion and (event.button_mask & MOUSE_BUTTON_MASK_LEFT):
-		if not drag_started and battle.player_elixir >= battle.card_cost(config):
+		if not drag_started:
 			if (event.position - mouse_down_pos).length() > DRAG_THRESHOLD:
 				drag_started = true
 				is_dragging = true
+				_hide_stat_popup()
 				battle.start_drag(self)
 		if is_dragging:
 			battle.update_drag(get_global_mouse_position())
 			accept_event()
 
+func _hide_stat_popup() -> void:
+	if _stat_panel and is_instance_valid(_stat_panel):
+		_stat_panel.visible = false
+
+
+func _show_stat_popup() -> void:
+	if battle == null or config == null or index < 0:
+		return
+	if battle.hud == null:
+		return
+	if _stat_panel == null or not is_instance_valid(_stat_panel):
+		_build_stat_panel()
+	if _stat_panel == null:
+		return
+	var is_spell: bool = battle.SPELL_IDS.has(config.card_id) or config.card_id == 110 or config.card_id == 109
+	var lv: int = battle.mode_level(PlayerData.get_card_level(config.card_id))
+	lv = maxi(1, lv)
+	var hp: int = int(round(config.max_health * Config.level_mult(lv)))
+	var atk: int = int(round(config.damage * Config.level_mult(lv)))
+	var rng: float = config.damage_range if config.damage_range > 0.0 else config.attack_range
+	var h: HBoxContainer = _stat_panel.get_node_or_null("Stats")
+	if h == null:
+		return
+	for c in h.get_children():
+		c.queue_free()
+	if is_spell:
+		h.add_child(_stat_entry("globe", Color(0.25, 0.48, 0.95), "范围", rng, false))
+	else:
+		h.add_child(_stat_entry("shield", Color(0.88, 0.28, 0.22), "生命", float(hp), true))
+	h.add_child(_stat_entry("sword", Color(0.78, 0.52, 0.12), "攻击", float(atk), true))
+	var vp: Vector2 = battle.hud.get_viewport().get_visible_rect().size
+	var cr: Rect2 = get_global_rect()
+	var px: float = clampf(cr.position.x + cr.size.x * 0.5 - 102.0, 8.0, vp.x - 212.0)
+	var py: float = maxf(8.0, cr.position.y - 78.0)
+	_stat_panel.position = Vector2(px, py)
+	_stat_panel.visible = true
+
+
+func _build_stat_panel() -> void:
+	_stat_panel = Panel.new()
+	_stat_panel.z_index = 90
+	_stat_panel.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_stat_panel.custom_minimum_size = Vector2(204, 66)
+	_stat_panel.size = Vector2(204, 66)
+	var sb := StyleBoxFlat.new()
+	sb.bg_color = Color(1.0, 1.0, 1.0, 0.97)
+	sb.set_corner_radius_all(13)
+	sb.set_border_width_all(2)
+	sb.border_color = Color(0.92, 0.74, 0.36, 0.95)
+	sb.shadow_color = Color(0, 0, 0, 0.38)
+	sb.shadow_size = 8
+	_stat_panel.add_theme_stylebox_override("panel", sb)
+	var h := HBoxContainer.new()
+	h.name = "Stats"
+	h.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	h.offset_left = 10
+	h.offset_right = -10
+	h.alignment = BoxContainer.ALIGNMENT_CENTER
+	h.add_theme_constant_override("separation", 8)
+	h.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_stat_panel.add_child(h)
+	battle.hud.add_child(_stat_panel)
+	_stat_panel.visible = false
+
+
+func _stat_entry(kind: String, tint: Color, _label_text: String, value: float, as_int: bool, rng: float = 0.0) -> Control:
+	var box := HBoxContainer.new()
+	box.add_theme_constant_override("separation", 4)
+	box.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	var ic = MENU_ICON.new()
+	ic.kind = kind
+	ic.tint = tint
+	ic.custom_minimum_size = Vector2(30, 30)
+	ic.size = Vector2(30, 30)
+	ic.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	box.add_child(ic)
+	var txt := Label.new()
+	txt.text = str(int(round(value))) if as_int else ("%.1f" % value)
+	txt.add_theme_font_size_override("font_size", 25)
+	txt.add_theme_color_override("font_color", Color(0, 0, 0))
+	txt.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	box.add_child(txt)
+	return box
+
+
 func _process(_delta):
 	if not battle: return
+	if _stat_panel and (battle.selected_card != self or battle.is_dragging):
+		_hide_stat_popup()
 	var dyn_cost: int = battle.card_cost(config) if battle else config.cost
 	if config.card_id == 123 and _cost_badge:
 		_cost_badge.set_cost(dyn_cost)
@@ -244,6 +332,12 @@ func _process(_delta):
 	else:
 		scale = Vector2.ONE
 		modulate = Color.WHITE
+
+func _exit_tree() -> void:
+	if _stat_panel and is_instance_valid(_stat_panel):
+		_stat_panel.queue_free()
+		_stat_panel = null
+
 
 static func _safe_card_name(n: String) -> String:
 	return n.replace("/", "_").replace("\\", "_").replace(":", "_").replace("*", "_").replace("?", "_").replace("\"", "_").replace("<", "_").replace(">", "_").replace("|", "_")

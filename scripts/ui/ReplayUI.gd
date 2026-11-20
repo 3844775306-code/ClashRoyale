@@ -9,6 +9,7 @@ var live_selected_card: int = -1
 const REPLAY_DIR := "user://replays"
 const SPELL_VFX = preload("res://scripts/visuals/SpellVFX.gd")
 const CARD_SCAN = preload("res://assets/shaders/card_scan.gdshader")
+const MENU_ICON = preload("res://assets/ui/menu/MenuIcon.gd")
 const EMOTES = preload("res://scripts/data/EmoteCatalog.gd")
 const REPLAY_RECORDER = preload("res://scripts/core/ReplayRecorder.gd")
 
@@ -63,6 +64,7 @@ var _time_lbl: Label
 var _play_btn: Button
 var _speed_btn: Button
 var _tex_cache: Dictionary = {}
+var _live_stat_tip: Panel = null
 
 func _ready():
 	_bg_layer = UiComponents.add_background(self)
@@ -1567,7 +1569,7 @@ func _mini_card(cid: int, team: int) -> Control:
 				p.add_child(lv_lbl)
 	p.set_meta("replay_card_id", cid)
 	if live_mode and cid >= 0:
-		p.gui_input.connect(_on_live_card_input.bind(cid))
+		p.gui_input.connect(_on_live_card_input.bind(cid, p))
 	return p
 
 func _portrait(card_name: String) -> Texture2D:
@@ -1593,7 +1595,7 @@ func _update_elixir():
 			l.text = "圣水 %.1f" % v
 	_update_hand_scan()
 
-func _on_live_card_input(event: InputEvent, cid: int) -> void:
+func _on_live_card_input(event: InputEvent, cid: int, card_panel: Control) -> void:
 	var pressed := false
 	if event is InputEventMouseButton:
 		pressed = event.pressed and event.button_index == MOUSE_BUTTON_LEFT
@@ -1601,7 +1603,77 @@ func _on_live_card_input(event: InputEvent, cid: int) -> void:
 		pressed = event.pressed
 	if pressed:
 		live_selected_card = cid
+		_show_live_stat_tip(cid, card_panel)
 		live_card_selected.emit(cid)
+
+
+func _show_live_stat_tip(cid: int, card_panel: Control) -> void:
+	if _battle == null:
+		return
+	var cfg = _battle.get_config(cid)
+	if cfg == null:
+		return
+	if _live_stat_tip and is_instance_valid(_live_stat_tip):
+		_live_stat_tip.queue_free()
+		_live_stat_tip = null
+	var is_spell: bool = _battle.SPELL_IDS.has(cid) or cid == 110 or cid == 109
+	var lv: int = int(_levels.get(0, {}).get(str(cid), PlayerData.get_card_level(cid)))
+	lv = maxi(1, lv)
+	var hp: int = int(round(cfg.max_health * Config.level_mult(lv)))
+	var atk: int = int(round(cfg.damage * Config.level_mult(lv)))
+	var rng: float = cfg.damage_range if cfg.damage_range > 0.0 else cfg.attack_range
+	_live_stat_tip = Panel.new()
+	_live_stat_tip.z_index = 100
+	_live_stat_tip.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_live_stat_tip.custom_minimum_size = Vector2(204, 66)
+	_live_stat_tip.size = Vector2(204, 66)
+	var sb := StyleBoxFlat.new()
+	sb.bg_color = Color(1, 1, 1, 0.97)
+	sb.set_corner_radius_all(13)
+	sb.set_border_width_all(2)
+	sb.border_color = Color(0.92, 0.74, 0.36, 0.95)
+	sb.shadow_color = Color(0, 0, 0, 0.38)
+	sb.shadow_size = 8
+	_live_stat_tip.add_theme_stylebox_override("panel", sb)
+	var h := HBoxContainer.new()
+	h.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	h.offset_left = 10
+	h.offset_right = -10
+	h.alignment = BoxContainer.ALIGNMENT_CENTER
+	h.add_theme_constant_override("separation", 8)
+	h.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_live_stat_tip.add_child(h)
+	if is_spell:
+		h.add_child(_live_stat_entry("globe", Color(0.25, 0.48, 0.95), rng, false))
+	else:
+		h.add_child(_live_stat_entry("shield", Color(0.88, 0.28, 0.22), hp, true))
+	h.add_child(_live_stat_entry("sword", Color(0.78, 0.52, 0.12), atk, true))
+	var cr: Rect2 = card_panel.get_global_rect()
+	var vp: Vector2 = get_viewport().get_visible_rect().size
+	var px: float = clampf(cr.position.x + cr.size.x * 0.5 - 102.0, 8.0, vp.x - 212.0)
+	var py: float = maxf(8.0, cr.position.y - 78.0)
+	_live_stat_tip.position = Vector2(px, py)
+	_viewer.add_child(_live_stat_tip)
+
+
+func _live_stat_entry(kind: String, tint: Color, value: float, as_int: bool) -> Control:
+	var box := HBoxContainer.new()
+	box.add_theme_constant_override("separation", 4)
+	box.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	var ic = MENU_ICON.new()
+	ic.kind = kind
+	ic.tint = tint
+	ic.custom_minimum_size = Vector2(30, 30)
+	ic.size = Vector2(30, 30)
+	ic.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	box.add_child(ic)
+	var txt := Label.new()
+	txt.text = str(int(round(value))) if as_int else ("%.1f" % value)
+	txt.add_theme_font_size_override("font_size", 25)
+	txt.add_theme_color_override("font_color", Color(0, 0, 0))
+	txt.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	box.add_child(txt)
+	return box
 
 func _update_hand_scan() -> void:
 	for team in [0, 1]:
