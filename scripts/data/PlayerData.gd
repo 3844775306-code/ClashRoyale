@@ -75,6 +75,7 @@ var avatar_index: int = 0
 var avatar_custom_path: String = ""
 var account_id: String = "default"          # 当前账号 id（default = 旧版单存档）
 var account_save_path: String = ""          # 当前账号本地存档路径（空=默认/环境目录）
+var portable_data_root: String = ""         # 当 user:// 不可写时使用的 EXE 同目录数据根
 var last_save_error: String = ""
 func _ready():
 	
@@ -88,6 +89,8 @@ func _ready():
 		ai_levels[i] = get_ai_card_level()
 	
 func _data_root() -> String:
+	if portable_data_root != "":
+		return portable_data_root
 	var env := OS.get_environment("CR_ACCOUNT_DATA_DIR")
 	return env.trim_suffix("/") if env != "" else "user://"
 

@@ -21,6 +21,7 @@ config/icon="res://icon.svg"
 
 [autoload]
 
+DebugBoot="*res://scripts/core/DebugBoot.gd"
 Config="*res://scripts/core/Config.gd"
 GameManager="*res://scripts/core/GameManager.gd"
 AudioManager="*res://scripts/core/AudioManager.gd"

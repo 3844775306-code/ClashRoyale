@@ -6,17 +6,61 @@ signal cloud_status_changed
 
 const SUPABASE_URL := "https://oewvixujojsbqwxfnkfk.supabase.co"
 const SUPABASE_KEY := "sb_publishable_ppeyEdIwDfUDkcrmTFBVjQ_6P8i64F3"
-const SESSION_PATH := "user://account_session_v2.cfg"
-const INDEX_PATH := "user://accounts_v2.cfg"
 const SESSION_DAYS := 30
+const DEFAULT_SESSION_PATH := "user://account_session_v2.cfg"
+const DEFAULT_INDEX_PATH := "user://accounts_v2.cfg"
 
-const DEBUG_LOG_PATH := "user://account_debug.log"
+var _portable_root := ""
+
+func _data_base() -> String:
+	return _portable_root if _portable_root != "" else "user://"
+
+func _data_path(name: String) -> String:
+	return "%s/%s" % [_data_base().trim_suffix("/"), name]
+
+func _session_path() -> String:
+	return _data_path("account_session_v2.cfg")
+
+func _index_path() -> String:
+	return _data_path("accounts_v2.cfg")
+
+func _probe_write(base: String) -> bool:
+	var path := "%s/write_probe_%d.tmp" % [base.trim_suffix("/"), Time.get_ticks_usec()]
+	if base.begins_with("user://"):
+		DirAccess.make_dir_recursive_absolute(ProjectSettings.globalize_path(base))
+	else:
+		DirAccess.make_dir_recursive_absolute(base)
+	var f := FileAccess.open(path, FileAccess.WRITE)
+	if f == null:
+		return false
+	f.store_string("ok")
+	f.close()
+	var ok := FileAccess.file_exists(path)
+	if path.begins_with("user://"):
+		DirAccess.remove_absolute(ProjectSettings.globalize_path(path))
+	else:
+		DirAccess.remove_absolute(path)
+	return ok
+
+func _detect_storage() -> void:
+	if _probe_write("user://"):
+		_portable_root = ""
+		return
+	var base := OS.get_executable_path().get_base_dir() + "/clash_royale_data"
+	DirAccess.make_dir_recursive_absolute(base)
+	if _probe_write(base):
+		_portable_root = base
+		PlayerData.portable_data_root = base
+		print("[ACCOUNT] user:// not writable, using portable data: ", base)
+	else:
+		_portable_root = ""
+		print("[ACCOUNT] no writable data directory; user:// will fail")
 
 func debug_log(stage: String, detail: String = "") -> void:
 	var line := "[%s] %s %s" % [Time.get_datetime_string_from_system(), stage, detail]
 	print("[ACCOUNT_DEBUG] ", line)
 	var paths := [
-		DEBUG_LOG_PATH,
+		_data_path("account_debug.log"),
 		OS.get_environment("USERPROFILE") + "/clash_account_debug.log",
 		"C:/Users/Public/clash_account_debug.log",
 	]
@@ -32,7 +76,7 @@ func debug_log(stage: String, detail: String = "") -> void:
 			f.close()
 
 func debug_log_path() -> String:
-	return OS.get_environment("USERPROFILE") + "/clash_account_debug.log"
+	return _data_path("account_debug.log")
 
 var is_authenticated := false
 var auto_login_pending := false
@@ -53,7 +97,8 @@ var _syncing := false
 var _last_save_ms := 0
 
 func _ready() -> void:
-	debug_log("ACCOUNT_BOOT", "version=%s cwd=%s user_dir=%s" % [Config.BUILD_TAG, OS.get_executable_path(), ProjectSettings.globalize_path("user://")])
+	_detect_storage()
+	debug_log("ACCOUNT_BOOT", "version=%s cwd=%s user_dir=%s portable=%s" % [Config.BUILD_TAG, OS.get_executable_path(), ProjectSettings.globalize_path("user://"), _portable_root])
 	call_deferred("_boot")
 
 func _boot() -> void:
@@ -214,7 +259,7 @@ func _finish_login(email: String, username: String, from_recent: bool) -> Dictio
 	account_id = _user_id
 	if _user_id == "":
 		return {"ok": false, "error": "云端账号 ID 无效"}
-	var save_path := "user://saves/%s.cfg" % _user_id
+	var save_path := _data_path("saves/%s.cfg" % _user_id)
 	var abs_save := ProjectSettings.globalize_path(save_path)
 	var had_local := FileAccess.file_exists(save_path)
 	debug_log("FINISH_LOCAL_BEFORE", "path=%s abs=%s exists=%s" % [save_path, abs_save, str(had_local)])
@@ -224,7 +269,7 @@ func _finish_login(email: String, username: String, from_recent: bool) -> Dictio
 	auto_login_pending = false
 	var sess_ok := _save_session()
 	var idx_ok := _save_index()
-	debug_log("FINISH_META_SAVED", "session_ok=%s index_ok=%s session_file=%s index_file=%s" % [str(sess_ok), str(idx_ok), str(FileAccess.file_exists(SESSION_PATH)), str(FileAccess.file_exists(INDEX_PATH))])
+	debug_log("FINISH_META_SAVED", "session_ok=%s index_ok=%s session_file=%s index_file=%s" % [str(sess_ok), str(idx_ok), str(FileAccess.file_exists(_session_path())), str(FileAccess.file_exists(_index_path()))])
 	cloud_status = "正在同步云端存档…"
 	cloud_status_changed.emit()
 	await _sync_cloud(had_local)
@@ -458,7 +503,7 @@ func try_claim_bind_reward() -> bool:
 
 func _load_session() -> Dictionary:
 	var cfg := ConfigFile.new()
-	if cfg.load(SESSION_PATH) != OK:
+	if cfg.load(_session_path()) != OK:
 		return {}
 	return {
 		"email": String(cfg.get_value("session", "email", "")),
@@ -477,17 +522,20 @@ func _save_session() -> bool:
 	cfg.set_value("session", "access", _access)
 	cfg.set_value("session", "refresh", _refresh)
 	cfg.set_value("session", "expires", int(Time.get_unix_time_from_system()) + SESSION_DAYS * 86400)
-	var err_session := cfg.save(SESSION_PATH)
-	debug_log("SESSION_SAVE", "path=%s abs=%s err=%d exists=%s" % [SESSION_PATH, ProjectSettings.globalize_path(SESSION_PATH), err_session, str(FileAccess.file_exists(SESSION_PATH))])
+	var err_session := cfg.save(_session_path())
+	debug_log("SESSION_SAVE", "path=%s err=%d exists=%s" % [_session_path(), err_session, str(FileAccess.file_exists(_session_path()))])
 	return err_session == OK
 
 func _clear_session_file() -> void:
-	if FileAccess.file_exists(SESSION_PATH):
-		DirAccess.remove_absolute(ProjectSettings.globalize_path(SESSION_PATH))
+	if FileAccess.file_exists(_session_path()):
+		if _session_path().begins_with("user://"):
+			DirAccess.remove_absolute(ProjectSettings.globalize_path(_session_path()))
+		else:
+			DirAccess.remove_absolute(_session_path())
 
 func _load_index() -> ConfigFile:
 	var cfg := ConfigFile.new()
-	cfg.load(INDEX_PATH)
+	cfg.load(_index_path())
 	return cfg
 
 func _save_index() -> bool:
@@ -498,8 +546,8 @@ func _save_index() -> bool:
 	cfg.set_value(account_email, "username", account_username)
 	cfg.set_value(account_email, "refresh", _refresh)
 	cfg.set_value(account_email, "last_login", int(Time.get_unix_time_from_system()))
-	var err_idx := cfg.save(INDEX_PATH)
-	debug_log("INDEX_SAVE", "path=%s abs=%s err=%d exists=%s" % [INDEX_PATH, ProjectSettings.globalize_path(INDEX_PATH), err_idx, str(FileAccess.file_exists(INDEX_PATH))])
+	var err_idx := cfg.save(_index_path())
+	debug_log("INDEX_SAVE", "path=%s err=%d exists=%s" % [_index_path(), err_idx, str(FileAccess.file_exists(_index_path()))])
 	return err_idx == OK
 
 func recent_supabase_accounts(_days: int = 30) -> Array:
