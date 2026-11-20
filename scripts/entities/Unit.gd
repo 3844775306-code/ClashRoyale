@@ -844,8 +844,8 @@ func _animate_status_fx(now: int) -> void:
 	if status_fx == null:
 		return
 	var t := now * 0.001
-	status_fx.rotation.y = t * float(status_fx.get_meta("spin", 1.0))
-	var base_y := float(status_fx.get_meta("base_y", 0.5))
+	status_fx.rotation.y = t * (float(status_fx.get_meta("spin")) if status_fx.has_meta("spin") else 1.0)
+	var base_y := float(status_fx.get_meta("base_y")) if status_fx.has_meta("base_y") else 0.5
 	var idx := 0
 	for c in status_fx.get_children():
 		idx += 1

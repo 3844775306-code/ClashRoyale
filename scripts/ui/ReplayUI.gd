@@ -513,11 +513,11 @@ func _generate_selfplay():
 
 func _open_replay(data: Dictionary):
 	_data = data
-	var meta: Dictionary = data.get("meta", {})
-	_actions = data.get("actions", [])
-	_emotes = data.get("emotes", [])
+	var meta: Dictionary = data.get("meta", {}) if data.get("meta", {}) is Dictionary else {}
+	_actions = data.get("actions", []) if data.get("actions", []) is Array else []
+	_emotes = data.get("emotes", []) if data.get("emotes", []) is Array else []
 	_next_emote = 0
-	_snapshots = data.get("snapshots", [])
+	_snapshots = data.get("snapshots", []) if data.get("snapshots", []) is Array else []
 	var snap_file_name := String(meta.get("snapshots_file", ""))
 	if _snapshots.is_empty() and snap_file_name != "":
 		var sdir := String(data.get("_source_dir", "user://replays"))
@@ -647,9 +647,15 @@ func _build_hands(meta: Dictionary):
 	_elixir_labels.clear()
 	_build_hand_strip(Config.Team.ENEMY, 100, "对手")
 	_build_hand_strip(Config.Team.PLAYER, 1428, "我方")
-	if _battle and _battle.hud:
-		_battle.hud._enemy_profile_panel.position = Vector2(666, 104)
-		_battle.hud._ally_profile_panel.position = Vector2(666, 1432)
+	if _battle and _battle.hud and not live_mode:
+		_battle.hud.set_replay_layout()
+		if _battle.hud._enemy_profile_panel:
+			_battle.hud._enemy_profile_panel.position = Vector2(666, 104)
+		if _battle.hud._ally_profile_panel:
+			_battle.hud._ally_profile_panel.position = Vector2(666, 1432)
+		var profs: Array = Array(meta.get("player_profiles", []))
+		if not profs.is_empty():
+			_battle.hud.set_match_profiles(profs)
 	var top_info: VBoxContainer = _info_boxes.get(1)
 	if top_info:
 		var rl := Label.new()
@@ -869,7 +875,7 @@ func _hide_hud_except_bars():
 		return
 	var hb = _battle.hud.health_bar_container
 	for ch in _battle.hud.get_children():
-		ch.visible = (ch == hb or ch == _battle.hud._enemy_profile_panel or ch == _battle.hud._ally_profile_panel or ch == _battle.hud._mini_tray)
+		ch.visible = (ch == hb or ch == _battle.hud._enemy_profile_panel or ch == _battle.hud._ally_profile_panel or (_battle.hud._mini_tray != null and ch == _battle.hud._mini_tray))
 
 
 func _process(_delta):
@@ -931,9 +937,10 @@ func _apply_snapshot_at(t: float) -> void:
 				_hands[team] = hh.duplicate()
 				_update_hands()
 	# 多人回放：同步队友手牌到 HUD
-	var ph: Array = before.get("player_hands", [])
-	if ph.size() > 2 and _battle and _battle.hud and _battle.hud.has_method("set_teammate_hand"):
-		_battle.hud.set_teammate_hand(Array(ph[2]))
+	if before.get("player_hands", null) is Array:
+		var ph: Array = before.get("player_hands", [])
+		if ph.size() > 2 and _battle and _battle.hud and _battle.hud.has_method("set_teammate_hand"):
+			_battle.hud.set_teammate_hand(Array(ph[2]))
 	# 圣水
 	var e0: Array = before.get("elixir", [7.0, 5.0])
 	var e1: Array = after.get("elixir", e0)
@@ -982,7 +989,7 @@ func _apply_snapshot_at(t: float) -> void:
 					u.queue_free()
 				else:
 					_play_unit_death(u)
-			var bd = u.get_meta("beam_target", null) if is_instance_valid(u) else null
+			var bd = u.get_meta("beam_target") if is_instance_valid(u) and u.has_meta("beam_target") else null
 			if bd and is_instance_valid(bd):
 				bd.free()
 			_visual_units.erase(id)
@@ -1291,7 +1298,7 @@ func _sync_native_effects(before: Dictionary, after: Dictionary, alpha: float) -
 		var bd = b.get("beam", a.get("beam"))
 		var cp = b.get("chain", a.get("chain"))
 		if bd or cp:
-			var dummy = u.get_meta("beam_target", null)
+			var dummy = u.get_meta("beam_target") if u.has_meta("beam_target") else null
 			if dummy == null or not is_instance_valid(dummy):
 				dummy = Unit.new()
 				dummy.config = u.config
@@ -1361,7 +1368,7 @@ func _sync_special_effects(before: Dictionary, after: Dictionary, alpha: float) 
 		var cp = b.get("chain", a.get("chain"))
 		if cp and cp.size() >= 2:
 			var cr = _visual_chains.get(id)
-			if cr == null or not is_instance_valid(cr) or int(cr.get_meta("point_count", 0)) != cp.size():
+			if cr == null or not is_instance_valid(cr) or (cr.has_meta("point_count") and int(cr.get_meta("point_count")) != cp.size()):
 				if cr and is_instance_valid(cr): cr.queue_free()
 				cr = Node3D.new()
 				cr.top_level = true
@@ -1696,10 +1703,10 @@ func _update_hand_scan() -> void:
 			continue
 		var elixir: float = _snap_elixir[team] if _snapshot_mode else (_battle.player_elixir if team == 0 and _battle else (_battle.enemy_elixir if _battle else 0.0))
 		for card_panel in box.get_children():
-			var mat = card_panel.get_meta("scan_mat", null)
-			if mat == null:
+			if not card_panel.has_meta("scan_mat"):
 				continue
-			var cost: int = int(card_panel.get_meta("scan_cost", 1))
+			var mat = card_panel.get_meta("scan_mat")
+			var cost: int = int(card_panel.get_meta("scan_cost")) if card_panel.has_meta("scan_cost") else 1
 			var ratio: float = clampf(elixir / float(maxi(cost, 1)), 0.0, 1.0)
 			mat.set_shader_parameter("progress", ratio)
 

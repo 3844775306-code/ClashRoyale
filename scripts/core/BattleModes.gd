@@ -109,7 +109,7 @@ static var _duel: Dictionary = {
 	"player_decks": [], "enemy_decks": [],
 }
 static var _custom: Dictionary = {
-	"elixir": 1.0, "sudden_death": false, "level": "own",
+	"elixir": 1.0, "sudden_death": false, "level": "fixed",
 	"deck": "custom", "win_condition": "", "commando": false,
 	"commando_card_id": 0, "draft_choices": 4, "draft_picks": 8,
 }
@@ -158,7 +158,7 @@ static func custom_config() -> Dictionary:
 static func set_custom_config(cfg: Dictionary) -> void:
 	_custom["elixir"] = float(cfg.get("elixir", 1.0))
 	_custom["sudden_death"] = bool(cfg.get("sudden_death", false))
-	_custom["level"] = String(cfg.get("level", "own"))
+	_custom["level"] = String(cfg.get("level", "fixed"))
 	_custom["deck"] = String(cfg.get("deck", "custom"))
 	_custom["win_condition"] = String(cfg.get("win_condition", ""))
 	_custom["commando"] = bool(cfg.get("commando", false))
