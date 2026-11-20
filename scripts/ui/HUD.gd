@@ -553,14 +553,14 @@ func _build_elixir_grid(grid: HBoxContainer):
 
 func _setup_match_profiles(screen_size: Vector2, tray_y: float) -> void:
 	_enemy_profile_panel = Panel.new()
-	_enemy_profile_panel.position = Vector2(screen_size.x - 322, 46)
-	_enemy_profile_panel.size = Vector2(310, 34)
+	_enemy_profile_panel.position = Vector2(screen_size.x - 308, 46)
+	_enemy_profile_panel.size = Vector2(300, 34)
 	_enemy_profile_panel.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_enemy_profile_panel.add_theme_stylebox_override("panel", _profile_panel_style())
 	add_child(_enemy_profile_panel)
 	_ally_profile_panel = Panel.new()
-	_ally_profile_panel.position = Vector2(12, tray_y - 38)
-	_ally_profile_panel.size = Vector2(310, 34)
+	_ally_profile_panel.position = Vector2(8, 46)
+	_ally_profile_panel.size = Vector2(300, 34)
 	_ally_profile_panel.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_ally_profile_panel.add_theme_stylebox_override("panel", _profile_panel_style())
 	add_child(_ally_profile_panel)
@@ -590,8 +590,8 @@ func _refresh_match_profiles() -> void:
 			ally.append(p)
 	_fill_profile_panel(_enemy_profile_panel, enemy, "敌方")
 	_fill_profile_panel(_ally_profile_panel, ally, "我方")
-	_enemy_profile_panel.size.y = 34 if enemy.size() <= 1 else 58
-	_ally_profile_panel.size.y = 34 if ally.size() <= 1 else 58
+	_enemy_profile_panel.size.y = 34
+	_ally_profile_panel.size.y = 34
 
 func _fill_profile_panel(panel: Panel, profiles: Array, side: String) -> void:
 	for c in panel.get_children():
@@ -617,17 +617,17 @@ func _fill_profile_panel(panel: Panel, profiles: Array, side: String) -> void:
 func _make_profile_chip(p: Dictionary) -> Control:
 	var b := Button.new()
 	b.flat = true
-	b.custom_minimum_size = Vector2(126, 28)
+	b.custom_minimum_size = Vector2(112, 28)
 	b.mouse_filter = Control.MOUSE_FILTER_STOP
 	b.add_theme_stylebox_override("normal", StyleBoxEmpty.new())
 	b.add_theme_stylebox_override("hover", StyleBoxEmpty.new())
 	var h := HBoxContainer.new()
 	h.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	h.add_theme_constant_override("separation", 3)
+	h.add_theme_constant_override("separation", 2)
 	b.add_child(h)
 	var av = preload("res://scripts/ui/AvatarIcon.gd").new()
-	av.custom_minimum_size = Vector2(26, 26)
-	av.size = Vector2(26, 26)
+	av.custom_minimum_size = Vector2(24, 24)
+	av.size = Vector2(24, 24)
 	av.setup(String(p.get("name", "玩家")), int(p.get("avatar_seed", 0)), int(p.get("avatar_index", 0)))
 	h.add_child(av)
 	var vb := VBoxContainer.new()
@@ -635,12 +635,12 @@ func _make_profile_chip(p: Dictionary) -> Control:
 	h.add_child(vb)
 	var nm := Label.new()
 	nm.text = String(p.get("name", "玩家"))
-	nm.add_theme_font_size_override("font_size", 11)
+	nm.add_theme_font_size_override("font_size", 10)
 	nm.add_theme_color_override("font_color", Color.WHITE)
 	vb.add_child(nm)
 	var tr := Label.new()
 	tr.text = "🏆 %d" % int(p.get("trophies", 0))
-	tr.add_theme_font_size_override("font_size", 9)
+	tr.add_theme_font_size_override("font_size", 8)
 	tr.add_theme_color_override("font_color", Color(0.95, 0.82, 0.45))
 	vb.add_child(tr)
 	b.pressed.connect(func(): _open_match_profile(p))

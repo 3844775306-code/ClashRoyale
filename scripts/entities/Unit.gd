@@ -990,33 +990,6 @@ func _incoming_damage(tgt) -> float:
 	return total
 
 
-func _steer_around_buildings(desired: Vector2) -> Vector2:
-	if battle == null or config.type == Config.UnitType.AIR or desired.length() < 0.01:
-		return desired
-	var look := desired.normalized()
-	var steer := Vector2.ZERO
-	var origin := Vector2(global_position.x, global_position.z)
-	for u in battle.units.get_children():
-		if u == null or u == target or u.config == null:
-			continue
-		if u.config.type != Config.UnitType.BUILDING or u.health <= 0.0:
-			continue
-		var rel := Vector2(u.global_position.x - origin.x, u.global_position.z - origin.y)
-		var along := rel.dot(look)
-		if along <= 0.0 or along > 4.5:
-			continue
-		var lateral := absf(rel.x * look.y - rel.y * look.x)
-		var clearance: float = float(u.config.size) + float(config.size) + 0.55
-		if lateral >= clearance:
-			continue
-		var side: float = 1.0 if (rel.x * look.y - rel.y * look.x) >= 0.0 else -1.0
-		var perp := Vector2(-look.y, look.x) * side
-		steer += perp * ((clearance - lateral) / maxf(clearance, 0.01)) * 1.6
-	if steer.length() < 0.01:
-		return desired
-	return (look + steer).normalized()
-
-
 func find_target(origin):
 	accumulate = 1.0
 	var potential = []
@@ -1078,7 +1051,7 @@ func _move_towards(pos: Vector3, delta):
 	if battle != null and String(battle.win_condition) == "touchdown":
 		var tdir := Vector2(pos.x - global_position.x, pos.z - global_position.z)
 		if tdir.length() > 0.01:
-			move_direction = _steer_around_buildings(tdir)
+			move_direction = tdir.normalized()
 			var step0: float = speed * floor(accelerate) * delta / slow_factor
 			step0 *= 1.0 + quick * 0.01
 			step0 /= fix_factor
@@ -1105,7 +1078,7 @@ func _move_towards(pos: Vector3, delta):
 				target_pos = Vector3(bridge_x, global_position.y, Config.ARENA_ORIGIN.z + Config.ARENA_HEIGHT * 0.5 + 0.5)
 	var dir = Vector2(target_pos.x - global_position.x, target_pos.z - global_position.z)
 	if dir.length() > 0.01:
-		move_direction = _steer_around_buildings(dir)
+		move_direction = dir.normalized()
 		var step = speed * floor(accelerate) * delta
 		step /= slow_factor
 		step *= 1+quick*0.01
