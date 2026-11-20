@@ -282,10 +282,13 @@ func _upload_replay(filename: String, data: Dictionary) -> void:
 		_info.text = "请先登录 Supabase 再上传"
 		return
 	_info.text = "正在上传 %s…" % filename
-	var meta: Dictionary = data.get("meta", {})
+	var meta: Dictionary = data.get("meta", {}).duplicate(true)
+	# 云端只传动作数据，snapshot 体积过大且可由 actions 重放
+	meta.erase("snapshots_file")
 	var payload := data.duplicate(true)
 	payload.erase("_source_dir")
-	payload["snapshots"] = _read_snapshots(data, filename)
+	payload["snapshots"] = []
+	payload["meta"] = meta
 	payload["permanent"] = true
 	var sizes := _file_size("%s/%s" % [String(data.get("_source_dir", _replay_dir())), filename])
 	var key := "replay:%s:%s" % [String(AccountManager.account_id), str(Time.get_unix_time_from_system()) + "_" + filename.md5_text().substr(0, 8)]

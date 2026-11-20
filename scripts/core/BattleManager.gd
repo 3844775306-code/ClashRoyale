@@ -2629,8 +2629,11 @@ func _show_game_over() -> void:
 	if hud == null:
 		return
 	var win: bool = winner == Config.Team.PLAYER and not match_draw and winner >= 0
+	var no_rewards: bool = PlayerData.test_mode or tutorial_battle
 	var trophy_change: int = 0
-	if winner < 0 or match_draw:
+	if no_rewards:
+		trophy_change = 0
+	elif winner < 0 or match_draw:
 		AudioManager.play_sfx(ProceduralAudio.get_sound("defeat"))
 	elif win:
 		trophy_change = randi_range(25, 35)
@@ -2640,7 +2643,7 @@ func _show_game_over() -> void:
 		AudioManager.play_sfx(ProceduralAudio.get_sound("defeat"))
 	var chest_won := false
 	var chest_rarity := ""
-	if win and PlayerData.consume_daily_chest_win():
+	if win and not no_rewards and PlayerData.consume_daily_chest_win():
 		var rand = randf()
 		if rand < 0.7:
 			chest_rarity = "silver"
@@ -2655,7 +2658,7 @@ func _show_game_over() -> void:
 		PlayerData.add_trophies(trophy_change)
 	if trophy_change != 0:
 		LeaderboardAPI.submit_trophies(PlayerData.trophies, PlayerData.player_name)
-	if not replay_mode and not tutorial_battle:
+	if not replay_mode and not no_rewards:
 		PlayerData.add_season_crowns(player_crowns)
 	var dur: String = "%d:%02d" % [int(game_time / 60000.0), int(game_time / 1000.0) % 60]
 	var data := {
@@ -2676,7 +2679,7 @@ func _show_game_over() -> void:
 		"chest_rarity": chest_rarity,
 		"touchdown": win_condition == "touchdown",
 		"touchdown_score": touchdown_score.duplicate(),
-		"reward_text": _build_result_reward_text(trophy_change, chest_won, chest_rarity),
+		"reward_text": "测试模式：不结算金币/宝箱/奖杯" if no_rewards else _build_result_reward_text(trophy_change, chest_won, chest_rarity),
 	}
 	if hud.game_over_screen:
 		hud.game_over_screen.populate(data)
