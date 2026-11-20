@@ -652,6 +652,8 @@ func _open_match_profile(p: Dictionary) -> void:
 	add_child(dlg)
 
 func _process(_delta):
+	if battle != null:
+		_refresh_match_profiles()
 	if battle and battle.network_host_mode and not battle.network_guest_mode:
 		_update_teammate_tray()
 	_update_mini_scans()

@@ -194,7 +194,9 @@ func _build_room() -> void:
 	_room_box.add_child(_uid_label)
 	# 派对规则（房主可选，覆盖全部特殊模式；选卡类联机自动发牌）
 	var rule_lbl := _label("派对规则（房主可选）", 14, Color(0.86, 0.80, 0.62))
-	rule_lbl.size_flags_horizontal = Control.SIZE_SHRINK_BEGIN
+	rule_lbl.autowrap_mode = TextServer.AUTOWRAP_OFF
+	rule_lbl.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	rule_lbl.custom_minimum_size = Vector2(320, 22)
 	_room_box.add_child(rule_lbl)
 	var rule_scroll := ScrollContainer.new()
 	rule_scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED

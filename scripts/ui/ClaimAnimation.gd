@@ -66,11 +66,10 @@ static func play(host: Control, title: String, subtitle: String, reward: Diction
 	panel.scale = Vector2(0.8, 0.8)
 	panel.modulate.a = 0.0
 	var tw := host.create_tween()
-	tw.set_parallel(true)
 	tw.tween_property(panel, "scale", Vector2(1.05, 1.05), 0.18).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
-	tw.tween_property(panel, "modulate:a", 1.0, 0.15)
+	tw.parallel().tween_property(panel, "modulate:a", 1.0, 0.15)
 	tw.tween_property(panel, "scale", Vector2.ONE, 0.10)
-	tw.tween_interval(0.55)
+	tw.tween_interval(0.45)
 	tw.tween_property(overlay, "modulate:a", 0.0, 0.25)
 	tw.tween_callback(func(): overlay.queue_free())
 

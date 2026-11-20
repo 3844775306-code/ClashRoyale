@@ -81,7 +81,7 @@ const MODES := [
 	},
 	{
 		"id": "commando", "name": "主题特种兵", "icon": "sword",
-		"desc": "每天随机一个特种兵，每 15 秒从国王塔两侧轮换生成，每分钟数量 +1",
+		"desc": "每局随机一个特种兵，每 15 秒从国王塔两侧轮换生成，每分钟数量 +1",
 		"elixir": 1.0, "sudden_death": false, "deck": "custom", "level": "fixed",
 		"party": true, "commando": true,
 	},
@@ -111,7 +111,7 @@ static var _duel: Dictionary = {
 static var _custom: Dictionary = {
 	"elixir": 1.0, "sudden_death": false, "level": "own",
 	"deck": "custom", "win_condition": "", "commando": false,
-	"draft_choices": 4, "draft_picks": 8,
+	"commando_card_id": 0, "draft_choices": 4, "draft_picks": 8,
 }
 
 
@@ -162,6 +162,7 @@ static func set_custom_config(cfg: Dictionary) -> void:
 	_custom["deck"] = String(cfg.get("deck", "custom"))
 	_custom["win_condition"] = String(cfg.get("win_condition", ""))
 	_custom["commando"] = bool(cfg.get("commando", false))
+	_custom["commando_card_id"] = int(cfg.get("commando_card_id", 0))
 	_custom["draft_choices"] = int(cfg.get("draft_choices", 4))
 	_custom["draft_picks"] = int(cfg.get("draft_picks", 8))
 
@@ -180,13 +181,12 @@ static func swap_decks() -> Dictionary:
 	return {"player": _swap_player.duplicate(), "enemy": _swap_enemy.duplicate()}
 
 
-# 每日特种兵：用日期做种子，返回稳定的数字种子（具体卡牌由 BattleManager 从卡表挑选）
+# 特种兵随机种子：每局重新随机（不再按日期固定）；CR_COMMANDO_CARD 可用于测试指定卡
 static func commando_seed() -> int:
 	var env_card := OS.get_environment("CR_COMMANDO_CARD")
 	if env_card != "":
 		return -int(env_card)   # 负数表示直接指定卡 id
-	var d: Dictionary = Time.get_date_dict_from_system()
-	return int(d.get("year", 2026)) * 10000 + int(d.get("month", 1)) * 100 + int(d.get("day", 1))
+	return int(Time.get_ticks_usec() ^ (randi() << 16))
 
 
 static func draft_decks() -> Dictionary:

@@ -723,15 +723,25 @@ func _setup_commando() -> void:
 		candidates.append(int(cfg.card_id))
 	if candidates.is_empty():
 		return
-	var seed: int = BATTLE_MODES.commando_seed()
-	if seed < 0:
-		commando_card_id = clampi(-seed, 4, 9999)
-		if get_config(commando_card_id) == null:
+	var env_card := OS.get_environment("CR_COMMANDO_CARD")
+	var picked := int(battle_mode.get("commando_card_id", 0))
+	if env_card != "":
+		commando_card_id = clampi(int(env_card), 4, 9999)
+		if not candidates.has(commando_card_id):
 			commando_card_id = int(candidates[0])
+	elif picked > 0 and candidates.has(picked):
+		# 自定义派对：房主指定兵种；0 表示每局随机
+		commando_card_id = picked
 	else:
-		var rng := RandomNumberGenerator.new()
-		rng.seed = seed
-		commando_card_id = int(candidates[rng.randi() % candidates.size()])
+		var seed: int = BATTLE_MODES.commando_seed()
+		if seed < 0:
+			commando_card_id = clampi(-seed, 4, 9999)
+			if not candidates.has(commando_card_id):
+				commando_card_id = int(candidates[0])
+		else:
+			var rng := RandomNumberGenerator.new()
+			rng.seed = seed
+			commando_card_id = int(candidates[rng.randi() % candidates.size()])
 	var cfg = get_config(commando_card_id)
 	commando_card_name = cfg.card_name if cfg else ""
 
