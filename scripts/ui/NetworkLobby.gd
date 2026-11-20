@@ -43,10 +43,15 @@ func _ready():
 	if FriendManager.pending_invite.size() > 0 and NetworkManager.role == NetworkManager.Role.NONE:
 		var inv := FriendManager.pending_invite
 		FriendManager.pending_invite = {}
-		_ip_edit.text = String(inv.get("ip", ""))
-		_code_edit.text = String(inv.get("code", ""))
-		_invite_autoclaim = true
-		call_deferred("_join_pressed")
+		if String(inv.get("kind", "")) == "webrtc":
+			_webrtc_code_edit.text = String(inv.get("code", ""))
+			_invite_autoclaim = true
+			call_deferred("_webrtc_join_pressed")
+		else:
+			_ip_edit.text = String(inv.get("ip", ""))
+			_code_edit.text = String(inv.get("code", ""))
+			_invite_autoclaim = true
+			call_deferred("_join_pressed")
 	var env_host := OS.get_environment("CR_NET_HOST")
 	if env_host != "":
 		call_deferred("_host_pressed")
@@ -376,8 +381,11 @@ func _on_invite_friend() -> void:
 		return
 	if NetworkManager.room_code == "":
 		return
+	if NetworkManager.webrtc_mode:
+		_show_friend_list()
+		return
 	var ok := FriendManager.send_room_invite(NetworkManager.room_code, NetworkManager.get_local_ip(), PlayerData.player_name)
-	_room_status.text = "已广播邀请：房间码 %s（好友需在同一局域网）" % NetworkManager.room_code if ok else "邀请广播失败"
+	_room_status.text = "已发送房间邀请：%s" % NetworkManager.room_code if ok else "邀请发送失败"
 
 
 func _on_friend_invite(invite: Dictionary) -> void:
@@ -385,8 +393,10 @@ func _on_friend_invite(invite: Dictionary) -> void:
 		return
 	var dlg := AcceptDialog.new()
 	dlg.title = "联机邀请"
-	dlg.dialog_text = "好友 %s 邀请你加入房间 %s\nIP：%s\n\n确定后将进入联机房间。" % [
-		String(invite.get("from", "好友")), String(invite.get("code", "")), String(invite.get("ip", ""))]
+	var is_web := String(invite.get("kind", "")) == "webrtc"
+	dlg.dialog_text = "好友 %s 邀请你加入房间 %s\n%s\n\n确定后将进入联机房间。" % [
+		String(invite.get("from", "好友")), String(invite.get("code", "")),
+		"跨网房间码，可直接加入" if is_web else "IP：%s" % String(invite.get("ip", ""))]
 	dlg.confirmed.connect(func():
 		get_tree().change_scene_to_file("res://scenes/network_lobby.tscn"))
 	add_child(dlg)
@@ -453,8 +463,12 @@ func _show_friend_list() -> void:
 		var ib := UiComponents.make_primary_button("邀请", Callable(), Vector2(88, 36))
 		ib.pressed.connect(func():
 			if NetworkManager.role == NetworkManager.Role.HOST and NetworkManager.room_code != "":
-				var ok := FriendManager.send_room_invite(NetworkManager.room_code, NetworkManager.get_local_ip(), PlayerData.player_name, String(f.get("id", "")))
-				_room_status.text = "已邀请 %s（同一局域网）" % String(f.get("name", "好友")) if ok else "邀请失败"
+				var ok := false
+				if NetworkManager.webrtc_mode:
+					ok = FriendManager.send_cloud_room_invite(NetworkManager.room_code, PlayerData.player_name, String(f.get("id", "")))
+				else:
+					ok = FriendManager.send_room_invite(NetworkManager.room_code, NetworkManager.get_local_ip(), PlayerData.player_name, String(f.get("id", "")))
+				_room_status.text = "已发送邀请给 %s" % String(f.get("name", "好友")) if ok else "邀请失败"
 			else:
 				_room_status.text = "请先创建房间再邀请好友")
 		row.add_child(ib)

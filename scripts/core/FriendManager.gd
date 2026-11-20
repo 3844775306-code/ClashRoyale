@@ -31,8 +31,11 @@ var _request_layer: CanvasLayer
 var _friends_updated_at: int = 0
 var _friends_cloud_pending := false
 var _req_acc := 0.0
+var _friends_sync_acc := 0.0
 var _req_syncing := false
 const REQ_PREFIX := "friend_req:"
+const INVITE_PREFIX := "room_invite:"
+var _invite_seen: Dictionary = {}
 
 
 func _ready() -> void:
@@ -242,6 +245,7 @@ func _add_friend(profile: Dictionary) -> bool:
 		"avatar_seed": int(profile.get("avatar_seed", 0)),
 		"avatar_index": int(profile.get("avatar_index", 0)),
 		"clan": String(profile.get("clan", "")),
+		"account_id": String(profile.get("account_id", "")),
 	})
 	save_friends()
 	return true
@@ -276,6 +280,7 @@ func _self_profile() -> Dictionary:
 		"trophies": PlayerData.trophies,
 		"avatar_seed": PlayerData.avatar_seed,
 		"avatar_index": PlayerData.avatar_index,
+		"account_id": String(AccountManager.account_id),
 	}
 
 
@@ -287,6 +292,7 @@ func _friend_profile(profile: Dictionary) -> Dictionary:
 		"avatar_seed": int(profile.get("avatar_seed", 0)),
 		"avatar_index": int(profile.get("avatar_index", 0)),
 		"clan": String(profile.get("clan", "")),
+		"account_id": String(profile.get("account_id", "")),
 	}
 
 
@@ -324,6 +330,8 @@ func accept_request(pid: String) -> bool:
 		"from_profile": Dictionary(req.get("profile", req)).duplicate(true), "to_profile": me,
 		"status": "accepted", "ts": int(Time.get_unix_time_from_system()),
 	})
+	var from_acc := String(Dictionary(req.get("profile", req)).get("account_id", ""))
+	_push_mutual_friend(from_acc, me)
 	requests_changed.emit()
 	return true
 
@@ -350,6 +358,20 @@ func _push_cloud_request(value: Dictionary) -> void:
 	if not AccountManager.is_supabase_authenticated():
 		return
 	await SupabaseAPI.upsert(_request_key(String(value.get("from", "")), String(value.get("to", ""))), value)
+
+func _push_mutual_friend(account_id: String, me: Dictionary) -> void:
+	if account_id == "" or account_id == String(AccountManager.account_id):
+		return
+	var cloud: Dictionary = await SupabaseAPI.get_value("friends:" + account_id)
+	var list: Array = Array(cloud.get("friends", [])).duplicate(true)
+	var found := false
+	for f in list:
+		if String(Dictionary(f).get("id", "")) == String(me.get("player_id", "")):
+			found = true
+			break
+	if not found:
+		list.append(me)
+	await SupabaseAPI.upsert("friends:" + account_id, {"friends": list, "updated_at": int(Time.get_unix_time_from_system())})
 
 func _sync_cloud_requests() -> void:
 	if _req_syncing or not AccountManager.is_supabase_authenticated():
@@ -413,6 +435,41 @@ func _init_udp() -> void:
 	_send = PacketPeerUDP.new()
 	_send.set_broadcast_enabled(true)
 
+
+func send_cloud_room_invite(room_code: String, host_name: String, target_pid: String) -> bool:
+	if room_code == "" or target_pid == "" or not AccountManager.is_supabase_authenticated():
+		return false
+	var me := str(ClanManager.get_player_id())
+	SupabaseAPI.upsert(INVITE_PREFIX + target_pid + ":" + me, {
+		"from": me, "to": target_pid, "from_name": host_name,
+		"from_account_id": String(AccountManager.account_id),
+		"code": room_code, "kind": "webrtc", "ts": int(Time.get_unix_time_from_system()),
+	})
+	return true
+
+func _sync_cloud_invites() -> void:
+	if not AccountManager.is_supabase_authenticated():
+		return
+	var my_id := str(ClanManager.get_player_id())
+	var rows: Array = await SupabaseAPI.list_prefix(INVITE_PREFIX, 100)
+	for row in rows:
+		if not (row is Dictionary): continue
+		var v = row.get("value", {})
+		if not (v is Dictionary): continue
+		if String(v.get("to", "")) != my_id: continue
+		var key := String(row.get("key", ""))
+		if key == "" or _invite_seen.has(key): continue
+		_invite_seen[key] = true
+		var invite := {
+			"kind": String(v.get("kind", "webrtc")),
+			"code": String(v.get("code", "")),
+			"from": String(v.get("from_name", "好友")),
+			"from_id": String(v.get("from", "")),
+			"ip": "",
+		}
+		if String(invite.get("code", "")) == "": continue
+		pending_invite = invite
+		invite_received.emit(invite)
 
 func send_room_invite(room_code: String, host_ip: String, host_name: String, target_pid: String = "") -> bool:
 	if _send == null or room_code == "" or host_ip == "":
@@ -727,10 +784,16 @@ func _drain_local_packets() -> void:
 
 func _process(delta: float) -> void:
 	_req_acc += delta
+	_friends_sync_acc += delta
+	if _friends_sync_acc >= 8.0:
+		_friends_sync_acc = 0.0
+		if AccountManager.is_supabase_authenticated():
+			_sync_friends_from_cloud()
 	if _req_acc >= 6.0:
 		_req_acc = 0.0
 		if AccountManager.is_supabase_authenticated():
 			_sync_cloud_requests()
+			_sync_cloud_invites()
 	_drain_local_packets()
 	# 同局域网在线状态心跳
 	_presence_acc += delta

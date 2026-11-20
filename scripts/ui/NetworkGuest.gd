@@ -21,6 +21,7 @@ var _result_active := false
 var _guest_rec
 var _live_snaps: Array = []
 var _pending_result: Dictionary = {}
+var _last_tower_hp: Array = []
 var _entry_pending := false
 
 func _ready():
@@ -241,6 +242,16 @@ func _sync_guest_state(m: Dictionary) -> void:
 	if cs.size() >= 2:
 		b.player_crowns = int(cs[0])
 		b.enemy_crowns = int(cs[1])
+	var thp: Array = Array(m.get("towers", []))
+	if thp.size() >= 6 and _last_tower_hp.size() >= 6 and not _ru._king_seq:
+		for idx in [2, 5]:
+			if float(_last_tower_hp[idx]) > 0.0 and float(thp[idx]) <= 0.0:
+				var king_team: int = 0 if idx < 3 else 1
+				for u in b.units.get_children():
+					if u is Unit and u.config and int(u.config.card_id) == 3 and int(u.team) == king_team:
+						_ru._play_client_king_sequence(u)
+						break
+	_last_tower_hp = thp.duplicate()
 	b.touchdown_round = int(m.get("touchdown_round", 1))
 	var ts: Array = m.get("touchdown_scores", [])
 	if ts.size() >= 2:

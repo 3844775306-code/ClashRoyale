@@ -1179,6 +1179,10 @@ func _play_client_king_sequence(king) -> void:
 	var tower_team: int = int(king.team)
 	var winner: int = 1 - tower_team
 	var crowns: Array = []
+	king.visible = true
+	if king.visual_root:
+		king.visual_root.visible = true
+	king._play_tower_destruction()
 	if _battle.hud:
 		_battle.hud.hide_card_tray()
 	for other in _battle.units.get_children():
