@@ -29,6 +29,17 @@ async function getMap(base: string, sr: string, key: string) {
   const arr = await r.json();
   return Array.isArray(arr) && arr.length > 0 ? arr[0].value : null;
 }
+async function passwordSession(base: string, email: string, password: string) {
+  const anon = Deno.env.get("SUPABASE_ANON_KEY") ?? "";
+  const r = await fetch(`${base}/auth/v1/token?grant_type=password`, {
+    method: "POST",
+    headers: { apikey: anon, Authorization: `Bearer ${anon}`, "Content-Type": "application/json" },
+    body: JSON.stringify({ email, password }),
+  });
+  if (!r.ok) return {};
+  return await r.json();
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: CORS });
   const base = Deno.env.get("SUPABASE_URL") ?? "";
@@ -51,7 +62,8 @@ Deno.serve(async (req) => {
       const data = await r.json();
       if (!r.ok) return json({ ok: false, error: data.msg ?? data.message ?? "创建账号失败" }, 400);
       await putMap(base, sr, `username:${await sha256Hex(key)}`, { username, username_key: key, email, user_id: data.id ?? "" });
-      return json({ ok: true, user_id: data.id ?? "", email });
+      const session = await passwordSession(base, email, password);
+      return json({ ok: true, user_id: data.id ?? "", email, ...session });
     }
     if (action === "claim-bind-reward") {
       const auth = req.headers.get("Authorization") ?? "";
@@ -81,9 +93,15 @@ Deno.serve(async (req) => {
         body: JSON.stringify({ email, password, email_confirm: true, user_metadata: { email_verified: true } }),
       });
       const data = await r.json();
-      if (r.ok) return json({ ok: true, created: true, user_id: data.id ?? "" });
+      if (r.ok) {
+        const session = await passwordSession(base, email, password);
+        return json({ ok: true, created: true, user_id: data.id ?? "", ...session });
+      }
       const msg = String(data.msg ?? data.message ?? "创建失败");
-      if (msg.toLowerCase().includes("already") || msg.toLowerCase().includes("registered") || r.status === 422) return json({ ok: true, created: false });
+      if (msg.toLowerCase().includes("already") || msg.toLowerCase().includes("registered") || r.status === 422) {
+        const session = await passwordSession(base, email, password);
+        return json({ ok: true, created: false, ...session });
+      }
       return json({ ok: false, error: msg }, 400);
     }
     if (action === "resolve") {

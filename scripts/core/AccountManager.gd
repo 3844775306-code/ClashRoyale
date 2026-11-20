@@ -135,6 +135,9 @@ func register_username(username: String, password: String) -> Dictionary:
 	var r := await _edge_request("signup", {"username": uname, "password": password})
 	if not bool(r.get("ok", false)):
 		return {"ok": false, "error": String(r.get("error", "注册失败"))}
+	if String(r.get("access_token", "")) != "":
+		_set_tokens(r)
+		return await _finish_login(String(r.get("email", "")), uname, false)
 	var login := await login_username(uname, password)
 	if not bool(login.get("ok", false)):
 		return {"ok": false, "error": String(login.get("error", "账号已创建，请直接登录"))}
@@ -149,6 +152,10 @@ func register(email: String, password: String) -> Dictionary:
 	var r := await _edge_request("provision-email", {"email": email, "password": password})
 	if not bool(r.get("ok", false)):
 		return {"ok": false, "error": String(r.get("error", "注册失败"))}
+	if String(r.get("access_token", "")) != "":
+		_set_tokens(r)
+		var uname0 := String(Dictionary(Dictionary(r.get("user", {})).get("user_metadata", {})).get("username", ""))
+		return await _finish_login(email, uname0, false)
 	return await login(email, password)
 
 func logout() -> void:
