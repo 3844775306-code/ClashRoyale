@@ -88,7 +88,9 @@ func _load_remote_turn() -> void:
 	if _remote_turn_loaded:
 		return
 	_remote_turn_loaded = true
-	if String(turn_config().get("url", "")) != "":
+	var current := turn_config()
+	var mode := String(current.get("mode", "manual"))
+	if String(current.get("url", "")) != "" and (mode == "manual" or mode == "cloudflare"):
 		return
 	if not AccountManager.is_supabase_authenticated():
 		return
@@ -174,7 +176,7 @@ func _ice_servers() -> Array:
 	var out: Array = [{"urls": ["stun:stun.cloudflare.com:3478", "stun:stun.l.google.com:19302"]}]
 	var c := turn_config()
 	if String(c.get("url", "")) != "":
-		out.append({"urls": [String(c.get("url", ""))], "username": String(c.get("user", "")), "credential": String(c.get("pass", ""))})
+		out.append({"urls": [String(c.get("url", ""))], "username": String(c.get("user", "")), "credentials": String(c.get("pass", "")), "credential": String(c.get("pass", ""))})
 	return out
 
 
@@ -187,7 +189,7 @@ func _new_session(peer_id: int, remote_id: int, host_side: bool) -> Dictionary:
 		"offer_written": false, "answer_written": false, "remote_set": false,
 		"pending_ice": [],
 	}
-	var err := pc.initialize({"ice_servers": _ice_servers()})
+	var err := pc.initialize({"iceServers": _ice_servers()})
 	if err != OK:
 		failed.emit("WebRTC 初始化失败")
 		return s
