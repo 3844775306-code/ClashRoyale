@@ -340,6 +340,7 @@ func _headers(token: String = "") -> PackedStringArray:
 		"apikey: " + SUPABASE_KEY,
 		"Authorization: Bearer " + (token if token != "" else SUPABASE_KEY),
 		"Content-Type: application/json",
+		"Accept-Encoding: identity",
 	])
 
 func _http(method: int, path: String, body: Dictionary = {}, token: String = "") -> Array:
