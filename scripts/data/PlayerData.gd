@@ -37,6 +37,7 @@ var chest_reward_wins: int = 0        # 当日已获得宝箱的胜利次数
 var card_quantities: Dictionary = {}
 # 卡牌等级：{ card_id: level (1-16) }
 var card_levels: Dictionary = {}
+var new_cards: Dictionary = {}   # 新获得但尚未点击查看的卡牌 {cid: true}
 # 宝箱队列（存储 Chest 数据，可序列化）
 var chests: Array = []   # 每个元素 { "rarity": "silver"/"gold"/"magical", "ready": bool }
 var ai_levels: Dictionary = {}
@@ -191,6 +192,8 @@ func get_card_quantity(card_id: int) -> int:
 
 func add_card(card_id: int, amount: int):
 	var old: int = get_card_quantity(card_id)
+	if old <= 0 and not is_card_owned(card_id):
+		new_cards[card_id] = true
 	card_quantities[card_id] = old + amount
 	if old <= 0 and not card_levels.has(card_id):
 		card_levels[card_id] = CARD_RARITY.start_level_by_id(card_id)
@@ -395,6 +398,7 @@ func _grant_cards_of_rarity(cards: Dictionary, rar: String, amount: int, arena: 
 		cards[cid] = int(cards.get(cid, 0)) + 1
 
 func _build_full_chest_rewards(rarity: String, lv: int, stars: int, arena: int) -> Dictionary:
+	randomize()
 	lv = clampi(lv, 1, 16)
 	stars = clampi(stars, 1, 5)
 	var cards: Dictionary = {}
@@ -747,6 +751,7 @@ func load_data():
 		claimed_achievements = config.get_value("player", "claimed_achievements", [])
 		card_levels = config.get_value("player", "card_levels", {})
 		card_quantities = config.get_value("player", "card_quantities", {})
+		new_cards = config.get_value("player", "new_cards", {})
 		chests = config.get_value("player", "chests", [])
 		donations_used = config.get_value("player", "donations_used", 0)
 		custom_deck = config.get_value("player", "custom_deck", [])
@@ -785,6 +790,7 @@ func _apply_defaults():
 	claimed_achievements.clear()
 	card_levels.clear()
 	card_quantities.clear()
+	new_cards.clear()
 	chests.clear()
 	shop_day = ""
 	shop_offers = []
@@ -835,6 +841,7 @@ func build_save_config() -> ConfigFile:
 	config.set_value("player", "claimed_achievements", claimed_achievements)
 	config.set_value("player", "card_levels", card_levels)
 	config.set_value("player", "card_quantities", card_quantities)
+	config.set_value("player", "new_cards", new_cards)
 	config.set_value("player", "chests", chests)
 	config.set_value("shop", "day", shop_day)
 	config.set_value("player", "chest_reward_day", chest_reward_day)
@@ -1486,6 +1493,13 @@ func get_ai_default_deck() -> Array:
 		if out.size() >= 8:
 			break
 	return out
+
+func is_new_card(card_id: int) -> bool:
+	return bool(new_cards.get(card_id, false))
+
+func mark_card_seen(card_id: int) -> void:
+	if new_cards.erase(card_id):
+		save_data()
 
 func is_card_owned(card_id: int) -> bool:
 	if card_id <= 3:

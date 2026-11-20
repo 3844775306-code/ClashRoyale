@@ -3,6 +3,7 @@ extends VBoxContainer
 
 const BATTLE_MODES := preload("res://scripts/core/BattleModes.gd")
 const BATTLE_MANAGER_SCRIPT := preload("res://scripts/core/BattleManager.gd")
+const COMMANDO_PICKER := preload("res://scripts/ui/CommandoCardPicker.gd")
 static var _commando_cards: Array = []
 const GOLD := Color(0.945, 0.765, 0.360)
 const GOLD_LIGHT := Color(1.0, 0.935, 0.730)
@@ -102,38 +103,91 @@ func _commando_picker() -> void:
 	l.add_theme_font_size_override("font_size", 13)
 	l.add_theme_color_override("font_color", PARCHMENT)
 	h.add_child(l)
-	var opt := OptionButton.new()
-	opt.custom_minimum_size = Vector2(0, 34)
-	opt.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	opt.add_theme_font_size_override("font_size", 12)
-	opt.add_item("随机（每局）")
-	opt.set_item_metadata(0, 0)
+
 	var current_id: int = int(_cfg.get("commando_card_id", 0))
-	var selected_idx := 0
-	var cards: Array = _commando_cards_list()
-	for i in range(cards.size()):
-		var c: Dictionary = cards[i]
-		opt.add_item(String(c.name))
-		opt.set_item_metadata(i + 1, int(c.id))
-		if int(c.id) == current_id:
-			selected_idx = i + 1
-	opt.select(selected_idx)
-	opt.disabled = not editable
+	var current_name := "随机（每局）"
+	for c in _commando_cards_list():
+		if int(c.get("id", 0)) == current_id:
+			current_name = String(c.get("name", current_name))
+			break
+
+	var btn := Button.new()
+	btn.focus_mode = Control.FOCUS_NONE
+	btn.custom_minimum_size = Vector2(0, 58)
+	btn.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	btn.disabled = not editable
 	var sb := StyleBoxFlat.new()
-	sb.bg_color = Color(0.05, 0.07, 0.13, 0.95)
+	sb.bg_color = Color(0.045, 0.065, 0.13, 0.96)
+	sb.set_corner_radius_all(12)
 	sb.set_border_width_all(1)
-	sb.border_color = Color(1, 1, 1, 0.16)
-	sb.set_corner_radius_all(10)
-	sb.content_margin_left = 10
-	sb.content_margin_right = 10
-	opt.add_theme_stylebox_override("normal", sb)
-	opt.add_theme_stylebox_override("hover", sb)
-	opt.add_theme_stylebox_override("pressed", sb)
-	opt.item_selected.connect(func(idx):
-		var cid: int = int(opt.get_item_metadata(idx))
-		_apply_value("commando_card_id", cid))
-	h.add_child(opt)
+	sb.border_color = Color(0.945, 0.765, 0.36, 0.55)
+	sb.content_margin_left = 8
+	sb.content_margin_right = 8
+	btn.add_theme_stylebox_override("normal", sb)
+	var hover := sb.duplicate()
+	hover.bg_color = Color(0.075, 0.10, 0.19, 0.98)
+	hover.border_color = Color(0.945, 0.765, 0.36, 0.9)
+	btn.add_theme_stylebox_override("hover", hover)
+	btn.add_theme_stylebox_override("pressed", hover)
+	btn.add_theme_stylebox_override("focus", StyleBoxEmpty.new())
+	btn.pressed.connect(_open_commando_picker)
+	h.add_child(btn)
+
+	var row := HBoxContainer.new()
+	row.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	row.offset_left = 8
+	row.offset_right = -8
+	row.add_theme_constant_override("separation", 10)
+	row.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	btn.add_child(row)
+	var tex := TextureRect.new()
+	tex.custom_minimum_size = Vector2(38, 48)
+	tex.size = Vector2(38, 48)
+	tex.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	tex.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	tex.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	if current_id > 0:
+		var path := "res://assets/cards_web/%s.png" % current_name
+		if not ResourceLoader.exists(path):
+			path = "res://assets/cards_rendered/%s.png" % current_name
+		if ResourceLoader.exists(path):
+			tex.texture = load(path)
+	row.add_child(tex)
+	var text_col := VBoxContainer.new()
+	text_col.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	text_col.add_theme_constant_override("separation", 0)
+	text_col.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	row.add_child(text_col)
+	var nm := Label.new()
+	nm.text = current_name
+	nm.add_theme_font_size_override("font_size", 14)
+	nm.add_theme_color_override("font_color", PARCHMENT)
+	nm.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	text_col.add_child(nm)
+	var sub := Label.new()
+	sub.text = "点击选择官方卡图兵种" if current_id > 0 else "每局从全部兵种随机"
+	sub.add_theme_font_size_override("font_size", 10)
+	sub.add_theme_color_override("font_color", MUTED)
+	sub.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	text_col.add_child(sub)
+	var arrow := Label.new()
+	arrow.text = "选择 ›"
+	arrow.add_theme_font_size_override("font_size", 12)
+	arrow.add_theme_color_override("font_color", GOLD_LIGHT)
+	arrow.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	arrow.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	row.add_child(arrow)
 	add_child(h)
+
+
+func _open_commando_picker() -> void:
+	var scene := get_tree().current_scene
+	if scene == null:
+		return
+	var picker = COMMANDO_PICKER.new()
+	picker.setup(_commando_cards_list(), int(_cfg.get("commando_card_id", 0)), func(cid):
+		_apply_value("commando_card_id", cid))
+	scene.add_child(picker)
 
 
 func _same(a, b) -> bool:

@@ -303,6 +303,17 @@ func _show_rewards(rewards: Dictionary):
 		nm.add_theme_font_size_override("font_size", 14)
 		nm.add_theme_color_override("font_color", Color(1.0, 0.90, 0.62))
 		box.add_child(nm)
+		if String(item[0]) == "card" and PlayerData.is_new_card(int(item[3])):
+			var nb := Label.new()
+			nb.text = "新"
+			nb.position = Vector2(6, 6)
+			nb.size = Vector2(34, 26)
+			nb.add_theme_font_size_override("font_size", 18)
+			nb.add_theme_color_override("font_color", Color(1.0, 0.92, 0.35))
+			nb.add_theme_color_override("font_shadow_color", Color(0, 0, 0, 0.9))
+			nb.add_theme_constant_override("shadow_offset_x", 1)
+			nb.add_theme_constant_override("shadow_offset_y", 1)
+			box.add_child(nb)
 		box.scale = Vector2(0.2, 0.2)
 		box.pivot_offset = Vector2(68, 79)
 		var tw := create_tween()

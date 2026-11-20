@@ -525,6 +525,8 @@ func _render_table():
 		_apply_filters()
 
 func _on_tile_clicked(tile: DeckCardTile):
+	if tile != null:
+		tile.clear_new_badge()
 	if _action_tile == tile and _action_frame != null:
 		_close_actions()
 		return

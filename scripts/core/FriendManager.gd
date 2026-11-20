@@ -470,6 +470,8 @@ func _sync_cloud_invites() -> void:
 		if String(invite.get("code", "")) == "": continue
 		pending_invite = invite
 		invite_received.emit(invite)
+		# 收到即删除，避免返回主菜单后再次弹出过期邀请
+		SupabaseAPI.delete_key(key)
 
 func send_room_invite(room_code: String, host_ip: String, host_name: String, target_pid: String = "") -> bool:
 	if _send == null or room_code == "" or host_ip == "":

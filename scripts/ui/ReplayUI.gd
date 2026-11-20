@@ -647,6 +647,9 @@ func _build_hands(meta: Dictionary):
 	_elixir_labels.clear()
 	_build_hand_strip(Config.Team.ENEMY, 100, "对手")
 	_build_hand_strip(Config.Team.PLAYER, 1428, "我方")
+	if _battle and _battle.hud:
+		_battle.hud._enemy_profile_panel.position = Vector2(666, 104)
+		_battle.hud._ally_profile_panel.position = Vector2(666, 1432)
 	var top_info: VBoxContainer = _info_boxes.get(1)
 	if top_info:
 		var rl := Label.new()
@@ -866,7 +869,7 @@ func _hide_hud_except_bars():
 		return
 	var hb = _battle.hud.health_bar_container
 	for ch in _battle.hud.get_children():
-		ch.visible = (ch == hb)
+		ch.visible = (ch == hb or ch == _battle.hud._enemy_profile_panel or ch == _battle.hud._ally_profile_panel or ch == _battle.hud._mini_tray)
 
 
 func _process(_delta):
@@ -927,6 +930,10 @@ func _apply_snapshot_at(t: float) -> void:
 			if hh != _hands[team]:
 				_hands[team] = hh.duplicate()
 				_update_hands()
+	# 多人回放：同步队友手牌到 HUD
+	var ph: Array = before.get("player_hands", [])
+	if ph.size() > 2 and _battle and _battle.hud and _battle.hud.has_method("set_teammate_hand"):
+		_battle.hud.set_teammate_hand(Array(ph[2]))
 	# 圣水
 	var e0: Array = before.get("elixir", [7.0, 5.0])
 	var e1: Array = after.get("elixir", e0)

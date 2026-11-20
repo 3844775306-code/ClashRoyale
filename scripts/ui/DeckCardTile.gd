@@ -15,6 +15,7 @@ var _lv_badge: Label
 var _bar
 var _arrow: Label
 var _in_deck_mark: Label
+var _new_badge: Label
 var _locked: bool = false
 static var party_preview: bool = false
 var _arrow_tween: Tween = null
@@ -130,6 +131,18 @@ func setup(cfg: CardData, tile_mode: String, compact: bool = false) -> void:
 	_in_deck_mark.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_in_deck_mark.visible = false
 	img_panel.add_child(_in_deck_mark)
+	_new_badge = Label.new()
+	_new_badge.text = "新"
+	_new_badge.position = Vector2(6, 38)
+	_new_badge.size = Vector2(30, 24)
+	_new_badge.add_theme_font_size_override("font_size", 16)
+	_new_badge.add_theme_color_override("font_color", Color(1.0, 0.92, 0.35))
+	_new_badge.add_theme_color_override("font_shadow_color", Color(0, 0, 0, 0.95))
+	_new_badge.add_theme_constant_override("shadow_offset_x", 1)
+	_new_badge.add_theme_constant_override("shadow_offset_y", 1)
+	_new_badge.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_new_badge.visible = PlayerData.is_new_card(config.card_id) and not _locked
+	img_panel.add_child(_new_badge)
 
 	if _locked:
 		modulate = Color(0.60, 0.60, 0.66, 0.92)
@@ -215,6 +228,11 @@ func setup(cfg: CardData, tile_mode: String, compact: bool = false) -> void:
 
 func _safe(n: String) -> String:
 	return n.replace("/", "_").replace("\\", "_").replace(":", "_").replace("*", "_").replace("?", "_").replace("\"", "_").replace("<", "_").replace(">", "_").replace("|", "_")
+
+func clear_new_badge() -> void:
+	if _new_badge:
+		_new_badge.visible = false
+	PlayerData.mark_card_seen(config.card_id)
 
 func set_in_deck(v: bool) -> void:
 	if _in_deck_mark:

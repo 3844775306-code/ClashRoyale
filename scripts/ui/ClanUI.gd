@@ -511,6 +511,10 @@ func _on_chat_history(success, chat) -> void:
 		var merged: Array = _merge_pending_chat(chat)
 		var changed: bool = merged != current_chat
 		current_chat = merged
+		# 用本次真正拉取到的聊天更新部落数据，否则 my_clan_data.chat 可能是旧/空数组，
+		# mark_chat_read 会把“最新已读时间”算成 0，导致下次登录未读红点再次出现。
+		if my_clan_data is Dictionary:
+			my_clan_data["chat"] = merged.duplicate(true)
 		if changed:
 			_update_chat_display()
 		# 打开部落即视为已读；主菜单红点随之清除

@@ -56,6 +56,23 @@ static func play(host: Control, title: String, subtitle: String, reward: Diction
 		icon.custom_minimum_size = Vector2(100, 110)
 		icon.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
 		vb.add_child(icon)
+	var is_new_card: bool = String(reward.get("kind", "")) == "card" and PlayerData.is_new_card(int(reward.get("card_id", 0)))
+	if is_new_card:
+		var nb := Label.new()
+		nb.text = "新"
+		nb.anchor_left = 1.0
+		nb.anchor_right = 1.0
+		nb.offset_left = -58
+		nb.offset_top = 8
+		nb.offset_right = -12
+		nb.offset_bottom = 40
+		nb.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		nb.add_theme_font_size_override("font_size", 22)
+		nb.add_theme_color_override("font_color", Color(1.0, 0.92, 0.35))
+		nb.add_theme_color_override("font_shadow_color", Color(0, 0, 0, 0.9))
+		nb.add_theme_constant_override("shadow_offset_x", 2)
+		nb.add_theme_constant_override("shadow_offset_y", 2)
+		panel.add_child(nb)
 	var info := Label.new()
 	info.text = subtitle
 	info.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
