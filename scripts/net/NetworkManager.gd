@@ -107,6 +107,23 @@ func _host_player_entry() -> Dictionary:
 		host_levels[str(int(cid))] = PlayerData.get_card_level(int(cid))
 	return {"slot": 0, "team": 0, "name": PlayerData.player_name, "deck": host_deck, "levels": host_levels}
 
+func _publish_room_list() -> void:
+	if role != Role.HOST or room_code == "" or not SupabaseAPI.is_ready():
+		return
+	SupabaseAPI.upsert("room_list:" + room_code, {
+		"code": room_code,
+		"host": PlayerData.player_name,
+		"transport": "webrtc" if webrtc_mode else "lan",
+		"ip": get_local_ip() if not webrtc_mode else "",
+		"players": players.size(),
+		"mode": mode_name(),
+		"updated": int(Time.get_unix_time_from_system()),
+	})
+
+func _remove_room_list() -> void:
+	if room_code != "" and SupabaseAPI.is_ready():
+		SupabaseAPI.delete_key("room_list:" + room_code)
+
 func start_host(port: int = DEFAULT_PORT, mode: String = "1v1", ai0: int = 0, ai1: int = 0) -> bool:
 	reset_net()
 	room_mode = "1v1"
@@ -140,6 +157,7 @@ func start_host(port: int = DEFAULT_PORT, mode: String = "1v1", ai0: int = 0, ai
 	guest_levels.clear()
 	print("NET host room=", room_code, " port=", port)
 	set_process(true)
+	_publish_room_list()
 	lobby_status.emit("房间已创建：%s" % room_code)
 	return true
 
@@ -541,6 +559,7 @@ func request_join(code: String, deck: Array, levels: Dictionary, pname: String, 
 	_rpc_send(pid, "join_accepted", [room_code, mode_name()])
 	_broadcast_seats()
 	seats_changed.emit()
+	_publish_room_list()
 	lobby_status.emit("%s 已进入房间（%d 人）" % [pname, players.size()])
 
 
@@ -763,6 +782,7 @@ func start_host_webrtc() -> bool:
 	local_seat_idx = 0
 	local_slot = 0
 	set_process(true)
+	_publish_room_list()
 	lobby_status.emit("WebRTC 房间已创建：%s" % room_code)
 	return true
 
@@ -779,6 +799,8 @@ func join_host_webrtc() -> bool:
 	return true
 
 func reset_net():
+	if role == Role.HOST:
+		_remove_room_list()
 	if webrtc_mode:
 		WebRTCNet.close_room()
 		webrtc_mode = false

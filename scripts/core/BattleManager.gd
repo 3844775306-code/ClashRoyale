@@ -2638,15 +2638,19 @@ func _show_game_over() -> void:
 	else:
 		trophy_change = -randi_range(25, 35)
 		AudioManager.play_sfx(ProceduralAudio.get_sound("defeat"))
+	var chest_won := false
+	var chest_rarity := ""
 	if win and PlayerData.consume_daily_chest_win():
 		var rand = randf()
 		if rand < 0.7:
-			PlayerData.add_chest("silver")
+			chest_rarity = "silver"
 		elif rand < 0.95:
-			PlayerData.add_chest("gold")
+			chest_rarity = "gold"
 		else:
-			PlayerData.add_chest("magical")
+			chest_rarity = "magical"
+		PlayerData.add_chest(chest_rarity)
 		_pending_chest_index = PlayerData.chests.size() - 1
+		chest_won = true
 	if trophy_change != 0:
 		PlayerData.add_trophies(trophy_change)
 	if trophy_change != 0:
@@ -2668,11 +2672,26 @@ func _show_game_over() -> void:
 		"enemy_over": stats_elixir_overflow[Config.Team.ENEMY],
 		"my_top": _top3_arr(Config.Team.PLAYER),
 		"enemy_top": _top3_arr(Config.Team.ENEMY),
+		"chest_won": chest_won,
+		"chest_rarity": chest_rarity,
+		"touchdown": win_condition == "touchdown",
+		"touchdown_score": touchdown_score.duplicate(),
+		"reward_text": _build_result_reward_text(trophy_change, chest_won, chest_rarity),
 	}
 	if hud.game_over_screen:
 		hud.game_over_screen.populate(data)
 	hud.hide_battle_hud_for_result()
 	hud.game_over_panel.visible = true
+
+func _build_result_reward_text(trophy_change: int, chest_won: bool, chest_rarity: String) -> String:
+	var parts: Array = []
+	if trophy_change != 0:
+		parts.append("%+d 奖杯" % trophy_change)
+	if chest_won:
+		parts.append("宝箱：%s" % ("魔法" if chest_rarity == "magical" else ("黄金" if chest_rarity == "gold" else "银色")))
+	if parts.is_empty():
+		parts.append("本局无额外奖励")
+	return "    ".join(parts)
 
 func _top3_arr(team: int) -> Array:
 	var d: Dictionary = stats_tower_damage[int(team)]

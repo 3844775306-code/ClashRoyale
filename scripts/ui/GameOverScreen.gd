@@ -153,7 +153,12 @@ func populate(data: Dictionary) -> void:
 	_title.add_theme_color_override("font_color", Color(1.0, 0.91, 0.63) if win else Color(0.95, 0.55, 0.55))
 	_sub.text = String(data.get("custom_sub", "V I C T O R Y" if win else "D E F E A T"))
 	_sub.add_theme_color_override("font_color", Color(0.80, 0.68, 1.0) if win else Color(0.9, 0.6, 0.6))
-	_score.text = "%d : %d" % [data.get("crowns_my", 0), data.get("crowns_en", 0)]
+	var td := bool(data.get("touchdown", false))
+	var td_score: Array = Array(data.get("touchdown_score", []))
+	if td and td_score.size() >= 2:
+		_score.text = "%d : %d" % [int(td_score[0]), int(td_score[1])]
+	else:
+		_score.text = "%d : %d" % [data.get("crowns_my", 0), data.get("crowns_en", 0)]
 	_vs.text = "你  VS  对手"
 	_title.position = Vector2(PANEL.position.x, PANEL.position.y + 88)
 	_title.size = Vector2(PANEL.size.x, 80)
@@ -164,9 +169,9 @@ func populate(data: Dictionary) -> void:
 	_vs.position = Vector2(PANEL.position.x, PANEL.position.y + 288)
 	_vs.size = Vector2(PANEL.size.x, 30)
 	# 统计卡文字
-	var stat_keys := ["摧毁防御塔", "战斗用时", "圣水花费 我/敌", "圣水溢出 我/敌"]
+	var stat_keys := ["冲线得分", "战斗用时", "圣水花费 我/敌", "圣水溢出 我/敌"] if td else ["摧毁防御塔", "战斗用时", "圣水花费 我/敌", "圣水溢出 我/敌"]
 	var stat_vals: Array = [
-		"%d / 3" % data.get("crowns_my", 0),
+		("%d : %d" % [int(td_score[0]), int(td_score[1])] if td and td_score.size() >= 2 else "%d / 3" % data.get("crowns_my", 0)),
 		String(data.get("duration", "0:00")),
 		"%d / %d" % [int(data.get("my_spent", 0)), int(data.get("enemy_spent", 0))],
 		"%.1f / %.1f" % [float(data.get("my_over", 0.0)), float(data.get("enemy_over", 0.0))],
@@ -191,7 +196,7 @@ func populate(data: Dictionary) -> void:
 		lbl.visible = true
 		val.visible = true
 	# 奖励
-	_reward.text = String(data.get("reward_text", "+%d 奖杯     +500 金币    黄金宝箱" % int(data.get("trophy", 0))))
+	_reward.text = String(data.get("reward_text", "+%d 奖杯" % int(data.get("trophy", 0))))
 	_reward.position = Vector2(PANEL.position.x + 132, PANEL.position.y + 532)
 	_reward.size = Vector2(PANEL.size.x - 170, 40)
 	_reward.visible = true
@@ -199,7 +204,7 @@ func populate(data: Dictionary) -> void:
 		if is_instance_valid(ci): ci.queue_free()
 	_top_icons.clear()
 	if _chest_preview:
-		_chest_preview.visible = win
+		_chest_preview.visible = bool(data.get("chest_won", false))
 		_chest_preview.rarity = String(data.get("chest_rarity", "gold"))
 		_chest_preview.queue_redraw()
 	# TOP3 双方

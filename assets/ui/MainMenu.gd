@@ -8,6 +8,7 @@ const BACKDROP := preload("res://assets/ui/menu/MenuBackdrop.gd")
 const CARD_PIECE := preload("res://assets/ui/menu/MenuCardPiece.gd")
 const ICON := preload("res://assets/ui/menu/MenuIcon.gd")
 const CHEST3D := preload("res://scripts/ui/Chest3DPreview.gd")
+const BATTLE_MODES := preload("res://scripts/core/BattleModes.gd")
 
 const INK := Color(0.020, 0.030, 0.062)
 const NAVY := Color(0.052, 0.078, 0.155)
@@ -1100,6 +1101,8 @@ func _on_tutorial_pressed():
 	LoadingScreen.change_scene("res://scenes/tutorial.tscn", "正在打开新手训练营…")
 
 func _on_start_pressed():
+	# 普通对战必须回到标准模式，避免上一局派对模式残留
+	BATTLE_MODES.set_mode(BATTLE_MODES.get_by_id("standard"))
 	LoadingScreen.change_scene("res://scenes/battle.tscn", "正在进入战场…")
 
 func _on_settings_pressed():

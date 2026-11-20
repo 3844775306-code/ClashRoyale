@@ -553,21 +553,21 @@ func _build_elixir_grid(grid: HBoxContainer):
 
 func _setup_match_profiles(screen_size: Vector2, tray_y: float) -> void:
 	_enemy_profile_panel = Panel.new()
-	_enemy_profile_panel.position = Vector2(screen_size.x - 380, 92)
-	_enemy_profile_panel.size = Vector2(368, 58)
+	_enemy_profile_panel.position = Vector2(screen_size.x - 322, 46)
+	_enemy_profile_panel.size = Vector2(310, 34)
 	_enemy_profile_panel.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_enemy_profile_panel.add_theme_stylebox_override("panel", _profile_panel_style())
 	add_child(_enemy_profile_panel)
 	_ally_profile_panel = Panel.new()
-	_ally_profile_panel.position = Vector2(12, tray_y - 64)
-	_ally_profile_panel.size = Vector2(368, 58)
+	_ally_profile_panel.position = Vector2(12, tray_y - 38)
+	_ally_profile_panel.size = Vector2(310, 34)
 	_ally_profile_panel.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_ally_profile_panel.add_theme_stylebox_override("panel", _profile_panel_style())
 	add_child(_ally_profile_panel)
 
 func _profile_panel_style() -> StyleBoxFlat:
 	var sb := StyleBoxFlat.new()
-	sb.bg_color = Color(0.035, 0.06, 0.12, 0.88)
+	sb.bg_color = Color(0.035, 0.06, 0.12, 0.72)
 	sb.border_color = Color(1.0, 0.78, 0.3, 0.4)
 	sb.set_border_width_all(1)
 	sb.set_corner_radius_all(10)
@@ -590,20 +590,20 @@ func _refresh_match_profiles() -> void:
 			ally.append(p)
 	_fill_profile_panel(_enemy_profile_panel, enemy, "敌方")
 	_fill_profile_panel(_ally_profile_panel, ally, "我方")
-	_enemy_profile_panel.size.y = 58 if enemy.size() <= 1 else 104
-	_ally_profile_panel.size.y = 58 if ally.size() <= 1 else 104
+	_enemy_profile_panel.size.y = 34 if enemy.size() <= 1 else 58
+	_ally_profile_panel.size.y = 34 if ally.size() <= 1 else 58
 
 func _fill_profile_panel(panel: Panel, profiles: Array, side: String) -> void:
 	for c in panel.get_children():
 		c.queue_free()
 	var row := HBoxContainer.new()
-	row.position = Vector2(8, 5)
-	row.size = Vector2(panel.size.x - 16, panel.size.y - 10)
-	row.add_theme_constant_override("separation", 10)
+	row.position = Vector2(5, 2)
+	row.size = Vector2(panel.size.x - 10, panel.size.y - 4)
+	row.add_theme_constant_override("separation", 4)
 	panel.add_child(row)
 	var tag := Label.new()
 	tag.text = side
-	tag.add_theme_font_size_override("font_size", 12)
+	tag.add_theme_font_size_override("font_size", 10)
 	tag.add_theme_color_override("font_color", Color(1.0, 0.78, 0.3) if side == "我方" else Color(1.0, 0.55, 0.52))
 	row.add_child(tag)
 	for p in profiles:
@@ -617,17 +617,17 @@ func _fill_profile_panel(panel: Panel, profiles: Array, side: String) -> void:
 func _make_profile_chip(p: Dictionary) -> Control:
 	var b := Button.new()
 	b.flat = true
-	b.custom_minimum_size = Vector2(168, 44)
+	b.custom_minimum_size = Vector2(126, 28)
 	b.mouse_filter = Control.MOUSE_FILTER_STOP
 	b.add_theme_stylebox_override("normal", StyleBoxEmpty.new())
 	b.add_theme_stylebox_override("hover", StyleBoxEmpty.new())
 	var h := HBoxContainer.new()
 	h.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	h.add_theme_constant_override("separation", 6)
+	h.add_theme_constant_override("separation", 3)
 	b.add_child(h)
 	var av = preload("res://scripts/ui/AvatarIcon.gd").new()
-	av.custom_minimum_size = Vector2(38, 38)
-	av.size = Vector2(38, 38)
+	av.custom_minimum_size = Vector2(26, 26)
+	av.size = Vector2(26, 26)
 	av.setup(String(p.get("name", "玩家")), int(p.get("avatar_seed", 0)), int(p.get("avatar_index", 0)))
 	h.add_child(av)
 	var vb := VBoxContainer.new()
@@ -635,12 +635,12 @@ func _make_profile_chip(p: Dictionary) -> Control:
 	h.add_child(vb)
 	var nm := Label.new()
 	nm.text = String(p.get("name", "玩家"))
-	nm.add_theme_font_size_override("font_size", 13)
+	nm.add_theme_font_size_override("font_size", 11)
 	nm.add_theme_color_override("font_color", Color.WHITE)
 	vb.add_child(nm)
 	var tr := Label.new()
 	tr.text = "🏆 %d" % int(p.get("trophies", 0))
-	tr.add_theme_font_size_override("font_size", 10)
+	tr.add_theme_font_size_override("font_size", 9)
 	tr.add_theme_color_override("font_color", Color(0.95, 0.82, 0.45))
 	vb.add_child(tr)
 	b.pressed.connect(func(): _open_match_profile(p))

@@ -92,6 +92,8 @@ func _build_initial() -> void:
 	_initial_box.size = Vector2(688, 1100)
 	_initial_box.add_theme_constant_override("separation", 18)
 	add_child(_initial_box)
+	var room_list_btn := UiComponents.make_secondary_button("房间列表 / 直接加入", _show_room_list, Vector2(688, 48))
+	_initial_box.add_child(room_list_btn)
 	var hc := UiComponents.make_card(ThemeHelper.COLORS.gold)
 	hc.custom_minimum_size = Vector2(688, 280)
 	_initial_box.add_child(hc)
@@ -404,6 +406,91 @@ func _on_friend_invite(invite: Dictionary) -> void:
 	add_child(dlg)
 	dlg.popup_centered(Vector2i(680, 320))
 
+
+func _show_room_list() -> void:
+	if NetworkManager.role != NetworkManager.Role.NONE:
+		return
+	var layer := Control.new()
+	layer.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	layer.z_index = 215
+	add_child(layer)
+	var overlay := UiComponents.make_overlay(layer)
+	overlay.gui_input.connect(func(e):
+		if e is InputEventMouseButton and e.pressed:
+			layer.queue_free())
+	var panel := UiComponents.make_card(ThemeHelper.COLORS.gold)
+	panel.anchor_left = 0.5
+	panel.anchor_right = 0.5
+	panel.anchor_top = 0.5
+	panel.anchor_bottom = 0.5
+	panel.offset_left = -330
+	panel.offset_right = 330
+	panel.offset_top = -430
+	panel.offset_bottom = 430
+	layer.add_child(panel)
+	var v := VBoxContainer.new()
+	v.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	v.offset_left = 20; v.offset_right = -20; v.offset_top = 18; v.offset_bottom = -18
+	v.add_theme_constant_override("separation", 8)
+	panel.add_child(v)
+	var title := _label("房间列表", 24, ThemeHelper.COLORS.gold)
+	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	v.add_child(title)
+	var hint := _label("局域网房间和跨网房间；点击直接加入", 12, ThemeHelper.COLORS.text_muted)
+	hint.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	v.add_child(hint)
+	var scroll := ScrollContainer.new()
+	scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	v.add_child(scroll)
+	var list := VBoxContainer.new()
+	list.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	list.add_theme_constant_override("separation", 6)
+	scroll.add_child(list)
+	var loading := _label("正在读取房间…", 13, ThemeHelper.COLORS.text_muted)
+	list.add_child(loading)
+	var refresh := UiComponents.make_secondary_button("刷新", func(): layer.queue_free(); _show_room_list(), Vector2(0, 40))
+	v.add_child(refresh)
+	v.add_child(UiComponents.make_secondary_button("关闭", func(): layer.queue_free(), Vector2(0, 40)))
+	var rows: Array = await SupabaseAPI.list_prefix("room_list:", 80)
+	loading.queue_free()
+	var now := int(Time.get_unix_time_from_system())
+	var count := 0
+	for row in rows:
+		if not (row is Dictionary): continue
+		var d = row.get("value", {})
+		if not (d is Dictionary): continue
+		if now - int(d.get("updated", 0)) > 300: continue
+		var code := String(d.get("code", ""))
+		if code == "" or code == NetworkManager.room_code: continue
+		count += 1
+		var rp := Panel.new()
+		rp.custom_minimum_size = Vector2(0, 58)
+		var rsb := StyleBoxFlat.new()
+		rsb.bg_color = Color(0.05, 0.08, 0.15, 0.98)
+		rsb.border_color = Color(1,1,1,0.12)
+		rsb.set_border_width_all(1)
+		rsb.set_corner_radius_all(10)
+		rp.add_theme_stylebox_override("panel", rsb)
+		var rh := HBoxContainer.new()
+		rh.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+		rh.offset_left = 10; rh.offset_right = -10
+		rp.add_child(rh)
+		var info := _label("房间 %s   房主 %s   玩家 %d   %s" % [code, String(d.get("host", "玩家")), int(d.get("players", 0)), "跨网" if String(d.get("transport", "")) == "webrtc" else "局域网"], 13, Color(0.86,0.9,1.0))
+		info.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		info.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+		rh.add_child(info)
+		var join := UiComponents.make_primary_button("加入", Callable(), Vector2(82, 40))
+		join.pressed.connect(func():
+			layer.queue_free()
+			if String(d.get("transport", "")) == "webrtc":
+				_webrtc_code_edit.text = code
+				_webrtc_join_pressed()
+			else:
+				NetworkManager.join_host(String(d.get("ip", "")), 24500, code))
+		rh.add_child(join)
+		list.add_child(rp)
+	if count == 0:
+		list.add_child(_label("暂无可用房间", 13, ThemeHelper.COLORS.text_muted))
 
 func _show_friend_list() -> void:
 	var layer := Control.new()
