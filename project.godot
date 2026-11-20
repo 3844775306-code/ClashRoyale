@@ -45,7 +45,7 @@ window/size/viewport_width=800
 window/size/viewport_height=1600
 window/size/mode=1
 window/stretch/mode="canvas_items"
-window/stretch/aspect="expand"
+window/stretch/aspect="keep"
 window/handheld/orientation=1
 
 [editor_plugins]

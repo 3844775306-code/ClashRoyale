@@ -521,6 +521,8 @@ func _render_table():
 	_table_count.text = "%d/8" % n
 	for cid in _tile_map.keys():
 		_tile_map[cid].set_in_deck(_slots.has(cid))
+	if _search != null:
+		_apply_filters()
 
 func _on_tile_clicked(tile: DeckCardTile):
 	if _action_tile == tile and _action_frame != null:
@@ -816,6 +818,8 @@ func _apply_filters():
 		var tile: DeckCardTile = _tile_map[cid]
 		var cfg: CardData = tile.config
 		var ok: bool = q == "" or String(cfg.card_name).contains(q) or str(cid) == q
+		if _slots.has(cid):
+			ok = false
 		if ok and _filter_mode != "all":
 			var is_spell: bool = _spell_ids.has(cfg.card_id)
 			var is_building: bool = cfg.type == Config.UnitType.BUILDING
