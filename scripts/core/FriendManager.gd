@@ -28,6 +28,8 @@ var _recv: PacketPeerUDP
 var _send: PacketPeerUDP
 var _invite_layer: CanvasLayer
 var _request_layer: CanvasLayer
+var _friends_updated_at: int = 0
+var _friends_cloud_pending := false
 
 
 func _ready() -> void:
@@ -43,6 +45,8 @@ func _ready() -> void:
 
 func _on_session_changed() -> void:
 	load_friends()
+	if AccountManager.is_supabase_authenticated():
+		await _sync_friends_from_cloud()
 
 
 func is_online(pid: String) -> bool:
@@ -132,6 +136,7 @@ func load_friends() -> void:
 		friends_changed.emit()
 		requests_changed.emit()
 		return
+	_friends_updated_at = int(cfg.get_value("friends", "updated_at", 0))
 	var raw = cfg.get_value("friends", "list", [])
 	if raw is Array:
 		for f in raw:
@@ -150,14 +155,60 @@ func load_friends() -> void:
 
 
 func save_friends() -> void:
+	_friends_updated_at = int(Time.get_unix_time_from_system())
 	DirAccess.make_dir_recursive_absolute(_friends_path().get_base_dir())
 	var cfg := ConfigFile.new()
 	cfg.set_value("friends", "list", friends)
+	cfg.set_value("friends", "updated_at", _friends_updated_at)
 	cfg.set_value("requests", "incoming", incoming_requests)
 	cfg.set_value("requests", "outgoing", outgoing_requests)
 	cfg.save(_friends_path())
 	friends_changed.emit()
 	requests_changed.emit()
+	_queue_friends_cloud()
+
+func _friends_cloud_key() -> String:
+	return "friends:" + String(AccountManager.account_id)
+
+func _queue_friends_cloud() -> void:
+	if not AccountManager.is_supabase_authenticated() or _friends_cloud_pending:
+		return
+	_friends_cloud_pending = true
+	call_deferred("_flush_friends_cloud")
+
+func _flush_friends_cloud() -> void:
+	_friends_cloud_pending = false
+	if not AccountManager.is_supabase_authenticated():
+		return
+	await SupabaseAPI.upsert(_friends_cloud_key(), {
+		"friends": friends,
+		"updated_at": _friends_updated_at,
+	})
+
+func _sync_friends_from_cloud() -> void:
+	if not AccountManager.is_supabase_authenticated():
+		return
+	var cloud: Dictionary = await SupabaseAPI.get_value(_friends_cloud_key())
+	var cloud_ts := int(cloud.get("updated_at", 0))
+	if cloud_ts > _friends_updated_at:
+		friends.clear()
+		var raw = cloud.get("friends", [])
+		if raw is Array:
+			for f in raw:
+				if f is Dictionary and String(f.get("id", "")) != "":
+					friends.append((f as Dictionary).duplicate(true))
+		_friends_updated_at = cloud_ts
+		var cfg := ConfigFile.new()
+		cfg.load(_friends_path())
+		cfg.set_value("friends", "list", friends)
+		cfg.set_value("friends", "updated_at", _friends_updated_at)
+		cfg.save(_friends_path())
+		friends_changed.emit()
+	elif _friends_updated_at > 0:
+		await SupabaseAPI.upsert(_friends_cloud_key(), {
+			"friends": friends,
+			"updated_at": _friends_updated_at,
+		})
 
 
 func all() -> Array:
