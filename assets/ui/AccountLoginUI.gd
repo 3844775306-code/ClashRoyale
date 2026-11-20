@@ -27,18 +27,7 @@ func _ready() -> void:
 	print("[Account] 登录界面")
 	UiComponents.add_background(self)
 	_build()
-	if AccountManager.is_authenticated:
-		call_deferred("_enter_game")
-		return
-	if AccountManager.auto_login_pending:
-		_set_busy(true)
-		_status.text = "正在自动登录（同设备 30 天免登录）…"
-		await AccountManager.session_changed
-		if AccountManager.is_authenticated:
-			_enter_game()
-			return
-		_set_busy(false)
-		_status.text = "自动登录已过期，请重新登录"
+
 
 
 func _build() -> void:
@@ -127,9 +116,18 @@ func _build() -> void:
 	_style_input(_password)
 	_form.add_child(_password)
 
-	var remember := _label("✓ 记住此设备（30 天免登录）", 13, GOLD)
+	var remember := _label("登录后 30 天内可使用快捷登录", 12, MUTED)
 	remember.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	_form.add_child(remember)
+	if AccountManager.has_saved_session():
+		var quick := Button.new()
+		quick.text = "快捷登录：%s（剩余 %d 天）" % [AccountManager.saved_session_name(), AccountManager.session_remaining_days()]
+		quick.focus_mode = Control.FOCUS_NONE
+		quick.custom_minimum_size = Vector2(0, 50)
+		_style_secondary(quick)
+		quick.add_theme_color_override("font_color", GOLD)
+		quick.pressed.connect(func(): _on_recent_login(AccountManager.saved_session_email()))
+		_form.add_child(quick)
 
 	_login_btn = Button.new()
 	_login_btn.text = "登录"

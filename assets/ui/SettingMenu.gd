@@ -276,8 +276,7 @@ func _on_record_toggled(on: bool):
 	PlayerData.save_data()
 
 func _on_logout_pressed():
-	queue_free()
-	await AccountManager.logout()
+	AccountManager.logout()
 	get_tree().change_scene_to_file("res://scenes/account_login.tscn")
 
 

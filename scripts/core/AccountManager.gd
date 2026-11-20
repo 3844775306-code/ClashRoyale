@@ -106,29 +106,19 @@ func _boot() -> void:
 	var sess := _load_session()
 	if sess.is_empty() or int(sess.get("expires", 0)) < int(Time.get_unix_time_from_system()):
 		_clear_session_file()
-		auto_login_pending = false
-		session_changed.emit()
-		return
-	_access = String(sess.get("access", ""))
-	_refresh = String(sess.get("refresh", ""))
-	_user_id = String(sess.get("user_id", ""))
-	account_email = String(sess.get("email", ""))
-	account_username = String(sess.get("username", ""))
-	account_id = _user_id
-	if offline_only or (_access == "" and _refresh == ""):
-		auto_login_pending = false
-		session_changed.emit()
-		return
-	auto_login_pending = true
-	if await _restore_session():
-		await _finish_login(account_email, account_username, false)
-	else:
-		cloud_status = "登录已过期，请重新登录"
-		_clear_session_file()
-		is_authenticated = false
-		auto_login_pending = false
-		session_changed.emit()
-		cloud_status_changed.emit()
+	auto_login_pending = false
+	session_changed.emit()
+
+func has_saved_session() -> bool:
+	var s := _load_session()
+	return not s.is_empty() and int(s.get("expires", 0)) >= int(Time.get_unix_time_from_system())
+
+func saved_session_email() -> String:
+	return String(_load_session().get("email", ""))
+
+func saved_session_name() -> String:
+	var s := _load_session()
+	return String(s.get("username", s.get("email", "")))
 
 func _restore_session() -> bool:
 	var user := await _supabase_get_user()
@@ -235,8 +225,6 @@ func register(email: String, password: String) -> Dictionary:
 	return await login(email, password)
 
 func logout() -> void:
-	if is_authenticated:
-		await _upload_cloud()
 	is_authenticated = false
 	_busy = false
 	_access = ""
