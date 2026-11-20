@@ -619,7 +619,7 @@ func net_client_ready() -> void:
 		clients_ready.emit()
 
 func request_deploy(card_id: int, x: float, z: float) -> void:
-	if role == Role.GUEST and peer:
+	if role == Role.GUEST and (peer or webrtc_mode):
 		_rpc_send(1, "net_deploy_request", [card_id, x, z])
 
 func _guest_pids() -> Array:
@@ -630,7 +630,7 @@ func _guest_pids() -> Array:
 	return out
 
 func send_snapshot(snap: Dictionary) -> void:
-	if role == Role.HOST and peer:
+	if role == Role.HOST and (peer or webrtc_mode):
 		var data := var_to_bytes(snap)
 		for pid in _guest_pids():
 			_rpc_send(pid, "net_snapshot", [data])

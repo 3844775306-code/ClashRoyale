@@ -124,6 +124,7 @@ func _on_snapshot(snap: Dictionary):
 		if OS.get_environment("CR_NET_TEST_GUEST_DEPLOY") != "":
 			call_deferred("_guest_test_deploy")
 		NetworkManager.client_ready()
+		LoadingScreen.hide_loading()
 		if _entry_pending:
 			call_deferred("_on_entry_started")
 		if OS.get_environment("CR_NET_TEST_CLICK") != "":
