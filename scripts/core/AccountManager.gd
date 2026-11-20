@@ -10,6 +10,22 @@ const SESSION_PATH := "user://account_session_v2.cfg"
 const INDEX_PATH := "user://accounts_v2.cfg"
 const SESSION_DAYS := 30
 
+const DEBUG_LOG_PATH := "user://account_debug.log"
+
+func debug_log(stage: String, detail: String = "") -> void:
+	var line := "[%s] %s %s" % [Time.get_datetime_string_from_system(), stage, detail]
+	print("[ACCOUNT_DEBUG] ", line)
+	var f := FileAccess.open(DEBUG_LOG_PATH, FileAccess.READ_WRITE)
+	if f == null:
+		f = FileAccess.open(DEBUG_LOG_PATH, FileAccess.WRITE)
+	if f != null:
+		f.seek_end()
+		f.store_line(line)
+		f.close()
+
+func debug_log_path() -> String:
+	return ProjectSettings.globalize_path(DEBUG_LOG_PATH)
+
 var is_authenticated := false
 var auto_login_pending := false
 var offline_only := false
@@ -127,18 +143,24 @@ func login_recent(email: String) -> Dictionary:
 	return await _finish_login(account_email, account_username, true)
 
 func register_username(username: String, password: String) -> Dictionary:
+	debug_log("REG_USERNAME_START", "username=%s pwlen=%d" % [username.strip_edges(), password.length()])
 	var uname := username.strip_edges()
 	if uname.length() < 2 or uname.length() > 20:
 		return {"ok": false, "error": "用户名需 2-20 位"}
 	if password.length() < 6:
 		return {"ok": false, "error": "密码至少 6 位"}
+	debug_log("REG_EDGE_BEFORE", "action=signup username=%s" % uname)
 	var r := await _edge_request("signup", {"username": uname, "password": password})
+	debug_log("REG_EDGE_AFTER", "ok=%s user_id=%s email=%s has_access=%s err=%s" % [str(r.get("ok")), str(r.get("user_id", "")), str(r.get("email", "")), str(String(r.get("access_token", "")) != ""), str(r.get("error", ""))])
 	if not bool(r.get("ok", false)):
 		return {"ok": false, "error": String(r.get("error", "注册失败"))}
 	if String(r.get("access_token", "")) != "":
+		debug_log("REG_DIRECT_SESSION", "using Edge session")
 		_set_tokens(r)
 		return await _finish_login(String(r.get("email", "")), uname, false)
+	debug_log("REG_FALLBACK_LOGIN", "Edge no session, trying password login")
 	var login := await login_username(uname, password)
+	debug_log("REG_FALLBACK_RESULT", "ok=%s err=%s" % [str(login.get("ok")), str(login.get("error", ""))])
 	if not bool(login.get("ok", false)):
 		return {"ok": false, "error": String(login.get("error", "账号已创建，请直接登录"))}
 	return login
@@ -177,21 +199,27 @@ func logout() -> void:
 # ---------------- 登录收尾 / 云存档 ----------------
 
 func _finish_login(email: String, username: String, from_recent: bool) -> Dictionary:
+	debug_log("FINISH_START", "email=%s username=%s uid=%s recent=%s" % [email, username, _user_id, str(from_recent)])
 	account_email = email
 	account_username = username
 	account_id = _user_id
 	if _user_id == "":
 		return {"ok": false, "error": "云端账号 ID 无效"}
 	var save_path := "user://saves/%s.cfg" % _user_id
+	var abs_save := ProjectSettings.globalize_path(save_path)
 	var had_local := FileAccess.file_exists(save_path)
+	debug_log("FINISH_LOCAL_BEFORE", "path=%s abs=%s exists=%s" % [save_path, abs_save, str(had_local)])
 	PlayerData.use_account_file(_user_id, save_path)
+	debug_log("FINISH_LOCAL_AFTER", "exists=%s size=%d last_err=%s" % [str(FileAccess.file_exists(save_path)), FileAccess.get_file_as_string(save_path).length() if FileAccess.file_exists(save_path) else -1, PlayerData.last_save_error])
 	is_authenticated = true
 	auto_login_pending = false
-	_save_session()
-	_save_index()
+	var sess_ok := _save_session()
+	var idx_ok := _save_index()
+	debug_log("FINISH_META_SAVED", "session_ok=%s index_ok=%s session_file=%s index_file=%s" % [str(sess_ok), str(idx_ok), str(FileAccess.file_exists(SESSION_PATH)), str(FileAccess.file_exists(INDEX_PATH))])
 	cloud_status = "正在同步云端存档…"
 	cloud_status_changed.emit()
 	await _sync_cloud(had_local)
+	debug_log("FINISH_SYNC_DONE", "status=%s local_exists=%s" % [cloud_status, str(FileAccess.file_exists(save_path))])
 	_sync_public_profile()
 	session_changed.emit()
 	cloud_status_changed.emit()
@@ -199,17 +227,21 @@ func _finish_login(email: String, username: String, from_recent: bool) -> Dictio
 
 func _sync_cloud(_had_local: bool) -> void:
 	_syncing = true
+	debug_log("SYNC_START")
 	var remote := await _download_cloud()
+	debug_log("SYNC_REMOTE", "ok=%s not_found=%s saved_at=%s textlen=%s" % [str(remote.get("ok")), str(remote.get("not_found", false)), str(remote.get("saved_at", "")), str(String(remote.get("text", "")).length())])
 	if bool(remote.get("ok", false)):
 		var text := String(remote.get("text", ""))
 		if text != "" and PlayerData.apply_save_text(text):
 			_dirty = false
 			cloud_status = "已从云端读取存档"
+			debug_log("SYNC_APPLIED")
 		else:
 			cloud_status = "云端存档读取失败"
 	elif bool(remote.get("not_found", false)):
 		var ok2 := await _upload_cloud()
 		cloud_status = "已上传云端存档" if ok2 else ("云端上传失败：" + last_error)
+		debug_log("SYNC_UPLOAD_NEW", "ok=%s err=%s" % [str(ok2), last_error])
 	else:
 		cloud_status = "云端不可用"
 	_syncing = false
@@ -330,12 +362,14 @@ func _download_cloud() -> Dictionary:
 	return {"ok": true, "saved_at": int(meta.get("cr_saved_at", 0)), "text": Marshalls.base64_to_utf8(b64)}
 
 func _upload_cloud() -> bool:
+	debug_log("UPLOAD_START", "access=%s user_id=%s local_path=%s local_exists=%s" % [str(_access != ""), _user_id, PlayerData.current_save_path(), str(FileAccess.file_exists(PlayerData.current_save_path()))])
 	if _access == "":
 		last_error = "云端未登录"
 		return false
 	var text := PlayerData.get_save_text()
 	if text == "":
 		last_error = "本地存档为空"
+		debug_log("UPLOAD_EMPTY_TEXT")
 		return false
 	var body := {"data": {"cr_save": Marshalls.utf8_to_base64(text), "cr_saved_at": int(Time.get_unix_time_from_system())}}
 	var res: Array = await _http(HTTPClient.METHOD_PUT, "/auth/v1/user", body, _access)
@@ -343,7 +377,9 @@ func _upload_cloud() -> bool:
 		res = await _http(HTTPClient.METHOD_PUT, "/auth/v1/user", body, _access)
 	if int(res[1]) < 200 or int(res[1]) >= 300:
 		last_error = _error_of(res)
+		debug_log("UPLOAD_FAIL", "code=%d err=%s textlen=%d" % [int(res[1]), last_error, text.length()])
 		return false
+	debug_log("UPLOAD_OK", "code=%d textlen=%d" % [int(res[1]), text.length()])
 	return true
 
 # ---------------- Edge / 邮箱绑定 / OTP ----------------
@@ -424,7 +460,7 @@ func _load_session() -> Dictionary:
 		"expires": int(cfg.get_value("session", "expires", 0)),
 	}
 
-func _save_session() -> void:
+func _save_session() -> bool:
 	var cfg := ConfigFile.new()
 	cfg.set_value("session", "email", account_email)
 	cfg.set_value("session", "username", account_username)
@@ -432,7 +468,9 @@ func _save_session() -> void:
 	cfg.set_value("session", "access", _access)
 	cfg.set_value("session", "refresh", _refresh)
 	cfg.set_value("session", "expires", int(Time.get_unix_time_from_system()) + SESSION_DAYS * 86400)
-	cfg.save(SESSION_PATH)
+	var err_session := cfg.save(SESSION_PATH)
+	debug_log("SESSION_SAVE", "path=%s abs=%s err=%d exists=%s" % [SESSION_PATH, ProjectSettings.globalize_path(SESSION_PATH), err_session, str(FileAccess.file_exists(SESSION_PATH))])
+	return err_session == OK
 
 func _clear_session_file() -> void:
 	if FileAccess.file_exists(SESSION_PATH):
@@ -443,15 +481,17 @@ func _load_index() -> ConfigFile:
 	cfg.load(INDEX_PATH)
 	return cfg
 
-func _save_index() -> void:
+func _save_index() -> bool:
 	if account_email == "":
-		return
+		return false
 	var cfg := _load_index()
 	cfg.set_value(account_email, "user_id", _user_id)
 	cfg.set_value(account_email, "username", account_username)
 	cfg.set_value(account_email, "refresh", _refresh)
 	cfg.set_value(account_email, "last_login", int(Time.get_unix_time_from_system()))
-	cfg.save(INDEX_PATH)
+	var err_idx := cfg.save(INDEX_PATH)
+	debug_log("INDEX_SAVE", "path=%s abs=%s err=%d exists=%s" % [INDEX_PATH, ProjectSettings.globalize_path(INDEX_PATH), err_idx, str(FileAccess.file_exists(INDEX_PATH))])
+	return err_idx == OK
 
 func recent_supabase_accounts(_days: int = 30) -> Array:
 	var cfg := _load_index()
