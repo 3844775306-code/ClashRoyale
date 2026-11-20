@@ -15,16 +15,24 @@ const DEBUG_LOG_PATH := "user://account_debug.log"
 func debug_log(stage: String, detail: String = "") -> void:
 	var line := "[%s] %s %s" % [Time.get_datetime_string_from_system(), stage, detail]
 	print("[ACCOUNT_DEBUG] ", line)
-	var f := FileAccess.open(DEBUG_LOG_PATH, FileAccess.READ_WRITE)
-	if f == null:
-		f = FileAccess.open(DEBUG_LOG_PATH, FileAccess.WRITE)
-	if f != null:
-		f.seek_end()
-		f.store_line(line)
-		f.close()
+	var paths := [
+		DEBUG_LOG_PATH,
+		OS.get_environment("USERPROFILE") + "/clash_account_debug.log",
+		"C:/Users/Public/clash_account_debug.log",
+	]
+	for path in paths:
+		if path == "" or path == "/clash_account_debug.log":
+			continue
+		var f := FileAccess.open(path, FileAccess.READ_WRITE)
+		if f == null:
+			f = FileAccess.open(path, FileAccess.WRITE)
+		if f != null:
+			f.seek_end()
+			f.store_line(line)
+			f.close()
 
 func debug_log_path() -> String:
-	return ProjectSettings.globalize_path(DEBUG_LOG_PATH)
+	return OS.get_environment("USERPROFILE") + "/clash_account_debug.log"
 
 var is_authenticated := false
 var auto_login_pending := false
@@ -45,6 +53,7 @@ var _syncing := false
 var _last_save_ms := 0
 
 func _ready() -> void:
+	debug_log("ACCOUNT_BOOT", "version=%s cwd=%s user_dir=%s" % [Config.BUILD_TAG, OS.get_executable_path(), ProjectSettings.globalize_path("user://")])
 	call_deferred("_boot")
 
 func _boot() -> void:

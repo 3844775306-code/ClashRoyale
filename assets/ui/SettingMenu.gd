@@ -104,10 +104,11 @@ func _build_ui():
 	vbox.add_child(_row_label("👤 账号"))
 	var acct_lbl := Label.new()
 	var email_txt := AccountManager.account_email if AccountManager.account_email != "" else "本机账号"
-	acct_lbl.text = "%s\n云端存档：%s\n构建：%s" % [
+	acct_lbl.text = "%s\n云端存档：%s\n构建：%s\n调试日志：%s" % [
 		email_txt,
 		AccountManager.cloud_status,
 		Config.BUILD_TAG,
+		AccountManager.debug_log_path(),
 	]
 	acct_lbl.add_theme_font_size_override("font_size", 13)
 	acct_lbl.add_theme_color_override("font_color", Color(0.72, 0.78, 0.88))
