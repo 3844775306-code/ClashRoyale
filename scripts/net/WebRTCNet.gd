@@ -31,6 +31,7 @@ var _polling := false
 var _started_at := 0
 var _ice_seen: Dictionary = {}
 var _ice_seq := 0
+var _remote_turn_loaded := false
 
 
 func _ready() -> void:
@@ -71,6 +72,33 @@ func _save_cloudflare_turn(url: String, user: String, password: String, expires:
 	cfg.set_value("turn", "mode", "cloudflare")
 	cfg.set_value("turn", "expires", expires)
 	cfg.save(_turn_cfg_path())
+
+
+func _save_remote_turn(url: String, user: String, password: String) -> void:
+	var cfg := ConfigFile.new()
+	cfg.set_value("turn", "url", url)
+	cfg.set_value("turn", "user", user)
+	cfg.set_value("turn", "pass", password)
+	cfg.set_value("turn", "mode", "remote")
+	cfg.set_value("turn", "expires", 0)
+	cfg.save(_turn_cfg_path())
+
+
+func _load_remote_turn() -> void:
+	if _remote_turn_loaded:
+		return
+	_remote_turn_loaded = true
+	if String(turn_config().get("url", "")) != "":
+		return
+	if not AccountManager.is_supabase_authenticated():
+		return
+	var v: Dictionary = await SupabaseAPI.get_value("turn:default")
+	var url := String(v.get("url", ""))
+	var user := String(v.get("user", v.get("username", "")))
+	var cred := String(v.get("pass", v.get("credential", "")))
+	if url != "" and user != "" and cred != "":
+		_save_remote_turn(url, user, cred)
+		status.emit("已加载默认 Metered TURN")
 
 
 func _pick_ice_url(urls: Array) -> String:
@@ -116,7 +144,10 @@ func fetch_cloudflare_turn(ttl: int = 7200) -> Dictionary:
 
 
 func _ensure_turn() -> void:
+	await _load_remote_turn()
 	var c := turn_config()
+	if String(c.get("mode", "")) == "remote" and String(c.get("url", "")) != "":
+		return
 	if String(c.get("mode", "")) != "cloudflare":
 		return
 	var exp := int(c.get("expires", 0))
@@ -134,6 +165,8 @@ func turn_summary() -> String:
 	if String(c.get("mode", "")) == "cloudflare":
 		var left := maxi(0, int(c.get("expires", 0)) - int(Time.get_unix_time_from_system()))
 		return "Cloudflare TURN（剩余 %d 分钟）" % int(left / 60)
+	if String(c.get("mode", "")) == "remote":
+		return "Metered TURN（自动）"
 	return "TURN 已配置"
 
 
