@@ -25,7 +25,7 @@ func _headers(extra: Array = []) -> PackedStringArray:
 		h.append(String(e))
 	return h
 
-func _web_request(method: int, path: String, body: Dictionary = {}) -> Array:
+func _web_request(method: int, path: String, body: Dictionary = {}, extra: Array = []) -> Array:
 	var js = Engine.get_singleton("JavaScriptBridge")
 	if js == null:
 		return [HTTPRequest.RESULT_CANT_CONNECT, 0, PackedStringArray(), PackedByteArray()]
@@ -33,10 +33,12 @@ func _web_request(method: int, path: String, body: Dictionary = {}) -> Array:
 	if window == null:
 		return [HTTPRequest.RESULT_CANT_CONNECT, 0, PackedStringArray(), PackedByteArray()]
 	js.eval("""
-window.crSupabaseFetch = function(method,url,token,body,cb) {
+window.crSupabaseFetch = function(method,url,token,body,extra,cb) {
   const headers = {apikey: '%s'};
   if (token) headers.Authorization = 'Bearer ' + token;
   if (body) headers['Content-Type'] = 'application/json';
+  const ex = JSON.parse(extra || '[]');
+  for (const h of ex) { const i = h.indexOf(':'); if (i > 0) headers[h.substring(0, i)] = h.substring(i + 1).trim(); }
   fetch(url, {method: method, headers: headers, body: body || undefined})
     .then(async r => cb(JSON.stringify({status: r.status, text: await r.text()})))
     .catch(e => cb(JSON.stringify({status: 0, text: String(e)})));
@@ -60,7 +62,7 @@ window.crSupabaseFetch = function(method,url,token,body,cb) {
 	elif method == HTTPClient.METHOD_DELETE:
 		method_name = "DELETE"
 	var body_text := JSON.stringify(body) if not body.is_empty() else ""
-	window.crSupabaseFetch(method_name, URL + path, _token(), body_text, cb)
+	window.crSupabaseFetch(method_name, URL + path, _token(), body_text, JSON.stringify(extra), cb)
 	var frames := 0
 	while not bool(state["done"]) and frames < 600:
 		await get_tree().process_frame
@@ -71,7 +73,7 @@ window.crSupabaseFetch = function(method,url,token,body,cb) {
 
 func _request(method: int, path: String, body: Dictionary = {}, extra: Array = []) -> Array:
 	if OS.has_feature("web"):
-		return await _web_request(method, path, body)
+		return await _web_request(method, path, body, extra)
 	var http := HTTPRequest.new()
 	http.timeout = 10.0
 	add_child(http)
@@ -107,6 +109,11 @@ func get_value(key: String) -> Dictionary:
 		var v = data[0].get("value", {})
 		return v if v is Dictionary else {}
 	return {}
+
+func delete_key(key: String) -> bool:
+	var res: Array = await _request(HTTPClient.METHOD_DELETE,
+		"/rest/v1/%s?key=eq.%s" % [TABLE, key])
+	return int(res[1]) >= 200 and int(res[1]) < 300
 
 func upsert(key: String, value: Dictionary) -> bool:
 	var res: Array = await _request(HTTPClient.METHOD_POST,

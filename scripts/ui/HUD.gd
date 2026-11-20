@@ -56,6 +56,9 @@ var emote_button: Button
 var emote_panel: Control
 var emote_list: VBoxContainer
 var pause_panel: Control
+var _enemy_profile_panel: Panel
+var _ally_profile_panel: Panel
+var _profile_signature: String = ""
 
 var _game_over_paused: bool = false   # 结算后是否已暂停整棵树
 
@@ -366,6 +369,8 @@ func _create_ui_elements():
 	quit_btn.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	pvbox.add_child(quit_btn)
 
+	_setup_match_profiles(screen_size, tray_y)
+
 func _build_emote_panel(screen_size: Vector2):
 	emote_panel = Control.new()
 	emote_panel.visible = false
@@ -545,6 +550,106 @@ func _build_elixir_grid(grid: HBoxContainer):
 			pip.add_child(sep)
 		grid.add_child(pip)
 		elixir_cells.append(pip)
+
+func _setup_match_profiles(screen_size: Vector2, tray_y: float) -> void:
+	_enemy_profile_panel = Panel.new()
+	_enemy_profile_panel.position = Vector2(screen_size.x - 380, 92)
+	_enemy_profile_panel.size = Vector2(368, 58)
+	_enemy_profile_panel.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_enemy_profile_panel.add_theme_stylebox_override("panel", _profile_panel_style())
+	add_child(_enemy_profile_panel)
+	_ally_profile_panel = Panel.new()
+	_ally_profile_panel.position = Vector2(12, tray_y - 64)
+	_ally_profile_panel.size = Vector2(368, 58)
+	_ally_profile_panel.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_ally_profile_panel.add_theme_stylebox_override("panel", _profile_panel_style())
+	add_child(_ally_profile_panel)
+
+func _profile_panel_style() -> StyleBoxFlat:
+	var sb := StyleBoxFlat.new()
+	sb.bg_color = Color(0.035, 0.06, 0.12, 0.88)
+	sb.border_color = Color(1.0, 0.78, 0.3, 0.4)
+	sb.set_border_width_all(1)
+	sb.set_corner_radius_all(10)
+	return sb
+
+func _refresh_match_profiles() -> void:
+	if battle == null or bool(battle.get("replay_mode")):
+		return
+	var profs: Array = battle.get_battle_player_profiles() if battle.has_method("get_battle_player_profiles") else []
+	var sig := JSON.stringify(profs)
+	if sig == _profile_signature:
+		return
+	_profile_signature = sig
+	var enemy: Array = []
+	var ally: Array = []
+	for p in profs:
+		if int(p.get("team", 0)) == 1:
+			enemy.append(p)
+		else:
+			ally.append(p)
+	_fill_profile_panel(_enemy_profile_panel, enemy, "敌方")
+	_fill_profile_panel(_ally_profile_panel, ally, "我方")
+	_enemy_profile_panel.size.y = 58 if enemy.size() <= 1 else 104
+	_ally_profile_panel.size.y = 58 if ally.size() <= 1 else 104
+
+func _fill_profile_panel(panel: Panel, profiles: Array, side: String) -> void:
+	for c in panel.get_children():
+		c.queue_free()
+	var row := HBoxContainer.new()
+	row.position = Vector2(8, 5)
+	row.size = Vector2(panel.size.x - 16, panel.size.y - 10)
+	row.add_theme_constant_override("separation", 10)
+	panel.add_child(row)
+	var tag := Label.new()
+	tag.text = side
+	tag.add_theme_font_size_override("font_size", 12)
+	tag.add_theme_color_override("font_color", Color(1.0, 0.78, 0.3) if side == "我方" else Color(1.0, 0.55, 0.52))
+	row.add_child(tag)
+	for p in profiles:
+		row.add_child(_make_profile_chip(p))
+	if profiles.is_empty():
+		var l := Label.new()
+		l.text = "等待玩家…"
+		l.add_theme_color_override("font_color", ThemeHelper.COLORS.text_muted)
+		row.add_child(l)
+
+func _make_profile_chip(p: Dictionary) -> Control:
+	var b := Button.new()
+	b.flat = true
+	b.custom_minimum_size = Vector2(168, 44)
+	b.mouse_filter = Control.MOUSE_FILTER_STOP
+	b.add_theme_stylebox_override("normal", StyleBoxEmpty.new())
+	b.add_theme_stylebox_override("hover", StyleBoxEmpty.new())
+	var h := HBoxContainer.new()
+	h.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	h.add_theme_constant_override("separation", 6)
+	b.add_child(h)
+	var av = preload("res://scripts/ui/AvatarIcon.gd").new()
+	av.custom_minimum_size = Vector2(38, 38)
+	av.size = Vector2(38, 38)
+	av.setup(String(p.get("name", "玩家")), int(p.get("avatar_seed", 0)), int(p.get("avatar_index", 0)))
+	h.add_child(av)
+	var vb := VBoxContainer.new()
+	vb.add_theme_constant_override("separation", 1)
+	h.add_child(vb)
+	var nm := Label.new()
+	nm.text = String(p.get("name", "玩家"))
+	nm.add_theme_font_size_override("font_size", 13)
+	nm.add_theme_color_override("font_color", Color.WHITE)
+	vb.add_child(nm)
+	var tr := Label.new()
+	tr.text = "🏆 %d" % int(p.get("trophies", 0))
+	tr.add_theme_font_size_override("font_size", 10)
+	tr.add_theme_color_override("font_color", Color(0.95, 0.82, 0.45))
+	vb.add_child(tr)
+	b.pressed.connect(func(): _open_match_profile(p))
+	return b
+
+func _open_match_profile(p: Dictionary) -> void:
+	var dlg = (load("res://scripts/ui/PlayerProfileDialog.gd") as GDScript).new()
+	dlg.profile = p
+	add_child(dlg)
 
 func _process(_delta):
 	if battle and battle.network_host_mode and not battle.network_guest_mode:

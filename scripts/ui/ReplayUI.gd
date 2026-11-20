@@ -17,6 +17,7 @@ var _bg_layer: ColorRect
 var _menu_backdrop: Control
 var _list_scroll: ScrollContainer
 var _list_box: VBoxContainer
+var _cloud_box: VBoxContainer
 var _info: Label
 var _refresh_btn: Button
 var _gen_btn: Button
@@ -97,9 +98,57 @@ func _replay_dir() -> String:
 	var env := OS.get_environment("CR_MATCH_REPLAY_DIR")
 	return env if env != "" else PlayerData.replay_dir()
 
+func _fmt_time(raw: String) -> String:
+	var s := raw.replace("T", " ")
+	return s.substr(0, 16) if s.length() >= 16 else s
+
+func _fmt_duration(sec: float) -> String:
+	var n := int(maxf(0.0, sec))
+	return "%d:%02d" % [n / 60, n % 60]
+
+func _fmt_size(bytes: int) -> String:
+	if bytes >= 1024 * 1024:
+		return "%.1f MB" % (float(bytes) / 1024.0 / 1024.0)
+	if bytes >= 1024:
+		return "%.0f KB" % (float(bytes) / 1024.0)
+	return "%d B" % bytes
+
+func _mode_name(meta: Dictionary) -> String:
+	var m := String(meta.get("mode_name", ""))
+	if m == "":
+		var md: Dictionary = meta.get("mode", {})
+		m = String(md.get("name", "标准对战"))
+	return m
+
+func _players_line(meta: Dictionary) -> String:
+	var parts: Array = []
+	var profs: Array = meta.get("player_profiles", [])
+	if not profs.is_empty():
+		for p in profs:
+			var tag := "AI" if bool(p.get("ai", false)) else ("我" if int(p.get("team", 0)) == 0 else "对手")
+			parts.append("%s:%s" % [tag, String(p.get("name", "玩家"))])
+	else:
+		parts.append("我:%s" % String(meta.get("player_name", PlayerData.player_name)))
+		parts.append("AI:%s" % String(meta.get("enemy_name", "AI")))
+	return "  ".join(parts)
+
+func _file_size(path: String) -> int:
+	var total := 0
+	var f := FileAccess.open(ProjectSettings.globalize_path(path), FileAccess.READ)
+	if f:
+		total += f.get_length()
+		f.close()
+	var snap := path.get_basename() + ".snap.jsonl"
+	var sf := FileAccess.open(ProjectSettings.globalize_path(snap), FileAccess.READ)
+	if sf:
+		total += sf.get_length()
+		sf.close()
+	return total
+
 func _load_replays():
 	for c in _list_box.get_children():
 		c.queue_free()
+	_cloud_box = null
 	var dir := _replay_dir()
 	REPLAY_RECORDER.cleanup_replays(dir)
 	var files: Array = []
@@ -134,49 +183,153 @@ func _load_replays():
 		else:
 			player_items.append([data, f])
 	var total: int = player_items.size() + self_items.size()
-	_info.text = "共 %d 局 · 玩家 %d / AI自对弈 %d" % [total, player_items.size(), self_items.size()]
+	_info.text = "本机 %d 局 · 玩家 %d / AI自对弈 %d" % [total, player_items.size(), self_items.size()]
+	var head := Label.new()
+	head.text = "📁 本机回放（上）"
+	head.add_theme_font_size_override("font_size", 17)
+	head.add_theme_color_override("font_color", ThemeHelper.COLORS.gold)
+	_list_box.add_child(head)
 	if total == 0:
-		var empty := UiComponents.make_empty_state("🎞", "暂无对局录像", "在设置中开启本地录制后完成一局对战")
-		empty.custom_minimum_size = Vector2(0, 400)
+		var empty := UiComponents.make_empty_state("🎞", "暂无本机录像", "完成一局对战或点击生成自对弈")
+		empty.custom_minimum_size = Vector2(0, 180)
 		_list_box.add_child(empty)
-		return
-	var columns := HBoxContainer.new()
-	columns.add_theme_constant_override("separation", 8)
-	_list_box.add_child(columns)
-	columns.add_child(_make_column("👤 玩家的回放", player_items))
-	columns.add_child(_make_column("🤖 非玩家 · AI自对弈", self_items))
+	else:
+		for item in player_items:
+			_list_box.add_child(_make_replay_row(item[0], item[1]))
+		for item in self_items:
+			_list_box.add_child(_make_replay_row(item[0], item[1]))
+	_add_cloud_section()
 	if OS.get_environment("CR_REPLAY_AUTOPLAY") != "":
 		var first: Array = player_items if not player_items.is_empty() else self_items
 		if not first.is_empty():
 			_open_replay(first[0][0])
 
-func _make_column(title: String, items: Array) -> VBoxContainer:
-	var col := VBoxContainer.new()
-	col.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	col.add_theme_constant_override("separation", 6)
-	var head := Label.new()
-	head.text = "%s  (%d)" % [title, items.size()]
-	head.add_theme_font_size_override("font_size", 16)
-	head.add_theme_color_override("font_color", ThemeHelper.COLORS.gold)
-	head.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	col.add_child(head)
-	if items.is_empty():
-		var empty := Label.new()
-		empty.text = "暂无录像"
-		empty.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-		empty.add_theme_font_size_override("font_size", 13)
-		empty.add_theme_color_override("font_color", ThemeHelper.COLORS.text_muted)
-		empty.custom_minimum_size = Vector2(0, 70)
-		col.add_child(empty)
-		return col
-	for item in items:
-		col.add_child(_make_replay_row(item[0], item[1]))
-	return col
+func _add_cloud_section() -> void:
+	var sep := HSeparator.new()
+	sep.custom_minimum_size = Vector2(0, 18)
+	_list_box.add_child(sep)
+	var head := HBoxContainer.new()
+	var title := Label.new()
+	title.text = "☁ 云端回放（下）"
+	title.add_theme_font_size_override("font_size", 17)
+	title.add_theme_color_override("font_color", Color(0.62, 0.86, 1.0))
+	title.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	head.add_child(title)
+	var refresh := UiComponents.make_secondary_button("刷新云端", _load_cloud_replays, Vector2(120, 34))
+	head.add_child(refresh)
+	_list_box.add_child(head)
+	_cloud_box = VBoxContainer.new()
+	_cloud_box.add_theme_constant_override("separation", 6)
+	_list_box.add_child(_cloud_box)
+	_load_cloud_replays()
+
+func _load_cloud_replays() -> void:
+	if _cloud_box == null:
+		return
+	for c in _cloud_box.get_children():
+		c.queue_free()
+	if not SupabaseAPI.is_ready():
+		var l := Label.new()
+		l.text = "登录 Supabase 账号后可上传/下载云端回放"
+		l.add_theme_color_override("font_color", ThemeHelper.COLORS.text_muted)
+		_cloud_box.add_child(l)
+		return
+	var loading := Label.new()
+	loading.text = "正在读取云端回放…"
+	loading.add_theme_color_override("font_color", ThemeHelper.COLORS.text_muted)
+	_cloud_box.add_child(loading)
+	var rows: Array = await SupabaseAPI.list_prefix("replay:", 100)
+	if loading and is_instance_valid(loading):
+		loading.queue_free()
+	if rows.is_empty():
+		var l := Label.new()
+		l.text = "云端暂无录像"
+		l.add_theme_color_override("font_color", ThemeHelper.COLORS.text_muted)
+		_cloud_box.add_child(l)
+		return
+	rows.sort_custom(func(a, b): return int(Dictionary(a.get("value", {})).get("uploaded_at", 0)) > int(Dictionary(b.get("value", {})).get("uploaded_at", 0)))
+	for row in rows:
+		if not (row is Dictionary):
+			continue
+		var v = row.get("value", {})
+		if not (v is Dictionary):
+			continue
+		_cloud_box.add_child(_make_cloud_row(String(row.get("key", "")), v))
+
+func _read_snapshots(data: Dictionary, filename: String) -> Array:
+	var out: Array = Array(data.get("snapshots", [])).duplicate(true)
+	if not out.is_empty():
+		return out
+	var src := String(data.get("_source_dir", _replay_dir()))
+	var sf := FileAccess.open(ProjectSettings.globalize_path("%s/%s.snap.jsonl" % [src, filename.get_basename()]), FileAccess.READ)
+	if sf == null:
+		sf = FileAccess.open(ProjectSettings.globalize_path("%s/%s" % [src, String(Dictionary(data.get("meta", {})).get("snapshots_file", ""))]), FileAccess.READ)
+	if sf:
+		while not sf.eof_reached():
+			var line := sf.get_line()
+			if line.strip_edges() == "":
+				continue
+			var parsed = JSON.parse_string(line)
+			if parsed is Dictionary:
+				out.append(parsed)
+		sf.close()
+	return out
+
+func _upload_replay(filename: String, data: Dictionary) -> void:
+	if not SupabaseAPI.is_ready():
+		_info.text = "请先登录 Supabase 再上传"
+		return
+	_info.text = "正在上传 %s…" % filename
+	var meta: Dictionary = data.get("meta", {})
+	var payload := data.duplicate(true)
+	payload.erase("_source_dir")
+	payload["snapshots"] = _read_snapshots(data, filename)
+	payload["permanent"] = true
+	var sizes := _file_size("%s/%s" % [String(data.get("_source_dir", _replay_dir())), filename])
+	var key := "replay:%s:%s" % [String(AccountManager.account_id), str(Time.get_unix_time_from_system()) + "_" + filename.md5_text().substr(0, 8)]
+	var ok: bool = await SupabaseAPI.upsert(key, {
+		"uploader": PlayerData.player_name, "uploader_id": String(AccountManager.account_id),
+		"uploaded_at": int(Time.get_unix_time_from_system()), "filename": filename,
+		"size": sizes, "meta": meta, "data": payload,
+	})
+	_info.text = "上传成功：云端回放" if ok else "上传失败"
+	_load_cloud_replays()
+
+func _delete_replay(filename: String, data: Dictionary) -> void:
+	var src := String(data.get("_source_dir", _replay_dir()))
+	var path := "%s/%s" % [src, filename]
+	DirAccess.remove_absolute(ProjectSettings.globalize_path(path))
+	DirAccess.remove_absolute(ProjectSettings.globalize_path(path.get_basename() + ".snap.jsonl"))
+	_load_replays()
+
+func _download_cloud(key: String, v: Dictionary) -> void:
+	var payload = v.get("data", {})
+	if not (payload is Dictionary):
+		return
+	var d: Dictionary = payload
+	var stamp := Time.get_datetime_string_from_system().replace(":", "-").replace(" ", "_")
+	var filename := "replay_cloud_%s.json" % stamp
+	var path := "%s/%s" % [_replay_dir(), filename]
+	DirAccess.make_dir_recursive_absolute(ProjectSettings.globalize_path(_replay_dir()))
+	var f := FileAccess.open(ProjectSettings.globalize_path(path), FileAccess.WRITE)
+	if f == null:
+		_info.text = "下载失败：无法写入"
+		return
+	f.store_string(JSON.stringify(d))
+	f.close()
+	_info.text = "已下载云端回放"
+	_load_replays()
+
+func _delete_cloud(key: String) -> void:
+	if not SupabaseAPI.is_ready():
+		return
+	await SupabaseAPI.delete_key(key)
+	_load_cloud_replays()
 
 func _make_replay_row(data: Dictionary, filename: String) -> Control:
 	var meta: Dictionary = data.get("meta", {})
 	var panel := Panel.new()
-	panel.custom_minimum_size = Vector2(0, 98)
+	panel.custom_minimum_size = Vector2(0, 134)
 	var sb := StyleBoxFlat.new()
 	sb.bg_color = Color(0.06, 0.07, 0.13, 0.95)
 	var won := int(meta.get("winner", -1))
@@ -184,59 +337,105 @@ func _make_replay_row(data: Dictionary, filename: String) -> Control:
 	sb.set_border_width_all(1)
 	sb.set_corner_radius_all(10)
 	panel.add_theme_stylebox_override("panel", sb)
+	var margin := MarginContainer.new()
+	margin.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	margin.add_theme_constant_override("margin_left", 10)
+	margin.add_theme_constant_override("margin_right", 10)
+	margin.add_theme_constant_override("margin_top", 6)
+	margin.add_theme_constant_override("margin_bottom", 6)
+	panel.add_child(margin)
 	var hbox := HBoxContainer.new()
-	hbox.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	hbox.offset_left = 8
-	hbox.offset_right = -8
-	hbox.offset_top = 6
-	hbox.offset_bottom = -6
 	hbox.add_theme_constant_override("separation", 6)
-	panel.add_child(hbox)
+	margin.add_child(hbox)
 	var vb := VBoxContainer.new()
 	vb.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	vb.add_theme_constant_override("separation", 2)
-	vb.alignment = BoxContainer.ALIGNMENT_CENTER
 	hbox.add_child(vb)
 	var crowns: Array = meta.get("crowns", [0, 0])
 	var title := Label.new()
-	title.text = "%s  %d-%d" % [
-		_result_cn(won),
-		int(crowns[0] if crowns.size() > 0 else 0),
-		int(crowns[1] if crowns.size() > 1 else 0)
-	]
+	title.text = "%s  %d-%d  ·  %s" % [_result_cn(won), int(crowns[0] if crowns.size() > 0 else 0), int(crowns[1] if crowns.size() > 1 else 0), _mode_name(meta)]
 	title.add_theme_font_size_override("font_size", 16)
-	if won == 0:
-		title.add_theme_color_override("font_color", Color(0.55, 1.0, 0.62))
-	elif won == 1:
-		title.add_theme_color_override("font_color", Color(1.0, 0.55, 0.52))
+	title.add_theme_color_override("font_color", Color(0.55, 1.0, 0.62) if won == 0 else (Color(1.0, 0.55, 0.52) if won == 1 else Color(0.8, 0.75, 0.5)))
 	vb.add_child(title)
+	var line1 := Label.new()
+	line1.text = "🕒 %s   ⏱ %s   💾 %s" % [_fmt_time(String(meta.get("started_at", filename))), _fmt_duration(float(meta.get("duration", 0.0))), _fmt_size(_file_size("%s/%s" % [String(data.get("_source_dir", _replay_dir())), filename]))]
+	line1.add_theme_font_size_override("font_size", 11)
+	line1.add_theme_color_override("font_color", Color(0.76, 0.82, 0.92))
+	vb.add_child(line1)
+	var line2 := Label.new()
+	line2.text = "👥 %s" % _players_line(meta)
+	line2.add_theme_font_size_override("font_size", 11)
+	line2.add_theme_color_override("font_color", Color(0.92, 0.86, 0.68))
+	line2.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	line2.max_lines_visible = 2
+	vb.add_child(line2)
+	var line3 := Label.new()
+	var act_n: int = Array(data.get("actions", [])).size()
+	line3.text = "⚔ %s   🎬 %d 手%s" % [String(meta.get("arena_name", "竞技场")), act_n, "   📌 已保存" if bool(data.get("permanent", false)) else ""]
+	line3.add_theme_font_size_override("font_size", 10)
+	line3.add_theme_color_override("font_color", ThemeHelper.COLORS.text_muted)
+	vb.add_child(line3)
+	var btn_box := HBoxContainer.new()
+	btn_box.add_theme_constant_override("separation", 4)
+	hbox.add_child(btn_box)
+	var play := UiComponents.make_primary_button("▶", func(): _open_replay(data), Vector2(52, 38))
+	btn_box.add_child(play)
+	var perm := UiComponents.make_secondary_button("保存" if not bool(data.get("permanent", false)) else "已存", func(): _toggle_permanent(filename, data), Vector2(58, 36))
+	perm.add_theme_font_size_override("font_size", 11)
+	btn_box.add_child(perm)
+	var up := UiComponents.make_secondary_button("上传", func(): _upload_replay(filename, data), Vector2(58, 36))
+	up.add_theme_font_size_override("font_size", 11)
+	btn_box.add_child(up)
+	var del := UiComponents.make_secondary_button("删除", func(): _delete_replay(filename, data), Vector2(58, 36))
+	del.add_theme_font_size_override("font_size", 11)
+	del.add_theme_color_override("font_color", Color(1.0, 0.62, 0.58))
+	btn_box.add_child(del)
+	return panel
+
+func _make_cloud_row(key: String, v: Dictionary) -> Control:
+	var meta: Dictionary = v.get("meta", {})
+	var panel := Panel.new()
+	panel.custom_minimum_size = Vector2(0, 80)
+	var sb := StyleBoxFlat.new()
+	sb.bg_color = Color(0.045, 0.07, 0.13, 0.96)
+	sb.border_color = Color(0.35, 0.65, 1.0, 0.55)
+	sb.set_border_width_all(1)
+	sb.set_corner_radius_all(10)
+	panel.add_theme_stylebox_override("panel", sb)
+	var margin := MarginContainer.new()
+	margin.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	margin.add_theme_constant_override("margin_left", 10)
+	margin.add_theme_constant_override("margin_right", 10)
+	panel.add_child(margin)
+	var hbox := HBoxContainer.new()
+	margin.add_child(hbox)
+	var vb := VBoxContainer.new()
+	vb.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	hbox.add_child(vb)
+	var won := int(meta.get("winner", -1))
+	var t := Label.new()
+	t.text = "%s  %s · %s" % [String(v.get("uploader", "玩家")), _result_cn(won), _mode_name(meta)]
+	t.add_theme_font_size_override("font_size", 14)
+	t.add_theme_color_override("font_color", Color(0.72, 0.9, 1.0))
+	vb.add_child(t)
 	var sub := Label.new()
-	var duration: float = float(meta.get("duration", 0.0))
-	sub.text = "%s\n%s · %d:%02d · %d 手" % [
-		String(meta.get("arena_name", "竞技场")),
-		String(meta.get("started_at", filename)).replace("T", " ").substr(5, 11),
-		int(duration) / 60, int(duration) % 60,
-		data.get("actions", []).size()
-	]
-	sub.add_theme_font_size_override("font_size", 11)
+	sub.text = "🕒 %s   ⏱ %s   💾 %s   👥 %s" % [_fmt_time(String(meta.get("started_at", ""))), _fmt_duration(float(meta.get("duration", 0.0))), _fmt_size(int(v.get("size", 0))), _players_line(meta)]
+	sub.add_theme_font_size_override("font_size", 10)
 	sub.add_theme_color_override("font_color", ThemeHelper.COLORS.text_muted)
 	sub.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	sub.max_lines_visible = 3
 	vb.add_child(sub)
-	var permanent: bool = bool(data.get("permanent", false))
-	var perm_btn := UiComponents.make_secondary_button("永久" if permanent else "保存", func(): _toggle_permanent(filename, data), Vector2(64, 36))
-	perm_btn.add_theme_font_size_override("font_size", 12)
-	perm_btn.add_theme_color_override("font_color", Color(1.0, 0.82, 0.30) if permanent else Color(0.76, 0.82, 0.92))
-	hbox.add_child(perm_btn)
-	var play := UiComponents.make_primary_button("▶", func(): _open_replay(data), Vector2(52, 40))
-	play.add_theme_font_size_override("font_size", 15)
-	hbox.add_child(play)
-	if permanent:
-		var dot := Label.new()
-		dot.text = "P"
-		dot.add_theme_font_size_override("font_size", 11)
-		dot.add_theme_color_override("font_color", Color(1.0, 0.82, 0.30))
-		vb.add_child(dot)
+	var btn := HBoxContainer.new()
+	btn.add_theme_constant_override("separation", 4)
+	hbox.add_child(btn)
+	var play := UiComponents.make_primary_button("▶", func(): _open_replay(v.get("data", {})), Vector2(50, 36))
+	btn.add_child(play)
+	var dl := UiComponents.make_secondary_button("下载", func(): _download_cloud(key, v), Vector2(58, 36))
+	dl.add_theme_font_size_override("font_size", 11)
+	btn.add_child(dl)
+	if String(v.get("uploader_id", "")) == String(AccountManager.account_id):
+		var del := UiComponents.make_secondary_button("删除", func(): _delete_cloud(key), Vector2(58, 36))
+		del.add_theme_font_size_override("font_size", 11)
+		btn.add_child(del)
 	return panel
 
 func _toggle_permanent(filename: String, data: Dictionary):

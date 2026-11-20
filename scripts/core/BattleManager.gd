@@ -27,6 +27,14 @@ var network_guest_mode: bool = false
 var network_guest_mirrored: bool = true
 var remote_hand: Array = []
 var remote_deck: Array = []
+var enemy_name: String = "AI"
+var enemy_trophies: int = 0
+var enemy_avatar_seed: int = 0
+var enemy_avatar_index: int = 0
+var enemy_bio: String = ""
+const AI_NAMES := ["铁皮骑士", "蘑菇巫师", "火箭哥布林", "冰霜小丑", "野蛮人阿福", "暗夜女巫", "电击小子", "宝箱怪", "南瓜守卫", "雪球矮人"]
+const AI_BIOS := ["喜欢用火箭解决一切问题。", "坚信蘑菇是版本答案。", "每天研究三套卡组，胜率零。", "最爱冰人溜冰。", "宝箱收藏家，开箱从不眨眼。", "夜晚出没的竞技场幽灵。", "电击法术十级爱好者。", "把奖杯当零食的宝箱怪。"]
+
 var remote_levels: Dictionary = {}
 var remote_players: Dictionary = {}
 var network_team_sizes: Dictionary = {}
@@ -975,6 +983,41 @@ func _touchdown_round_break(scorer: Unit = null) -> void:
 	touchdown_resetting = false
 
 
+func _assign_ai_identity() -> void:
+	var idx := randi() % AI_NAMES.size()
+	enemy_name = AI_NAMES[idx]
+	enemy_avatar_seed = absi(hash(enemy_name)) + idx * 97
+	enemy_avatar_index = idx % 12
+	enemy_trophies = clampi(PlayerData.trophies + randi_range(-120, 120), 0, 99999)
+	enemy_bio = AI_BIOS[idx % AI_BIOS.size()]
+
+func get_battle_player_profiles() -> Array:
+	var out: Array = []
+	if network_host_mode or network_guest_mode:
+		var seats: Array = NetworkManager.match_info.get("seats", NetworkManager.seats)
+		for s in seats:
+			var nm := String(s.get("name", "玩家"))
+			if nm == "" or nm == "AI":
+				nm = "AI 对手"
+			var is_ai := bool(s.get("ai", false)) or int(s.get("peer", 0)) == 0
+			out.append({
+				"team": int(s.get("team", 0)), "idx": int(s.get("idx", 0)),
+				"peer": int(s.get("peer", 0)), "name": nm,
+				"trophies": int(s.get("trophies", PlayerData.trophies if int(s.get("peer", 0)) == 1 else 1200)),
+				"avatar_seed": int(s.get("avatar_seed", absi(hash(nm)))),
+				"avatar_index": int(s.get("avatar_index", 0)),
+				"ai": is_ai, "bio": String(s.get("bio", "竞技场上的神秘对手。")),
+			})
+		if not out.is_empty():
+			return out
+	out.append({"team": 0, "idx": 0, "peer": 1, "name": PlayerData.player_name,
+		"trophies": PlayerData.trophies, "avatar_seed": PlayerData.avatar_seed,
+		"avatar_index": PlayerData.avatar_index, "ai": false, "bio": ""})
+	out.append({"team": 1, "idx": 0, "peer": 0, "name": enemy_name,
+		"trophies": enemy_trophies, "avatar_seed": enemy_avatar_seed,
+		"avatar_index": enemy_avatar_index, "ai": true, "bio": enemy_bio})
+	return out
+
 func _ready():
 	add_to_group("battle_manager")
 	_apply_mobile_safe_rendering()
@@ -993,6 +1036,8 @@ func _ready():
 		_init_network_remote()
 	if tutorial_battle:
 		_spawn_tutorial_targets()
+	if not network_host_mode and not network_guest_mode:
+		_assign_ai_identity()
 	hud.battle = self
 	if network_host_mode and hud.has_signal("emote_sent"):
 		hud.emote_sent.connect(func(id, team): NetworkManager.broadcast_emote(id, team))

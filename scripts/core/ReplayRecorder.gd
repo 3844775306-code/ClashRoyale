@@ -117,6 +117,8 @@ func _capture_meta():
 		"enemy_levels": _levels_for_team(Config.Team.ENEMY),
 		"mode": battle.battle_mode.duplicate(true) if battle else {},
 		"mode_name": battle.mode_name if battle else "标准对战",
+		"player_profiles": battle.get_battle_player_profiles() if battle and battle.has_method("get_battle_player_profiles") else [],
+		"enemy_name": battle.enemy_name if battle else "AI",
 		"result": -2
 	}
 

@@ -101,7 +101,8 @@ func start_host(port: int = DEFAULT_PORT, mode: String = "1v1", ai0: int = 0, ai
 	players[1] = {"name": PlayerData.player_name, "deck": host_deck, "levels": host_levels, "seated": true, "tower_choice": PlayerData.tower_choice, "avatar_seed": PlayerData.avatar_seed, "avatar_index": PlayerData.avatar_index}
 	seats.clear()
 	seats.append({"team": 0, "idx": 0, "peer": 1, "name": PlayerData.player_name, "ai": false, "deck": host_deck, "levels": host_levels, "tower_choice": PlayerData.tower_choice, "avatar_seed": PlayerData.avatar_seed, "avatar_index": PlayerData.avatar_index})
-	seats.append({"team": 1, "idx": 0, "peer": 0, "name": "AI", "ai": true, "deck": PlayerData.get_ai_default_deck(), "levels": {}, "tower_choice": 1, "avatar_seed": 0, "avatar_index": 0})
+	var ai_nm := _random_ai_name()
+	seats.append({"team": 1, "idx": 0, "peer": 0, "name": ai_nm, "ai": true, "deck": PlayerData.get_ai_default_deck(), "levels": {}, "tower_choice": 1, "avatar_seed": absi(hash(ai_nm)), "avatar_index": randi() % 12, "trophies": 1200})
 	local_seat_team = 0
 	local_seat_idx = 0
 	local_slot = 0
@@ -123,6 +124,10 @@ func mode_name() -> String:
 		return "2v2"
 	return "1v2"
 
+func _random_ai_name() -> String:
+	var names := ["铁皮骑士", "蘑菇巫师", "火箭哥布林", "冰霜小丑", "野蛮人阿福", "暗夜女巫", "电击小子", "宝箱怪"]
+	return names[randi() % names.size()]
+
 func seats_in_team(team: int) -> Array:
 	var out: Array = []
 	for s in seats:
@@ -135,7 +140,8 @@ func add_seat(team: int) -> bool:
 	if role != Role.HOST or seats_in_team(team).size() >= 2:
 		return false
 	var idx := seats_in_team(team).size()
-	seats.append({"team": team, "idx": idx, "peer": 0, "name": "AI", "ai": true, "deck": PlayerData.get_ai_default_deck(), "levels": {}, "tower_choice": 1, "avatar_seed": 0, "avatar_index": 0})
+	var ai_nm2 := _random_ai_name()
+	seats.append({"team": team, "idx": idx, "peer": 0, "name": ai_nm2, "ai": true, "deck": PlayerData.get_ai_default_deck(), "levels": {}, "tower_choice": 1, "avatar_seed": absi(hash(ai_nm2)), "avatar_index": randi() % 12, "trophies": 1200})
 	room_mode = mode_name()
 	_broadcast_seats()
 	seats_changed.emit()
