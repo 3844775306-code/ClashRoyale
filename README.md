@@ -34,14 +34,14 @@
 
 | 平台 | 文件 |
 |---|---|
-| Windows | `ClashRoyale-Net11.exe`（Releases） |
+| Windows | `ClashRoyale-Net11-WebRTC-Windows.zip`（Releases） |
 | Android | `ClashRoyale-Net.apk`（Releases） |
 | Web | [GitHub Pages](https://3844775306-code.github.io/ClashRoyale/) / `ClashRoyale-Web.zip` |
 
 ## 操作
 
 - 点击卡牌后再点战场，或直接拖拽卡牌到战场。
-- 联机：创建房间后把本机 IP 和 4 位房间码发给朋友；朋友加入房间后点击空/AI 席位进驻。
+- 联机：同一 WiFi 可用局域网房间；不同网络使用「跨网创建」生成 6 位房间码，朋友「跨网加入」后进驻席位。
 - 房主可给红蓝双方增加席位（最多每方 2 席）；所有真人入驻后才能开始。
 
 ## 本地构建
