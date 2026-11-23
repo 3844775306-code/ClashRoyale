@@ -8,50 +8,54 @@ const JS := """
 (function () {
 	if (window._crWebKeyboardReady) return;
 	window._crWebKeyboardReady = true;
-	var input = document.createElement('input');
-	input.type = 'text';
-	input.autocomplete = 'off';
-	input.autocapitalize = 'off';
-	input.spellcheck = false;
-	input.setAttribute('aria-hidden', 'true');
-	input.style.cssText = 'position:fixed;left:0;top:0;width:2px;height:2px;' +
-		'opacity:0.01;font-size:16px;z-index:2147483647;border:0;padding:0;margin:0;' +
-		'background:transparent;color:transparent;caret-color:transparent;pointer-events:none;';
-	document.body.appendChild(input);
-	input.addEventListener('input', function () {
-		if (window._crWebKeyboardInput) window._crWebKeyboardInput(input.value);
-	});
-	input.addEventListener('keydown', function (e) {
-		if (e.key === 'Enter') {
-			e.preventDefault();
-			if (window._crWebKeyboardInput) window._crWebKeyboardInput(input.value);
-			if (window._crWebKeyboardSubmit) window._crWebKeyboardSubmit(input.value);
-			if (window._crWebKeyboardClose) window._crWebKeyboardClose();
-			input.blur();
+	window._crWebKeyboardEl = null;
+
+	function makeInput() {
+		var old = window._crWebKeyboardEl;
+		if (old) {
+			try { old.blur(); } catch (e) {}
+			try { old.remove(); } catch (e) {}
 		}
-	});
-	input.addEventListener('blur', function () {
-		if (window._crWebKeyboardClose) window._crWebKeyboardClose();
-	});
-	// 点击画布/页面其他地方时收起软键盘
-	document.addEventListener('touchstart', function () {
-		if (document.activeElement === input) input.blur();
-	}, true);
+		var el = document.createElement('input');
+		el.type = 'text';
+		el.autocomplete = 'off';
+		el.autocapitalize = 'off';
+		el.spellcheck = false;
+		el.setAttribute('aria-hidden', 'true');
+		el.style.cssText = 'position:fixed;left:0;top:0;width:2px;height:2px;' +
+			'opacity:0.01;font-size:16px;z-index:2147483647;border:0;padding:0;margin:0;' +
+			'background:transparent;color:transparent;caret-color:transparent;pointer-events:none;';
+		el.addEventListener('input', function () {
+			if (window._crWebKeyboardInput) window._crWebKeyboardInput(el.value);
+		});
+		el.addEventListener('keydown', function (e) {
+			if (e.key === 'Enter') {
+				e.preventDefault();
+				if (window._crWebKeyboardInput) window._crWebKeyboardInput(el.value);
+				if (window._crWebKeyboardSubmit) window._crWebKeyboardSubmit(el.value);
+				el.blur();
+			}
+		});
+		el.addEventListener('blur', function () {
+			if (window._crWebKeyboardClose) window._crWebKeyboardClose();
+		});
+		document.body.appendChild(el);
+		window._crWebKeyboardEl = el;
+		return el;
+	}
+
 	window._crWebKeyboardOpen = function (text, mode, secret) {
-		input.type = secret ? 'password' : 'text';
-		input.inputMode = mode || 'text';
-		input.value = text || '';
-		input.style.pointerEvents = 'none';
-		try { input.focus({ preventScroll: true }); } catch (e) { input.focus(); }
+		var el = makeInput();
+		el.type = secret ? 'password' : 'text';
+		el.inputMode = mode || 'text';
+		el.value = text || '';
+		try { el.focus({ preventScroll: true }); } catch (e) { el.focus(); }
 		try {
-			var n = input.value.length;
-			input.setSelectionRange(n, n);
+			var n = el.value.length;
+			el.setSelectionRange(n, n);
 		} catch (e) {}
 	};
-	window._crWebKeyboardClose = function () {
-		input.value = '';
-		input.blur();
-	};
+
 })();
 """
 
@@ -156,5 +160,6 @@ func _on_js_submit(args: Array) -> void:
 
 
 func _on_js_close(_args: Array) -> void:
-	# HTML input 失焦时保留 LineEdit 中已同步的正文，只释放活动引用。
-	_active = null
+	# 不在这里清空 _active：新建输入框时旧输入框的 blur 可能晚于 _open 触发。
+	# _open 会覆盖 _active，失效节点由 is_instance_valid 判断。
+	pass
