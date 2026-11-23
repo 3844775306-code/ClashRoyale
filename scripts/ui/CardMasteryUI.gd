@@ -176,6 +176,12 @@ func _card_row(cfg) -> Panel:
 			if not wcs.is_empty():
 				var rar := String(wcs.keys()[0])
 				rew_ic.setup("wild", int(wcs[rar]))
+				rew_ic.accent = ThemeHelper.rarity_color(rar)
+				var wl := Label.new()
+				wl.text = "%s万能卡" % _rarity_cn(rar)
+				wl.add_theme_font_size_override("font_size", 11)
+				wl.add_theme_color_override("font_color", ThemeHelper.rarity_color(rar))
+				hb.add_child(wl)
 			else:
 				rew_ic.setup("gold", int(rew.get("gold", 0)))
 			hb.add_child(rew_ic)
@@ -193,14 +199,21 @@ func _claim_one(cid: int):
 	await get_tree().create_timer(1.1).timeout
 	get_tree().reload_current_scene()
 
+func _rarity_cn(r: String) -> String:
+	match r:
+		"rare": return "稀有"
+		"epic": return "史诗"
+		"legendary": return "传奇"
+	return "普通"
+
 func _claim_all():
 	var got: Array = PlayerData.claim_all_mastery()
 	if got.is_empty():
 		return
-	var spec := {"kind": "gold", "amount": 0}
-	if not got.is_empty():
-		spec = _mastery_spec(got[0].get("reward", {}))
-	CLAIM_ANIM.play(self, "领取成功", "卡牌大师奖励 ×%d" % got.size(), spec)
+	var specs: Array = []
+	for entry in got:
+		specs.append(_mastery_spec(entry.get("reward", {})))
+	CLAIM_ANIM.play_many(self, "领取成功", "卡牌大师奖励 ×%d" % got.size(), specs)
 	await get_tree().create_timer(1.1).timeout
 	get_tree().reload_current_scene()
 
@@ -208,7 +221,9 @@ func _mastery_spec(r: Dictionary) -> Dictionary:
 	if String(r.get("chest", "")) != "":
 		return {"kind": "chest", "chest_rarity": String(r.chest)}
 	if not (r.get("wildcards", {}) as Dictionary).is_empty():
-		return {"kind": "wild", "amount": int((r.wildcards as Dictionary).values()[0])}
+		var wd: Dictionary = r.wildcards
+		var wr := String(wd.keys()[0])
+		return {"kind": "wild", "amount": int(wd[wr]), "wild_rarity": wr}
 	if int(r.get("gold", 0)) > 0:
 		return {"kind": "gold", "amount": int(r.gold)}
 	return {"kind": "gold", "amount": 0}

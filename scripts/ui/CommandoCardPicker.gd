@@ -109,7 +109,8 @@ func _ready() -> void:
 	var scroll := ScrollContainer.new()
 	scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
-	scroll.scroll_deadzone = 10
+	scroll.scroll_deadzone = 20
+	scroll.follow_focus = true
 	v.add_child(scroll)
 	_grid = GridContainer.new()
 	_grid.columns = 4

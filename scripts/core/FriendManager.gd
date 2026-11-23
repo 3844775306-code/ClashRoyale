@@ -4,6 +4,8 @@ extends Node
 
 signal friends_changed
 signal invite_received(invite: Dictionary)
+signal messages_changed
+signal unread_changed(pid: String, count: int)
 signal presence_changed
 signal requests_changed
 signal friend_request_received(request: Dictionary)
@@ -35,7 +37,11 @@ var _friends_sync_acc := 0.0
 var _req_syncing := false
 const REQ_PREFIX := "friend_req:"
 const INVITE_PREFIX := "room_invite:"
+const NOTICE_PREFIX := "friend_notice:"
+const MSG_PREFIX := "friend_msg:"
 var _invite_seen: Dictionary = {}
+var messages: Dictionary = {}
+var unread: Dictionary = {}
 
 
 func _ready() -> void:
@@ -332,6 +338,7 @@ func accept_request(pid: String) -> bool:
 	})
 	var from_acc := String(Dictionary(req.get("profile", req)).get("account_id", ""))
 	_push_mutual_friend(from_acc, me)
+	_push_friend_notice(from_acc, me)
 	requests_changed.emit()
 	return true
 
@@ -372,6 +379,110 @@ func _push_mutual_friend(account_id: String, me: Dictionary) -> void:
 	if not found:
 		list.append(me)
 	await SupabaseAPI.upsert("friends:" + account_id, {"friends": list, "updated_at": int(Time.get_unix_time_from_system())})
+
+func _push_friend_notice(account_id: String, me: Dictionary) -> void:
+	if account_id == "" or account_id == String(AccountManager.account_id) or not AccountManager.is_supabase_authenticated():
+		return
+	var from_id := str(ClanManager.get_player_id())
+	await SupabaseAPI.upsert(NOTICE_PREFIX + account_id + ":" + from_id, {
+		"to_account": account_id, "from": from_id, "profile": me,
+		"ts": int(Time.get_unix_time_from_system()),
+	})
+
+func _sync_cloud_friend_notices() -> void:
+	if not AccountManager.is_supabase_authenticated():
+		return
+	var my_acc := String(AccountManager.account_id)
+	if my_acc == "":
+		return
+	var rows: Array = await SupabaseAPI.list_prefix(NOTICE_PREFIX + my_acc + ":", 50)
+	for row in rows:
+		if not (row is Dictionary):
+			continue
+		var key := String(row.get("key", ""))
+		var v = row.get("value", {})
+		if not (v is Dictionary):
+			continue
+		var p = v.get("profile", null)
+		if p is Dictionary:
+			_add_friend(p)
+		if key != "":
+			SupabaseAPI.delete_key(key)
+		if key != "":
+			_invite_seen.erase("notice:" + key)
+	friends_changed.emit()
+
+func send_friend_message(pid: String, text: String) -> bool:
+	text = text.strip_edges()
+	if pid == "" or text == "" or not AccountManager.is_supabase_authenticated():
+		return false
+	var me := str(ClanManager.get_player_id())
+	var ts := int(Time.get_unix_time_from_system())
+	var key := MSG_PREFIX + me + ":" + pid + ":" + str(Time.get_ticks_usec())
+	SupabaseAPI.upsert(key, {
+		"from": me, "to": pid, "from_name": PlayerData.player_name,
+		"text": text.substr(0, 200), "ts": ts,
+	})
+	_add_message(pid, {"from": me, "text": text.substr(0, 200), "ts": ts, "from_name": PlayerData.player_name})
+	return true
+
+func get_messages(pid: String) -> Array:
+	return Array(messages.get(pid, [])).duplicate(true)
+
+
+func get_unread(pid: String) -> int:
+	return int(unread.get(pid, 0))
+
+
+func mark_messages_read(pid: String) -> void:
+	if int(unread.get(pid, 0)) == 0:
+		return
+	unread[pid] = 0
+	unread_changed.emit(pid, 0)
+
+func _add_message(peer: String, msg: Dictionary) -> void:
+	var list: Array = messages.get(peer, []).duplicate(true)
+	var duplicate := false
+	for old in list:
+		if int(Dictionary(old).get("ts", 0)) == int(msg.get("ts", 0)) and String(Dictionary(old).get("text", "")) == String(msg.get("text", "")) and String(Dictionary(old).get("from", "")) == String(msg.get("from", "")):
+			duplicate = true
+			break
+	if duplicate:
+		return
+	list.append(msg.duplicate(true))
+	list.sort_custom(func(a, b): return int(Dictionary(a).get("ts", 0)) < int(Dictionary(b).get("ts", 0)))
+	while list.size() > 100:
+		list.pop_front()
+	messages[peer] = list
+	var from_id := String(msg.get("from", ""))
+	var me := str(ClanManager.get_player_id())
+	if from_id != "" and from_id != me:
+		unread[peer] = int(unread.get(peer, 0)) + 1
+		unread_changed.emit(peer, int(unread[peer]))
+	messages_changed.emit()
+
+func _sync_cloud_messages() -> void:
+	if not AccountManager.is_supabase_authenticated():
+		return
+	var my_id := str(ClanManager.get_player_id())
+	var rows: Array = await SupabaseAPI.list_prefix(MSG_PREFIX, 400)
+	for row in rows:
+		if not (row is Dictionary):
+			continue
+		var v = row.get("value", {})
+		if not (v is Dictionary):
+			continue
+		var from_id := String(v.get("from", ""))
+		var to_id := String(v.get("to", ""))
+		if from_id != my_id and to_id != my_id:
+			continue
+		var peer := to_id if from_id == my_id else from_id
+		if peer == "":
+			continue
+		_add_message(peer, {
+			"from": from_id, "text": String(v.get("text", "")),
+			"ts": int(v.get("ts", 0)), "from_name": String(v.get("from_name", "好友")),
+		})
 
 func _sync_cloud_requests() -> void:
 	if _req_syncing or not AccountManager.is_supabase_authenticated():
@@ -440,7 +551,7 @@ func send_cloud_room_invite(room_code: String, host_name: String, target_pid: St
 	if room_code == "" or target_pid == "" or not AccountManager.is_supabase_authenticated():
 		return false
 	var me := str(ClanManager.get_player_id())
-	SupabaseAPI.upsert(INVITE_PREFIX + target_pid + ":" + me, {
+	SupabaseAPI.upsert(INVITE_PREFIX + target_pid + ":" + me + ":" + str(Time.get_ticks_usec()), {
 		"from": me, "to": target_pid, "from_name": host_name,
 		"from_account_id": String(AccountManager.account_id),
 		"code": room_code, "kind": "webrtc", "ts": int(Time.get_unix_time_from_system()),
@@ -458,7 +569,8 @@ func _sync_cloud_invites() -> void:
 		if not (v is Dictionary): continue
 		if String(v.get("to", "")) != my_id: continue
 		var key := String(row.get("key", ""))
-		if key == "" or _invite_seen.has(key): continue
+		if key == "": continue
+		if _invite_seen.has(key): continue
 		_invite_seen[key] = true
 		var invite := {
 			"kind": String(v.get("kind", "webrtc")),
@@ -796,6 +908,8 @@ func _process(delta: float) -> void:
 		if AccountManager.is_supabase_authenticated():
 			_sync_cloud_requests()
 			_sync_cloud_invites()
+			_sync_cloud_friend_notices()
+			_sync_cloud_messages()
 	_drain_local_packets()
 	# 同局域网在线状态心跳
 	_presence_acc += delta

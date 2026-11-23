@@ -13,7 +13,9 @@ signal chat_unread_changed(count: int)
 var _chat_read: Dictionary = {}
 var _chat_read_loaded_path := ""
 var _clans_cache: Array = []
+var my_member_cache: Dictionary = {}
 var _cache_at: float = 0.0
+var _last_chat_unread := -1
 const CLAN_LEADERBOARD_KEY := "global_clan_list"
 
 static func clan_leaderboard_key() -> String:
@@ -271,6 +273,35 @@ func _claim_legacy_membership(clan: Dictionary, old_key: String, new_key: String
 	invalidate_cache()
 	_update_clan_on_leaderboard(clan)
 
+func _cache_my_member(clan: Dictionary) -> void:
+	var pid := str(get_player_id())
+	var members: Dictionary = clan.get("members", {}) if clan != null else {}
+	if members.has(pid):
+		my_member_cache = Dictionary(members[pid]).duplicate(true)
+		PlayerData.clan_role = String(my_member_cache.get("role", ""))
+		PlayerData.total_donations = int(my_member_cache.get("donations", 0))
+	else:
+		my_member_cache.clear()
+		PlayerData.clan_role = ""
+
+
+func get_my_member_role() -> String:
+	return String(my_member_cache.get("role", PlayerData.clan_role))
+
+
+func get_my_donations_total() -> int:
+	return int(my_member_cache.get("donations", PlayerData.total_donations))
+
+
+func _refresh_chat_unread(clan: Dictionary) -> void:
+	if clan == null or clan.is_empty():
+		return
+	var n := count_unread_chat(clan)
+	if _last_chat_unread >= 0 and n > _last_chat_unread:
+		chat_unread_changed.emit(n)
+	_last_chat_unread = n
+
+
 func get_my_clan(callback: Callable):
 	# 这个函数需要在服务器端维护一个映射表；简化处理：扫描整个部落列表寻找当前玩家
 	# 更高效的方式是使用另一个排行榜或 player storage 记录每个玩家的所属部落
@@ -282,6 +313,8 @@ func get_my_clan(callback: Callable):
 		var pid = str(get_player_id())
 		for clan in clans:
 			if clan.has("members") and clan.members.has(pid):
+				_cache_my_member(clan)
+				_refresh_chat_unread(clan)
 				if _cb_valid(callback): callback.call(true, clan)
 				return
 		# 迁移兼容：旧 LootLocker 部落成员 key 与新建 Supabase 账号 ID 不同，按玩家名认领
@@ -291,8 +324,12 @@ func get_my_clan(callback: Callable):
 				var m: Dictionary = Dictionary(members[old_key])
 				if String(m.get("player_name", "")) == get_player_name():
 					_claim_legacy_membership(clan, String(old_key), pid)
+					_refresh_chat_unread(clan)
 					if _cb_valid(callback): callback.call(true, clan)
 					return
+		my_member_cache.clear()
+		PlayerData.clan_role = ""
+		_last_chat_unread = -1
 		callback.call(true, null)  # 没有加入任何部落
 	)
 
@@ -372,7 +409,15 @@ func _update_clan_on_leaderboard(clan_data: Dictionary, callback: Callable = Cal
 			if _cb_valid(callback): callback.call(false, "clan_id 缺失")
 			return
 		_recalc_total(clan_data)
-		var ok_sb := await SupabaseAPI.upsert("clan:" + sb_id, clan_data)
+		var ok_sb := false
+		for attempt in 2:
+			ok_sb = await SupabaseAPI.upsert("clan:" + sb_id, clan_data)
+			if ok_sb:
+				break
+			await get_tree().create_timer(0.35).timeout
+		# 成功后立即丢掉旧缓存，下一次捐赠/聊天必须读到最新 donors
+		if ok_sb:
+			invalidate_cache()
 		if _cb_valid(callback): callback.call(ok_sb, null if ok_sb else "更新失败")
 		return
 	var member_id = clan_data.get("clan_id", "")
@@ -412,6 +457,9 @@ func sync_my_profile(callback: Callable = Callable()) -> void:
 				callback.call(false, "成员不存在")
 			return
 		var m: Dictionary = members[mid]
+		my_member_cache = m.duplicate(true)
+		PlayerData.clan_role = String(m.get("role", ""))
+		PlayerData.total_donations = int(m.get("donations", 0))
 		m["player_name"] = get_player_name()
 		m["trophies"] = PlayerData.trophies
 		m["avatar_seed"] = PlayerData.avatar_seed
@@ -773,6 +821,7 @@ func mark_chat_read(clan) -> void:
 		return
 	_chat_read[key] = latest
 	_save_chat_read()
+	_last_chat_unread = 0
 	chat_unread_changed.emit(0)
 
 
@@ -808,6 +857,17 @@ func _request_amount_for(card_id: int) -> int:
 func _donation_step_for(card_id: int) -> int:
 	var rar: String = CARD_RARITY.rarity_of_id(card_id)
 	return 10 if rar == "common" else 1
+
+func _donation_gold_per_card(card_id: int) -> int:
+	var rar: String = CARD_RARITY.rarity_of_id(card_id)
+	if rar == "common":
+		return 1
+	if rar == "rare":
+		return 10
+	if rar == "epic":
+		return 100
+	return 0
+
 
 func _is_sunday() -> bool:
 	return int(Time.get_date_dict_from_system().weekday) == 0
@@ -861,6 +921,8 @@ func request_card(card_id: int, amount: int, callback: Callable):
 	)
 
 func donate_card(to_player_id: int, card_id: int, amount: int, request_key: String, callback: Callable):
+	# 每次捐赠都重新读取最新请求，避免短缓存导致第二次捐赠看到旧 donors/donated
+	invalidate_cache()
 	if to_player_id == get_player_id():
 		if _cb_valid(callback): callback.call(false, "不能捐赠给自己")
 		return
@@ -907,7 +969,12 @@ func donate_card(to_player_id: int, card_id: int, amount: int, request_key: Stri
 			if _cb_valid(callback): callback.call(false, "你拥有的该卡牌数量不足")
 			return
 		PlayerData.remove_card(card_id, contribute)
+		var subsidy_per_card: int = _donation_gold_per_card(card_id)
+		var subsidy: int = subsidy_per_card * contribute
+		if subsidy > 0:
+			PlayerData.gold += subsidy
 		PlayerData.donations_used += 1
+		PlayerData.total_donations += contribute
 		PlayerData.save_data()
 		# 同步捐赠者云端库存，避免下次登录退回
 		save_player_inventory(get_player_id(), PlayerData.card_quantities)
@@ -938,6 +1005,6 @@ func donate_card(to_player_id: int, card_id: int, amount: int, request_key: Stri
 				return
 			# 赠卡已经写入部落 pending_card_gifts；接收方通过邮箱领取。
 			# 云端库存写入是尽力而为，失败也不影响捐赠/请求进度。
-			if _cb_valid(callback): callback.call(true, null)
+			if _cb_valid(callback): callback.call(true, {"gold": subsidy, "cards": contribute})
 		)
 	)

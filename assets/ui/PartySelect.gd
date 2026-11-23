@@ -24,6 +24,11 @@ func _ready() -> void:
 	UiComponents.add_background(self)
 	UiComponents.make_header(self, "派对模式", _on_back, true)
 	_build()
+	call_deferred("_check_party_deck")
+
+
+func _check_party_deck() -> void:
+	UiComponents.prompt_party_deck(self)
 
 
 func _build() -> void:
@@ -51,13 +56,14 @@ func _build() -> void:
 	deck_btn.focus_mode = Control.FOCUS_NONE
 	deck_btn.custom_minimum_size = Vector2(180, 46)
 	_style_secondary(deck_btn)
-	deck_btn.pressed.connect(func(): get_tree().change_scene_to_file("res://scenes/party_deck.tscn"))
+	deck_btn.pressed.connect(func(): LoadingScreen.change_scene("res://scenes/party_deck.tscn", "正在加载派对卡组…"))
 	head.add_child(deck_btn)
 
 	var scroll := ScrollContainer.new()
 	scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
-	scroll.scroll_deadzone = 12
+	scroll.scroll_deadzone = 20
+	scroll.follow_focus = true
 	vbox.add_child(scroll)
 	_list = VBoxContainer.new()
 	_list.size_flags_horizontal = Control.SIZE_EXPAND_FILL

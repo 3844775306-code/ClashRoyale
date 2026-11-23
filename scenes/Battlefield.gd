@@ -476,7 +476,19 @@ func generate_grass():
 	ground_body.position = Vector3(0, -0.05, 0)
 	add_child(ground_body)
 
-	# 草地（整块，不再镜像拼接）
+	# 草地（整块，不再镜像拼接）；工坊使用深色钢板底，不出现绿色
+	if is_workshop:
+		var under := MeshInstance3D.new()
+		var up := PlaneMesh.new()
+		up.size = Vector2(Config.ARENA_WIDTH, Config.ARENA_HEIGHT)
+		under.mesh = up
+		under.position = Vector3(0, -0.035, 0)
+		under.material_override = _metal_mat(Color(0.10, 0.10, 0.11))
+		add_child(under)
+		_generate_workshop_floor()
+		_add_half_tint(Config.ARENA_ORIGIN.z + Config.ARENA_HEIGHT * 0.75, COL_TEAM_ENEMY)
+		_add_half_tint(Config.ARENA_ORIGIN.z + Config.ARENA_HEIGHT * 0.25, COL_TEAM_PLAYER)
+		return
 	var grass := MeshInstance3D.new()
 	var plane := PlaneMesh.new()
 	plane.size = Vector2(Config.ARENA_WIDTH, Config.ARENA_HEIGHT)
@@ -499,10 +511,7 @@ func generate_grass():
 	gm.set_shader_parameter("path_color", th_path)
 	grass.material_override = gm
 	add_child(grass)
-	if is_workshop:
-		_generate_workshop_floor()
-	else:
-		_generate_ground_style()
+	_generate_ground_style()
 
 	# 阵营半场淡色提示
 	_add_half_tint(Config.ARENA_ORIGIN.z + Config.ARENA_HEIGHT * 0.75, COL_TEAM_ENEMY)
@@ -529,9 +538,14 @@ func _generate_outer_ground() -> void:
 	outer.mesh = pm
 	outer.position = Vector3(0, -0.05, 0)
 	var mat := StandardMaterial3D.new()
-	mat.albedo_texture = _grass_tex
-	mat.uv1_scale = Vector3(20, maxf(22.0, Config.ARENA_HEIGHT * 0.69), 1)
-	mat.albedo_color = th_grass2.lightened(0.20)
+	if is_workshop:
+		mat.albedo_color = Color(0.16, 0.16, 0.18)
+		mat.metallic = 0.45
+		mat.roughness = 0.55
+	else:
+		mat.albedo_texture = _grass_tex
+		mat.uv1_scale = Vector3(20, maxf(22.0, Config.ARENA_HEIGHT * 0.69), 1)
+		mat.albedo_color = th_grass2.lightened(0.20)
 	mat.roughness = 1.0
 	outer.material_override = mat
 	add_child(outer)
@@ -708,35 +722,82 @@ func generate_bridges():
 				root.add_child(lamp)
 
 func _generate_workshop_floor() -> void:
-	# 木板格子地面
-	var base := MeshInstance3D.new()
-	var bm := BoxMesh.new()
-	bm.size = Vector3(Config.ARENA_WIDTH, 0.06, Config.ARENA_HEIGHT)
-	base.mesh = bm
-	base.position = Vector3(0, 0.02, 0)
-	base.material_override = _wood_mat(th_wood_dark.darkened(0.25))
-	add_child(base)
-	var rows := 20
+	var w: float = Config.ARENA_WIDTH
+	var h: float = Config.ARENA_HEIGHT
+	var ch: float = 3.0  # 河道凹槽宽度
+	var cap_h: float = (h - ch) * 0.5
+	var floor_mat := _wood_mat(th_wood_dark.darkened(0.18))
+	# 南北两侧地板；中间只留河道凹槽
+	for z in [-(ch * 0.5 + cap_h * 0.5), ch * 0.5 + cap_h * 0.5]:
+		var mi := MeshInstance3D.new()
+		var bm := BoxMesh.new()
+		bm.size = Vector3(w, 0.06, cap_h)
+		mi.mesh = bm
+		mi.position = Vector3(0, 0.02, z)
+		mi.material_override = floor_mat
+		add_child(mi)
+	# 河道底部下沉面板
+	var center := MeshInstance3D.new()
+	var cbm := BoxMesh.new()
+	cbm.size = Vector3(w, 0.06, ch)
+	center.mesh = cbm
+	center.position = Vector3(0, -0.10, 0)
+	center.material_override = _metal_mat(Color(0.13, 0.14, 0.17))
+	add_child(center)
+	# 沟沿铁板
+	var lip_mat := _metal_mat(Color(0.34, 0.36, 0.40))
+	for side in [-1.0, 1.0]:
+		_mk_box(Vector3(0, -0.032, side * ch * 0.5), Vector3(w + 0.18, 0.15, 0.16), lip_mat)
+	# 1 米深浅交替格子（MultiMesh，避免数百个独立节点）
+	var cols := int(w)
+	var rows := int(h)
+	var tile_mesh := BoxMesh.new()
+	tile_mesh.size = Vector3(0.94, 0.03, 0.94)
+	var tile := MultiMesh.new()
+	tile.transform_format = MultiMesh.TRANSFORM_3D
+	tile.use_colors = true
+	tile.mesh = tile_mesh
+	tile.instance_count = cols * rows
+	var idx := 0
 	for r in range(rows):
-		var z := Config.ARENA_ORIGIN.z + 0.8 + r * (Config.ARENA_HEIGHT - 1.6) / float(rows - 1)
-		for c in range(9):
-			var plank := MeshInstance3D.new()
-			var pm := BoxMesh.new()
-			pm.size = Vector3(Config.ARENA_WIDTH / 9.0 - 0.10, 0.05, (Config.ARENA_HEIGHT - 1.6) / float(rows - 1) - 0.06)
-			plank.mesh = pm
-			plank.position = Vector3(-Config.ARENA_WIDTH * 0.5 + Config.ARENA_WIDTH / 18.0 + c * Config.ARENA_WIDTH / 9.0, 0.06, z)
-			var shade: float = 0.06 * float((r + c) % 3)
-			plank.material_override = _wood_mat((th_wood if (r + c) % 2 == 0 else th_wood.darkened(0.10)).darkened(shade))
-			add_child(plank)
+		var z := -h * 0.5 + 0.5 + float(r)
+		var in_river := absf(z) < ch * 0.5
+		var y := -0.085 if in_river else 0.065
+		for c in range(cols):
+			var x := -w * 0.5 + 0.5 + float(c)
+			tile.set_instance_transform(idx, Transform3D(Basis(), Vector3(x, y, z)))
+			var light := (r + c) % 2 == 0
+			var col := th_wood.lightened(0.10) if light else th_wood.darkened(0.18)
+			if in_river:
+				col = Color(0.21, 0.22, 0.25) if light else Color(0.15, 0.16, 0.18)
+			tile.set_instance_color(idx, col)
+			idx += 1
+	var mmi := MultiMeshInstance3D.new()
+	mmi.multimesh = tile
+	var tmat := StandardMaterial3D.new()
+	tmat.vertex_color_use_as_albedo = true
+	tmat.roughness = 0.86
+	mmi.material_override = tmat
+	add_child(mmi)
+	# 1 米网格线：外围与河道各自贴合高度
+	var line_mat := _flat_mat(Color(0.12, 0.13, 0.15))
+	var line_y := 0.086
+	var inner_y := -0.064
+	for i in range(cols + 1):
+		var x := -w * 0.5 + float(i)
+		_mk_box(Vector3(x, line_y, -(ch * 0.5 + cap_h * 0.5)), Vector3(0.035, 0.008, cap_h), line_mat)
+		_mk_box(Vector3(x, line_y, ch * 0.5 + cap_h * 0.5), Vector3(0.035, 0.008, cap_h), line_mat)
+		_mk_box(Vector3(x, inner_y, 0), Vector3(0.035, 0.008, ch), line_mat)
+	for i in range(rows + 1):
+		var z := -h * 0.5 + float(i)
+		var y := inner_y if absf(z) < ch * 0.5 else line_y
+		_mk_box(Vector3(0, y, z), Vector3(w, 0.008, 0.035), line_mat)
 	# 铁质路径与塔基
-	var iron := StandardMaterial3D.new()
-	iron.albedo_color = Color(0.30, 0.32, 0.36)
-	iron.metallic = 0.65
-	iron.roughness = 0.42
+	var iron := _metal_mat(Color(0.30, 0.32, 0.36))
 	for x in [-5.5, 5.5]:
 		var lane := MeshInstance3D.new()
 		var lm := BoxMesh.new()
-		lm.size = Vector3(1.5, 0.06, Config.ARENA_HEIGHT - 2.0)
+		lm.size = Vector3(1.5, 0.06, h - 2.0)
 		lane.mesh = lm
 		lane.position = Vector3(x, 0.075, 0)
 		lane.material_override = iron
@@ -750,6 +811,15 @@ func _generate_workshop_floor() -> void:
 		pad.material_override = iron
 		add_child(pad)
 
+
+func _metal_mat(col: Color) -> StandardMaterial3D:
+	var m := StandardMaterial3D.new()
+	m.albedo_color = col
+	m.metallic = 0.55
+	m.roughness = 0.38
+	return m
+
+
 func _generate_gear_pit() -> void:
 	var z := Config.ARENA_ORIGIN.z + Config.ARENA_HEIGHT * 0.5
 	var depth := 2.6
@@ -757,7 +827,7 @@ func _generate_gear_pit() -> void:
 	var tm := BoxMesh.new()
 	tm.size = Vector3(Config.ARENA_WIDTH, 0.10, depth)
 	trench.mesh = tm
-	trench.position = Vector3(0, 0.02, z)
+	trench.position = Vector3(0, -0.095, z)
 	trench.material_override = _flat_mat(Color(0.035, 0.035, 0.045))
 	add_child(trench)
 	# 沟沿铁板
@@ -766,13 +836,13 @@ func _generate_gear_pit() -> void:
 		var lm := BoxMesh.new()
 		lm.size = Vector3(Config.ARENA_WIDTH, 0.18, 0.22)
 		lip.mesh = lm
-		lip.position = Vector3(0, 0.11, z + side * (depth * 0.5 + 0.12))
+		lip.position = Vector3(0, -0.020, z + side * (depth * 0.5 + 0.12))
 		lip.material_override = _stone_mat(Color(0.30, 0.32, 0.36))
 		add_child(lip)
 	# 齿轮
 	for gx in [-6.4, -3.2, 0.0, 3.2, 6.4]:
 		var root := Node3D.new()
-		root.position = Vector3(gx, 0.12, z)
+		root.position = Vector3(gx, 0.025, z)
 		add_child(root)
 		var gear := MeshInstance3D.new()
 		var gm := CylinderMesh.new()
@@ -973,8 +1043,46 @@ func _generate_style_river() -> void:
 			col = Color(0.015, 0.015, 0.02)
 		"water":
 			col = th_water
-	var mat: Material = _glow_mat(col) if glow else _stone_mat(col)
+	# 河水不用纯色：程序化噪声 + 流动深浅带 + 岸边泡沫
+	var noise := FastNoiseLite.new()
+	noise.seed = 7011 + arena_idx * 37
+	noise.frequency = 0.09
+	noise.fractal_octaves = 3
+	var ntex := NoiseTexture2D.new()
+	ntex.width = 128
+	ntex.height = 32
+	ntex.noise = noise
+	var base := StandardMaterial3D.new()
+	base.albedo_color = col
+	base.albedo_texture = ntex
+	base.uv1_scale = Vector3(5.0, 0.55, 2.0)
+	base.roughness = 0.28 if not glow else 0.5
+	base.metallic = 0.05
+	if glow:
+		base.emission_enabled = true
+		base.emission = col
+		base.emission_energy_multiplier = 1.2
+	var mat: Material = base
 	_mk_box(Vector3(0, 0.04, z), Vector3(Config.ARENA_WIDTH, 0.08, width), mat)
+	# 深浅水纹交替，避免整条河是一块纯色
+	for i in range(12):
+		var bx := -8.4 + float(i) * 1.53
+		var band_col: Color = col.lightened(0.16 if i % 2 == 0 else 0.05)
+		band_col.a = 0.55
+		var bm := StandardMaterial3D.new()
+		bm.albedo_color = band_col
+		bm.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+		bm.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+		_mk_box(Vector3(bx, 0.088, z + sin(float(i) * 1.7) * width * 0.16),
+			Vector3(0.92, 0.006, width * (0.42 + 0.12 * float(i % 3))), bm)
+	# 岸边泡沫
+	for side in [-1.0, 1.0]:
+		var foam := StandardMaterial3D.new()
+		foam.albedo_color = Color(0.90, 0.97, 1.0, 0.55) if river_kind != "lava" else Color(1.0, 0.72, 0.30, 0.7)
+		foam.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+		foam.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+		_mk_box(Vector3(0, 0.092, z + side * (width * 0.5 - 0.08)),
+			Vector3(Config.ARENA_WIDTH, 0.006, 0.09), foam)
 	if river_kind in ["lava", "magic", "spirit", "electric"]:
 		var l := OmniLight3D.new()
 		l.light_color = col
@@ -1197,6 +1305,9 @@ func _generate_border():
 # 场外装饰（树 / 石头）
 # ============================================================
 func _generate_decor() -> void:
+	if is_workshop:
+		_generate_workshop_decor()
+		return
 	var rng := RandomNumberGenerator.new()
 	rng.seed = 21
 	for i in 42:
@@ -1287,6 +1398,35 @@ func _add_rock(pos: Vector3, rng: RandomNumberGenerator) -> void:
 	r.rotation.y = rng.randf_range(0.0, TAU)
 	r.material_override = _stone_mat(COL_STONE_DARK)
 	add_child(r)
+
+func _generate_workshop_decor() -> void:
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 91
+	for i in 16:
+		var x := rng.randf_range(-10.5, 10.5)
+		var z := rng.randf_range(-15.8, 15.8)
+		if absf(x) < 8.6 and absf(z) < 15.0:
+			continue
+		var crate := MeshInstance3D.new()
+		var cm := BoxMesh.new()
+		cm.size = Vector3(0.65, 0.55, 0.65)
+		crate.mesh = cm
+		crate.position = Vector3(x, 0.28, z)
+		crate.rotation.y = rng.randf_range(0.0, TAU)
+		crate.material_override = _wood_mat(th_wood)
+		add_child(crate)
+	for i in 8:
+		var x := -8.5 + float(i) * 2.4
+		var pipe := MeshInstance3D.new()
+		var cm2 := CylinderMesh.new()
+		cm2.top_radius = 0.11
+		cm2.bottom_radius = 0.11
+		cm2.height = 1.1
+		pipe.mesh = cm2
+		pipe.position = Vector3(x, 0.55, -16.6 if i % 2 == 0 else 16.6)
+		pipe.material_override = _metal_mat(Color(0.40, 0.42, 0.46))
+		add_child(pipe)
+
 
 func _add_bush(pos: Vector3, rng: RandomNumberGenerator) -> void:
 	var root := Node3D.new()

@@ -100,6 +100,21 @@ func _build_ui():
 	rec_check.toggled.connect(_on_record_toggled)
 	vbox.add_child(rec_check)
 
+	# ---- 观战权限 ----
+	var spec_check := CheckBox.new()
+	spec_check.text = "👀 观战需要房主同意（默认关闭）"
+	spec_check.custom_minimum_size = Vector2(0, 44)
+	spec_check.toggled.connect(_on_spectator_toggled)
+	vbox.add_child(spec_check)
+
+	vbox.add_child(UiComponents.make_secondary_button("🧪 AI 案例检验", _open_ai_demo_check, Vector2(0, 44)))
+	var notif_status := Label.new()
+	notif_status.add_theme_font_size_override("font_size", 13)
+	notif_status.add_theme_color_override("font_color", Color(0.72, 0.82, 0.96))
+	notif_status.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	vbox.add_child(notif_status)
+	vbox.add_child(UiComponents.make_secondary_button("🔔 测试通知", func(): _test_notification(notif_status), Vector2(0, 44)))
+
 	# ---- 账号 / 云端 ----
 	vbox.add_child(_row_label("👤 账号"))
 	var acct_lbl := Label.new()
@@ -107,7 +122,7 @@ func _build_ui():
 	acct_lbl.text = "%s\n云端存档：%s\n构建：%s\n调试日志：%s" % [
 		email_txt,
 		AccountManager.cloud_status,
-		Config.BUILD_TAG,
+		"%s · v%s" % [Config.BUILD_TAG, Config.VERSION],
 		AccountManager.debug_log_path(),
 	]
 	acct_lbl.add_theme_font_size_override("font_size", 13)
@@ -127,6 +142,18 @@ func _build_ui():
 	set_meta("sfx_slider", sfx_slider)
 	set_meta("difficulty", difficulty)
 	set_meta("record_check", rec_check)
+	set_meta("spectator_check", spec_check)
+
+
+func _test_notification(status_label: Label) -> void:
+	status_label.text = "正在检查通知权限…"
+	var result: String = await PhoneNotification.test_notification()
+	status_label.text = result
+
+
+func _open_ai_demo_check() -> void:
+	var dlg = preload("res://scripts/ui/AIDemoCheckDialog.gd").new()
+	add_child(dlg)
 
 
 func _choose_avatar():
@@ -178,20 +205,20 @@ func _on_web_avatar(args):
 	var img := Image.new()
 	if img.load_png_from_buffer(raw) != OK and img.load_jpg_from_buffer(raw) != OK:
 		return
-	img.resize(128, 128, Image.INTERPOLATE_LANCZOS)
-	img.save_png(ProjectSettings.globalize_path("user://avatar_custom.png"))
-	PlayerData.avatar_custom_path = "user://avatar_custom.png"
-	PlayerData.save_data()
-	_refresh_avatar()
-	UiComponents.refresh_topbar()
+	if PlayerData.set_custom_avatar_image(img):
+		CloudAvatar.upload_self()
+		_refresh_avatar()
+		UiComponents.refresh_topbar()
 
 func _on_avatar_file(path: String):
 	if PlayerData.set_custom_avatar(path):
+		CloudAvatar.upload_self()
 		_refresh_avatar()
 		UiComponents.refresh_topbar()
 
 func _random_avatar():
 	PlayerData.randomize_avatar()
+	CloudAvatar.remove_self()
 	_refresh_avatar()
 	UiComponents.refresh_topbar()
 
@@ -248,6 +275,8 @@ func _load_current_settings():
 		AISystem.Difficulty.HARD: difficulty.selected = 2
 	var rec_check: CheckBox = get_meta("record_check")
 	rec_check.button_pressed = PlayerData.record_replays
+	var spec_check: CheckBox = get_meta("spectator_check")
+	spec_check.button_pressed = PlayerData.spectator_approval_required
 
 
 func _update_pct_labels():
@@ -273,6 +302,10 @@ func _on_difficulty_changed(index: int):
 
 func _on_record_toggled(on: bool):
 	PlayerData.record_replays = on
+	PlayerData.save_data()
+
+func _on_spectator_toggled(on: bool):
+	PlayerData.spectator_approval_required = on
 	PlayerData.save_data()
 
 func _on_logout_pressed():

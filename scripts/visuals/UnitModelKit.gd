@@ -707,6 +707,24 @@ static func build_building(g: Geo, p: Dictionary) -> void:
 		"tower_king":
 			_tower_with_platform(g, p, 1.35)
 			_seated_figure(g, 1.59, "king", p)
+		"tower_chef":
+			_tower_with_platform(g, p)
+			_seated_figure(g, 1.19, "king", p)
+			# 煎饼堆、厨师帽和专属平底锅
+			for i in range(3):
+				g.cyl(Vector3(0, 1.02 + i * 0.08, 0), 0.30 - i * 0.03, 0.30 - i * 0.03, 0.07, Color(0.98, 0.76, 0.32), Vector3.ZERO)
+			g.cyl(Vector3(0, 1.48, 0), 0.20, 0.24, 0.10, Color(0.96, 0.94, 0.88), Vector3.ZERO)
+			g.cyl(Vector3(-0.55, 1.18, 0.10), 0.23, 0.23, 0.05, Color(0.28, 0.30, 0.34), Vector3(0.25, 0, 0.15))
+			g.box(Vector3(-0.55, 1.18, 0.42), Vector3(0.05, 0.05, 0.42), Color(0.44, 0.28, 0.16), Vector3(0.25, 0, 0.15))
+		"tower_knife":
+			_tower_with_platform(g, p)
+			_seated_figure(g, 1.19, "prince", p)
+			# 专属飞刀架与环形刀盘
+			for i in range(4):
+				var a: float = TAU * float(i) / 4.0
+				g.box(Vector3(cos(a) * 0.42, 1.12 + i * 0.09, sin(a) * 0.42), Vector3(0.035, 0.28, 0.035), Color(0.78, 0.82, 0.88))
+				g.cyl(Vector3(cos(a) * 0.42, 1.28 + i * 0.09, sin(a) * 0.42), 0.018, 0.018, 0.36, Color(0.86, 0.90, 0.96), Vector3(PI * 0.5, a, 0))
+			g.torus(Vector3(0, 1.16, 0), 0.38, 0.44, Color(0.84, 0.88, 0.94), Vector3(PI * 0.5, 0, 0))
 		"bomb_tower":
 			_build_special_tower(g, p, "bomb")
 		"inferno_tower":

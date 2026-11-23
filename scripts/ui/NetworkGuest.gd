@@ -15,6 +15,7 @@ var _status: Label
 var _wait_t := 0.0
 var _shot_taken := false
 var _last_t := -1.0
+var _spec_request_t := 0.0
 var _result_layer: Control
 var _emote_connected := false
 var _result_active := false
@@ -23,8 +24,20 @@ var _live_snaps: Array = []
 var _pending_result: Dictionary = {}
 var _last_tower_hp: Array = []
 var _entry_pending := false
+var _stats_recorded := false
+var _spectator := false
+var _chat_log: RichTextLabel
+var _chat_edit: LineEdit
+var _spec_count_lbl: Label
+var _chat_panel: Panel
+var _chat_log_row: HBoxContainer
+var _chat_emotes: HBoxContainer
+var _chat_toggle: Button
+var _chat_collapsed := false
+var _chat_exit_btn: Button
 
 func _ready():
+	_spectator = NetworkManager.spectator_mode
 	_status = Label.new()
 	_status.position = Vector2(40, 40)
 	_status.size = Vector2(720, 40)
@@ -32,13 +45,27 @@ func _ready():
 	_status.add_theme_color_override("font_color", Color(0.75, 0.9, 1.0))
 	_status.z_index = 50
 	add_child(_status)
+	if _spectator:
+		LoadingScreen.show_loading("正在进入观战…")
+		_chat_exit_btn = UiComponents.make_secondary_button("退出观战", func():
+			NetworkManager.leave_spectate()
+			NetworkManager.reset_net()
+			get_tree().change_scene_to_file("res://scenes/network_lobby.tscn"), Vector2(150, 40))
+		_chat_exit_btn.position = Vector2(610, 34)
+		_chat_exit_btn.z_index = 60
+		add_child(_chat_exit_btn)
+		_build_spectator_chat()
 	_ru = load("res://scenes/replay_ui.tscn").instantiate()
+	_ru.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	add_child(_ru)
+	# 观战聊天必须压在回放 UI 之上，否则 ReplayUI 的全屏根节点会吞掉触摸
+	if _chat_panel: _chat_panel.move_to_front()
+	if _chat_exit_btn: _chat_exit_btn.move_to_front()
 	await get_tree().process_frame
 	_ru.live_mode = true
 	_ru.live_card_selected.connect(_on_card_selected)
 	NetworkManager.snapshot_received.connect(_on_snapshot)
-	if PlayerData.record_replays:
+	if PlayerData.record_replays and not _spectator:
 		_guest_rec = preload("res://scripts/core/GuestReplayWriter.gd").new()
 		add_child(_guest_rec)
 		_guest_rec.start(NetworkManager.match_info)
@@ -56,14 +83,143 @@ func _ready():
 	_ru.king_sequence_finished.connect(_on_king_sequence_finished)
 	set_process(true)
 
+func _build_spectator_chat() -> void:
+	_chat_panel = Panel.new()
+	_chat_panel.position = Vector2(558, 92)
+	_chat_panel.size = Vector2(232, 430)
+	_chat_panel.z_index = 70
+	var sb := StyleBoxFlat.new()
+	sb.bg_color = Color(0.025, 0.04, 0.08, 0.88)
+	sb.border_color = Color(0.45, 0.65, 0.95, 0.45)
+	sb.set_border_width_all(1)
+	sb.set_corner_radius_all(12)
+	_chat_panel.add_theme_stylebox_override("panel", sb)
+	add_child(_chat_panel)
+	var v := VBoxContainer.new()
+	v.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	v.offset_left = 8
+	v.offset_right = -8
+	v.offset_top = 6
+	v.offset_bottom = -6
+	v.add_theme_constant_override("separation", 4)
+	_chat_panel.add_child(v)
+	var head := HBoxContainer.new()
+	head.add_theme_constant_override("separation", 4)
+	v.add_child(head)
+	var title := UiComponents.make_section_title("观战聊天")
+	title.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	head.add_child(title)
+	_spec_count_lbl = Label.new()
+	_spec_count_lbl.text = "0人"
+	_spec_count_lbl.add_theme_font_size_override("font_size", 11)
+	_spec_count_lbl.add_theme_color_override("font_color", Color(0.55, 0.85, 1.0))
+	head.add_child(_spec_count_lbl)
+	_chat_toggle = UiComponents.make_secondary_button("收起", _toggle_spec_chat, Vector2(56, 28))
+	head.add_child(_chat_toggle)
+	_chat_log = RichTextLabel.new()
+	_chat_log.bbcode_enabled = true
+	_chat_log.scroll_following = true
+	_chat_log.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	_chat_log.custom_minimum_size = Vector2(0, 260)
+	_chat_log.add_theme_font_size_override("normal_font_size", 11)
+	v.add_child(_chat_log)
+	var row := HBoxContainer.new()
+	row.add_theme_constant_override("separation", 4)
+	_chat_log_row = row
+	v.add_child(row)
+	_chat_edit = LineEdit.new()
+	_chat_edit.placeholder_text = "说点什么…"
+	_chat_edit.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_chat_edit.custom_minimum_size = Vector2(0, 30)
+	_chat_edit.add_theme_font_size_override("font_size", 11)
+	_chat_edit.text_submitted.connect(func(_t): _send_spec_chat())
+	row.add_child(_chat_edit)
+	row.add_child(UiComponents.make_secondary_button("发送", _send_spec_chat, Vector2(52, 30)))
+	var emotes := HBoxContainer.new()
+	emotes.add_theme_constant_override("separation", 3)
+	_chat_emotes = emotes
+	v.add_child(emotes)
+	var catalog = preload("res://scripts/data/EmoteCatalog.gd")
+	for i in range(mini(4, catalog.all().size())):
+		var e: Dictionary = catalog.all()[i]
+		var eid := String(e.id)
+		var b := UiComponents.make_secondary_button(String(e.glyph), func(): NetworkManager.send_spectator_emote(eid), Vector2(46, 28))
+		emotes.add_child(b)
+	NetworkManager.spectator_chat.connect(_on_spec_chat)
+	NetworkManager.spectator_emote.connect(_on_spec_emote)
+	NetworkManager.spectator_count_changed.connect(_refresh_spec_count)
+	_refresh_spec_count()
+
+
+func _toggle_spec_chat() -> void:
+	_chat_collapsed = not _chat_collapsed
+	if _chat_log:
+		_chat_log.visible = not _chat_collapsed
+	if _chat_log_row:
+		_chat_log_row.visible = not _chat_collapsed
+	if _chat_emotes:
+		_chat_emotes.visible = not _chat_collapsed
+	if _chat_panel:
+		_chat_panel.size.y = 48.0 if _chat_collapsed else 430.0
+	if _chat_toggle:
+		_chat_toggle.text = "展开" if _chat_collapsed else "收起"
+
+
+func _send_spec_chat() -> void:
+	if _chat_edit == null:
+		return
+	var text := _chat_edit.text.strip_edges()
+	if text == "":
+		return
+	NetworkManager.send_spectator_chat(text)
+	_chat_edit.text = ""
+
+
+func _on_spec_chat(from_name: String, text: String) -> void:
+	if _chat_log == null:
+		return
+	_chat_log.append_text("[color=#8fd6ff]%s[/color]：%s\n" % [from_name, text])
+
+
+func _on_spec_emote(from_name: String, id: String) -> void:
+	if _chat_log == null:
+		return
+	var glyph := String(preload("res://scripts/data/EmoteCatalog.gd").glyph(id))
+	_chat_log.append_text("[color=#ffd45a]%s %s[/color]\n" % [from_name, glyph])
+	var lbl := Label.new()
+	lbl.text = glyph
+	lbl.position = Vector2(420, 700)
+	lbl.add_theme_font_size_override("font_size", 72)
+	lbl.z_index = 80
+	add_child(lbl)
+	var tw := create_tween()
+	tw.tween_property(lbl, "position:y", 560, 0.8)
+	tw.parallel().tween_property(lbl, "modulate:a", 0.0, 0.8)
+	tw.tween_callback(lbl.queue_free)
+
+
+func _refresh_spec_count() -> void:
+	if _spec_count_lbl:
+		_spec_count_lbl.text = "%d人" % NetworkManager.spectator_count
+
+
 func _process(delta):
 	if not _opened:
 		_wait_t += delta
+		if _spectator:
+			_spec_request_t += delta
+			if _spec_request_t >= 2.5:
+				_spec_request_t = 0.0
+				NetworkManager.resend_spectate_request()
 		if _wait_t > 5.0:
 			_status.text = "等待房主发送对局…"
+			if _wait_t > 8.0:
+				LoadingScreen.hide_loading()
 	else:
 		if _last_t < 3.0:
 			_status.text = "准备中… %d" % int(ceil(3.0 - _last_t))
+		elif _spectator:
+			_status.text = "观战中 · 仅观看，无法操作"
 		else:
 			_status.text = "拖动底部卡牌到战场部署"
 		if OS.get_environment("CR_NET_GUEST_SHOT") != "" and not _shot_taken:
@@ -89,6 +245,7 @@ func _on_snapshot(snap: Dictionary):
 		print("NET guest snapshot t=", snap.get("t",0), " opened=", _opened)
 	if not _opened:
 		_opened = true
+		LoadingScreen.hide_loading()
 		var m0 := _mirror(snap)
 		var data := _make_data(m0)
 		_ru.live_mode = true
@@ -322,6 +479,20 @@ func _on_king_sequence_finished() -> void:
 func _show_match_result(info: Dictionary) -> void:
 	if _guest_rec:
 		_guest_rec.finish()
+	if not _spectator and not _stats_recorded and not PlayerData.test_mode:
+		_stats_recorded = true
+		var w := int(info.get("winner", -1))
+		var win: bool = w == NetworkManager.local_team
+		var draw: bool = w < 0
+		var cs: Array = info.get("crowns", [0, 0])
+		var my_c := int(cs[NetworkManager.local_team]) if cs.size() > NetworkManager.local_team else 0
+		var en_c := int(cs[1 - NetworkManager.local_team]) if cs.size() > 1 - NetworkManager.local_team else 0
+		var extra: Dictionary = {}
+		if _ru and _ru._battle and _ru._battle.has_method("_history_extra"):
+			extra = _ru._battle._history_extra()
+		PlayerData.record_battle_result(win and not draw, draw, my_c, en_c, String(_ru._battle.mode_name) if _ru and _ru._battle else "联机对战", float(info.get("duration", 0.0)), "对手", extra)
+		if ProfileAPI:
+			ProfileAPI.publish_self()
 	_result_active = true
 	if _ru and _ru._battle:
 		var cam = _ru._battle.get_node_or_null("Camera3D")
@@ -334,8 +505,8 @@ func _show_match_result(info: Dictionary) -> void:
 		_ru._battle.show_network_result(w, cs, NetworkManager.local_team, float(info.get("duration", -1.0)), info)
 
 func _show_result(title: String, sub: String, win: bool) -> void:
-	if _result_layer != null:
-		return
+	if _result_layer != null and is_instance_valid(_result_layer):
+		_result_layer.queue_free()
 	_result_layer = Control.new()
 	_result_layer.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	_result_layer.z_index = 100
@@ -372,16 +543,18 @@ func _show_result(title: String, sub: String, win: bool) -> void:
 	sl.add_theme_color_override("font_color", Color(0.85, 0.9, 1.0))
 	vb.add_child(sl)
 	var btn := Button.new()
-	btn.text = "返回联机"
+	btn.text = "返回主菜单"
 	btn.custom_minimum_size = Vector2(0, 64)
 	btn.add_theme_font_size_override("font_size", 24)
 	ThemeHelper.apply_primary_button(btn)
 	btn.pressed.connect(func():
 		NetworkManager.reset_net()
-		get_tree().change_scene_to_file("res://scenes/network_lobby.tscn"))
+		get_tree().change_scene_to_file("res://scenes/menu.tscn"))
 	vb.add_child(btn)
 
 func _on_card_selected(cid: int):
+	if _spectator:
+		return
 	_selected_card = cid
 	_status.text = "已选卡 %d，点击战场部署" % cid
 	_show_guest_ghost(cid)
@@ -549,11 +722,11 @@ func _make_data(first: Dictionary) -> Dictionary:
 	var rule := String(info.get("party_rule", "standard"))
 	var rule_mode := BATTLE_MODES.current() if rule == "custom" else BATTLE_MODES.get_by_id(rule)
 	var party_fixed := bool(rule_mode.get("party", false)) or String(rule_mode.get("level", "own")) == "fixed"
-	if party_fixed:
-		for k in own_levels.keys():
-			own_levels[k] = 11
-		for k in opp_levels.keys():
-			opp_levels[k] = 11
+	# 联机模式统一 11 级：无论派对规则，观战/对战镜像都用 11 级
+	for k in own_levels.keys():
+		own_levels[k] = 11
+	for k in opp_levels.keys():
+		opp_levels[k] = 11
 	var is_td := String(rule_mode.get("win_condition", "")) == "touchdown" or rule == "touchdown"
 	var meta := {
 		"version": 4,
@@ -564,13 +737,25 @@ func _make_data(first: Dictionary) -> Dictionary:
 		"enemy_deck": opp_deck,
 		"player_levels": own_levels,
 		"enemy_levels": opp_levels,
-		"towers": [] if is_td else _guest_towers(),
+		"towers": [] if is_td else _guest_towers(first),
 		"winner": -1,
 		"crowns": [0, 0]
 	}
 	return {"meta": meta, "actions": [], "snapshots": [first], "emotes": []}
 
-func _guest_towers() -> Array:
+func _guest_towers(snap: Dictionary = {}) -> Array:
+	# 优先使用首帧里的真实塔类型（厨师塔/飞刀塔），不能再硬编码公主塔
+	var exact: Array = []
+	for u in snap.get("units", []):
+		if int(u.get("card_id", 99)) <= 3:
+			exact.append({
+				"team": int(u.get("team", 0)), "card_id": int(u.get("card_id", 1)),
+				"name": String(u.get("name", "")),
+				"x": float(u.get("x", 0.0)), "z": float(u.get("z", 0.0)),
+				"max_health": float(u.get("max_hp", 1.0)), "level": int(u.get("level", 1)),
+			})
+	if exact.size() >= 6:
+		return exact
 	var o: Vector3 = Config.ARENA_ORIGIN
 	var rule_id := String(NetworkManager.match_info.get("party_rule", "standard"))
 	var gm := BATTLE_MODES.current() if rule_id == "custom" else BATTLE_MODES.get_by_id(rule_id)

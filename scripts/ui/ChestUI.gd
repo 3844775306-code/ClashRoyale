@@ -173,14 +173,16 @@ func _queue_row(idx: int) -> Panel:
 	isb.set_corner_radius_all(12)
 	icon_box.add_theme_stylebox_override("panel", isb)
 	hb.add_child(icon_box)
-	var icon = REWARD_ICON.new()
+	var icon = CHEST3D.new()
+	icon.custom_minimum_size = Vector2(78, 100)
+	icon.size = Vector2(78, 100)
 	icon.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	icon.offset_left = 10
-	icon.offset_right = -10
-	icon.offset_top = 8
-	icon.offset_bottom = -8
+	icon.offset_left = 6
+	icon.offset_right = -6
+	icon.offset_top = 4
+	icon.offset_bottom = -4
 	icon.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	icon.setup("chest", 1)
+	icon.rarity = String(chest.get("rarity", "silver"))
 	icon_box.add_child(icon)
 	var vb := VBoxContainer.new()
 	vb.size_flags_horizontal = Control.SIZE_EXPAND_FILL
@@ -280,6 +282,9 @@ func _show_reward_popup(rewards: Dictionary):
 	var rscroll := ScrollContainer.new()
 	rscroll.custom_minimum_size = Vector2(0, 360)
 	rscroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	rscroll.vertical_scroll_mode = ScrollContainer.SCROLL_MODE_AUTO
+	rscroll.scroll_deadzone = 24
+	rscroll.follow_focus = true
 	vbox.add_child(rscroll)
 	var reward_rows := VBoxContainer.new()
 	reward_rows.size_flags_horizontal = Control.SIZE_EXPAND_FILL

@@ -22,6 +22,9 @@ var _rule_buttons: Array = []
 var _custom_box: VBoxContainer
 var _in_room := false
 var _invite_autoclaim := false
+var _webrtc_busy := false
+var _wh_btn: Button
+var _wj_btn: Button
 
 func _ready():
 	UiComponents.add_background(self)
@@ -29,7 +32,10 @@ func _ready():
 	_build_initial()
 	_build_room()
 	_update_turn_status()
+	call_deferred("_check_party_deck")
 	NetworkManager.lobby_status.connect(_on_status)
+	if WebRTCNet.has_signal("status"):
+		WebRTCNet.status.connect(_on_status)
 	NetworkManager.guest_joined.connect(_on_guest_joined)
 	NetworkManager.seats_changed.connect(_refresh_seats)
 	NetworkManager.joined_room.connect(func():
@@ -62,6 +68,10 @@ func _ready():
 			_ip_edit.text = parts[0]
 			_code_edit.text = parts[1]
 			call_deferred("_join_pressed")
+
+func _check_party_deck() -> void:
+	UiComponents.prompt_party_deck(self)
+
 
 func _make_header() -> Control:
 	var top := HBoxContainer.new()
@@ -150,12 +160,12 @@ func _build_initial() -> void:
 	var wrow := HBoxContainer.new()
 	wrow.add_theme_constant_override("separation", 10)
 	wv.add_child(wrow)
-	var wh := UiComponents.make_primary_button("跨网创建", _webrtc_host_pressed, Vector2(0, 52))
-	wh.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	wrow.add_child(wh)
-	var wj := UiComponents.make_primary_button("跨网加入", _webrtc_join_pressed, Vector2(0, 52))
-	wj.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	wrow.add_child(wj)
+	_wh_btn = UiComponents.make_primary_button("跨网创建", _webrtc_host_pressed, Vector2(0, 52))
+	_wh_btn.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	wrow.add_child(_wh_btn)
+	_wj_btn = UiComponents.make_primary_button("跨网加入", _webrtc_join_pressed, Vector2(0, 52))
+	_wj_btn.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	wrow.add_child(_wj_btn)
 	var trow := HBoxContainer.new()
 	trow.add_theme_constant_override("separation", 10)
 	wv.add_child(trow)
@@ -202,7 +212,8 @@ func _build_room() -> void:
 	_room_box.add_child(rule_lbl)
 	var rule_scroll := ScrollContainer.new()
 	rule_scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
-	rule_scroll.scroll_deadzone = 8
+	rule_scroll.scroll_deadzone = 20
+	rule_scroll.follow_focus = true
 	rule_scroll.custom_minimum_size = Vector2(716, 150)
 	_room_box.add_child(rule_scroll)
 	var rule_grid := GridContainer.new()
@@ -313,27 +324,39 @@ func _open_turn_dialog() -> void:
 	dlg.popup_centered(Vector2i(660, 420))
 
 func _webrtc_host_pressed() -> void:
-	if NetworkManager.role != NetworkManager.Role.NONE:
+	if NetworkManager.role != NetworkManager.Role.NONE or _webrtc_busy:
 		return
+	_webrtc_busy = true
+	if _wh_btn: _wh_btn.disabled = true
+	if _wj_btn: _wj_btn.disabled = true
 	_status.text = "正在创建跨网房间…"
 	var ok: bool = await WebRTCNet.host_room()
 	if not ok:
-		_status.text = "创建失败，请确认已登录 Supabase"
+		_webrtc_busy = false
+		if _wh_btn: _wh_btn.disabled = false
+		if _wj_btn: _wj_btn.disabled = false
+		_status.text = "创建失败，请检查登录/网络后重试"
 		return
 	NetworkManager.start_host_webrtc()
 	_enter_room(true)
 	_room_status.text = "跨网房间码：%s（好友输入此码加入）" % WebRTCNet.room_code
 
 func _webrtc_join_pressed() -> void:
-	if NetworkManager.role != NetworkManager.Role.NONE:
+	if NetworkManager.role != NetworkManager.Role.NONE or _webrtc_busy:
 		return
 	var code := _webrtc_code_edit.text.strip_edges()
 	if code.length() != 6:
 		_status.text = "请输入 6 位跨网房间码"
 		return
+	_webrtc_busy = true
+	if _wh_btn: _wh_btn.disabled = true
+	if _wj_btn: _wj_btn.disabled = true
 	_status.text = "正在连接跨网房间 %s…" % code
 	var ok: bool = await WebRTCNet.join_room(code)
 	if not ok:
+		_webrtc_busy = false
+		if _wh_btn: _wh_btn.disabled = false
+		if _wj_btn: _wj_btn.disabled = false
 		_status.text = "连接失败，请检查房间码/网络"
 		return
 	NetworkManager.join_host_webrtc()
@@ -441,6 +464,10 @@ func _show_room_list() -> void:
 	v.add_child(hint)
 	var scroll := ScrollContainer.new()
 	scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	scroll.vertical_scroll_mode = ScrollContainer.SCROLL_MODE_AUTO
+	scroll.scroll_deadzone = 24
+	scroll.follow_focus = true
 	v.add_child(scroll)
 	var list := VBoxContainer.new()
 	list.size_flags_horizontal = Control.SIZE_EXPAND_FILL
@@ -530,6 +557,10 @@ func _show_friend_list() -> void:
 	v.add_child(title)
 	var scroll := ScrollContainer.new()
 	scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	scroll.vertical_scroll_mode = ScrollContainer.SCROLL_MODE_AUTO
+	scroll.scroll_deadzone = 24
+	scroll.follow_focus = true
 	v.add_child(scroll)
 	var list := VBoxContainer.new()
 	list.size_flags_horizontal = Control.SIZE_EXPAND_FILL

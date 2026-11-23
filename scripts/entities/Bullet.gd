@@ -71,6 +71,10 @@ func _get_bullet_type() -> String:
 	if cfg == null:
 		return "energy"
 	var cid: int = cfg.card_id
+	if cfg.card_name == "厨师塔":
+		return "pancake"
+	if cfg.card_name == "飞刀塔":
+		return "knife"
 	# --- 单卡特判 ---
 	if cid == 96:
 		return "axe"          # 飞斧屠夫
@@ -317,6 +321,8 @@ static func create_spell_projectile(
 				kind = "lightning"    # 电击/雷电
 			31:
 				kind = "snowball"     # 大雪球
+			77:
+				kind = "rocket"       # 火箭
 			40:
 				kind = "barrel"       # 哥布林飞桶
 			43:
@@ -326,7 +332,18 @@ static func create_spell_projectile(
 			91:
 				kind = "log"          # 滚木
 	var node: Node3D = ProjectileKit.create(kind)
-	node.scale = Vector3.ONE * 1.725
+	var spell_scale := 1.725
+	if kind == "barrel":
+		spell_scale = 3.45
+	elif kind == "fireball":
+		spell_scale = 2.15
+	elif kind == "snowball":
+		spell_scale = 2.10
+	elif kind == "rocket":
+		spell_scale = 2.35
+	node.scale = Vector3.ONE * spell_scale
+	bullet.model_mesh = node
+	bullet.model_kind = kind
 	bullet.add_child(node)
 	return bullet
 
@@ -348,9 +365,13 @@ func _move_towards_point(delta):
 		var base_y: float = lerpf(_spell_start.y, spell_target_pos.y, trav)
 		global_position.y = base_y + arc_height * 4.0 * trav * (1.0 - trav)
 		if model_mesh:
-			if model_kind == "barrel":
-				var bt: float = Time.get_ticks_msec() * 0.01
-				model_mesh.rotation = Vector3(bt * 0.8, bt * 1.2, bt * 0.6)
+			if model_kind in ["barrel", "rocket"]:
+				var dir3 := Vector3(flat_dir.x, 0.0, flat_dir.z)
+				if dir3.length() > 0.01:
+					model_mesh.look_at(model_mesh.global_position + dir3.normalized(), Vector3.UP)
+					model_mesh.rotate_object_local(Vector3.UP, PI)
+					if model_kind == "barrel":
+						model_mesh.rotate_object_local(Vector3.FORWARD, Time.get_ticks_msec() * 0.012)
 			else:
 				model_mesh.rotation.z = trav * TAU * 2.0
 func _physics_process(delta):

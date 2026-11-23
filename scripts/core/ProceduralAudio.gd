@@ -19,6 +19,10 @@ static func get_sound(sound_name: String) -> AudioStream:
 	match sound_name:
 		"arrow":
 			stream = _wav(_arrow_samples(), false)
+		"coin":
+			stream = _wav(_coin_samples(), false)
+		"gem":
+			stream = _wav(_gem_samples(), false)
 		"victory":
 			stream = _wav(_victory_samples(), false)
 		"defeat":
@@ -83,6 +87,27 @@ static func _add_tone(buf: PackedFloat32Array, start: int, freq: float, dur: flo
 
 
 # ---------------- 具体音色 ----------------
+# 金币：短促双音
+static func _coin_samples() -> PackedFloat32Array:
+	var dur := 0.22
+	var buf := PackedFloat32Array()
+	buf.resize(int(dur * SR))
+	_add_tone(buf, 0, 1350.0, 0.12, 0.42, "triangle", 12.0)
+	_add_tone(buf, int(0.055 * SR), 1900.0, 0.16, 0.30, "triangle", 10.0)
+	return buf
+
+
+# 钻石：清爽的高音提示
+static func _gem_samples() -> PackedFloat32Array:
+	var dur := 0.38
+	var buf := PackedFloat32Array()
+	buf.resize(int(dur * SR))
+	_add_tone(buf, 0, 1050.0, 0.22, 0.34, "sine", 8.0)
+	_add_tone(buf, int(0.06 * SR), 1580.0, 0.30, 0.28, "sine", 7.0)
+	_add_tone(buf, int(0.12 * SR), 2100.0, 0.22, 0.18, "triangle", 9.0)
+	return buf
+
+
 # 远程攻击：短促的“嗖”声（滤波噪声 + 下滑正弦）
 static func _arrow_samples() -> PackedFloat32Array:
 	var dur := 0.18

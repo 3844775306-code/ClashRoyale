@@ -10,8 +10,19 @@ func _ready():
 	_rec.battle = battle
 	set_process(true)
 
+func send_now() -> void:
+	if NetworkManager.role != NetworkManager.Role.HOST or _rec == null:
+		return
+	var snap: Dictionary = _rec.build_snapshot()
+	if not snap.is_empty():
+		NetworkManager.send_snapshot(snap)
+
+
 func _process(delta):
 	if NetworkManager.role != NetworkManager.Role.HOST:
+		return
+	# 单机观战房间没有观众时不构建快照；联机对局有玩家时必须继续发送
+	if NetworkManager.spectator_count <= 0 and NetworkManager.guest_count() <= 0:
 		return
 	_acc += delta
 	if _acc < 0.05:

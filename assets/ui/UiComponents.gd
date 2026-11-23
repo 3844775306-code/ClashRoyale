@@ -286,6 +286,42 @@ func _open_settings(host: Control) -> void:
 		scene.add_child(sm)
 
 
+func prompt_party_deck(host: Node) -> void:
+	if host == null or OS.get_environment("CR_SKIP_PARTY_DECK_PROMPT") != "":
+		return
+	if PlayerData.has_party_deck() or TutorialTour.active:
+		return
+	if host.get_tree() == null:
+		return
+	for c in host.get_tree().current_scene.get_children():
+		if c.is_in_group("party_deck_prompt"):
+			return
+	var dlg := ConfirmationDialog.new()
+	dlg.add_to_group("party_deck_prompt")
+	dlg.title = "派对卡组未配置"
+	dlg.dialog_text = "进入派对/联机模式前，需要先配置一套 8 张派对卡组。\n\n派对卡组全卡可用、固定 11 级，与标准卡组分开保存。"
+	dlg.ok_button_text = "去配置"
+	dlg.cancel_button_text = "稍后"
+	dlg.confirmed.connect(func():
+		LoadingScreen.change_scene("res://scenes/party_deck.tscn", "正在加载派对卡组…"))
+	host.get_tree().current_scene.add_child(dlg)
+	dlg.popup_centered(Vector2i(700, 460))
+
+
+func prompt_avatar(host: Node) -> void:
+	if host == null:
+		return
+	var scene := host.get_tree().current_scene
+	if scene == null:
+		return
+	for c in scene.get_children():
+		if c.is_in_group("avatar_setup_dialog"):
+			return
+	var dlg = (load("res://assets/ui/AvatarSetupDialog.gd") as GDScript).new()
+	if dlg != null:
+		scene.add_child(dlg)
+
+
 func ensure_player_name(host: Node) -> void:
 	if OS.has_environment("CR_SKIP_NAME_PROMPT"):
 		return
@@ -302,7 +338,10 @@ func make_content_scroll(owner: Control, top: int = HEADER_H + 16) -> ScrollCont
 	sc.anchor_top = 0.0
 	sc.anchor_bottom = 1.0
 	sc.offset_top = top
-	sc.scroll_deadzone = 12
+	sc.scroll_deadzone = 24
+	sc.follow_focus = true
+	if OS.has_feature("mobile"):
+		sc.get_v_scroll_bar().custom_minimum_size.x = 12
 	sc.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
 	sc.vertical_scroll_mode = ScrollContainer.SCROLL_MODE_AUTO
 	owner.add_child(sc)
@@ -345,10 +384,15 @@ func refresh_currency_row(row: HBoxContainer):
 	if row == null:
 		return
 	var kids := row.get_children()
+	var gold_text := str(PlayerData.gold)
+	var gem_text := str(PlayerData.gems)
+	if CurrencyFX != null:
+		gold_text = str(CurrencyFX.display_gold())
+		gem_text = str(CurrencyFX.display_gems())
 	if kids.size() >= 1 and kids[0] is PanelContainer:
-		_set_chip_amount(kids[0], str(PlayerData.gold))
+		_set_chip_amount(kids[0], gold_text)
 	if kids.size() >= 2 and kids[1] is PanelContainer:
-		_set_chip_amount(kids[1], str(PlayerData.gems))
+		_set_chip_amount(kids[1], gem_text)
 
 
 func _set_chip_amount(chip: PanelContainer, amount: String):
@@ -369,6 +413,8 @@ func _make_chip(kind: String, amount: String, accent: Color) -> PanelContainer:
 	sb.content_margin_top = 3
 	sb.content_margin_bottom = 3
 	chip.add_theme_stylebox_override("panel", sb)
+	chip.add_to_group("currency_chip_" + kind)
+	chip.mouse_filter = Control.MOUSE_FILTER_IGNORE
 
 	var hbox := HBoxContainer.new()
 	hbox.add_theme_constant_override("separation", 5)
@@ -417,6 +463,7 @@ func make_card(accent: Color, title: String = "", subtitle: String = "") -> Pane
 func make_list_row(accent: Color = Color.TRANSPARENT, height: int = 64) -> Panel:
 	var row := Panel.new()
 	row.custom_minimum_size = Vector2(0, height)
+	row.mouse_filter = Control.MOUSE_FILTER_PASS
 	var sb := StyleBoxFlat.new()
 	sb.bg_color = ThemeHelper.COLORS.row_bg
 	sb.corner_radius_top_left = 10

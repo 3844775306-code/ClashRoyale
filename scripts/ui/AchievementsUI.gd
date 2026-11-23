@@ -13,6 +13,10 @@ var summary_panel: Panel = null
 var currency_row: HBoxContainer
 var _card_names: Dictionary = {}
 var _row_state: Dictionary = {}
+var _teammates: Array = []
+var _touch_dragging := false
+var _touch_last_y := 0.0
+var _mouse_dragging := false
 
 func _ready():
 	_apply_text_theme()
@@ -26,11 +30,38 @@ func _ready():
 	content = UiComponents.make_content_vbox()
 	scroll.add_child(content)
 	_build()
+	_load_teammates()
 	_make_scroll_passthrough(content)
 	UiComponents.fade_in(self)
 	await get_tree().process_frame
 	await get_tree().process_frame
 	_scroll_to_current()
+
+func _input(event: InputEvent) -> void:
+	if scroll == null:
+		return
+	if event is InputEventScreenTouch:
+		var st := event as InputEventScreenTouch
+		if st.pressed and scroll.get_global_rect().has_point(st.position):
+			_touch_dragging = true
+			_touch_last_y = st.position.y
+		elif not st.pressed:
+			_touch_dragging = false
+	elif event is InputEventScreenDrag:
+		if _touch_dragging:
+			var sd := event as InputEventScreenDrag
+			scroll.scroll_vertical -= int(sd.relative.y)
+			_touch_last_y = sd.position.y
+			get_viewport().set_input_as_handled()
+	elif event is InputEventMouseButton:
+		var mb := event as InputEventMouseButton
+		if mb.button_index == MOUSE_BUTTON_LEFT and scroll.get_global_rect().has_point(mb.position):
+			_mouse_dragging = mb.pressed
+	elif event is InputEventMouseMotion and _mouse_dragging:
+		var mm := event as InputEventMouseMotion
+		scroll.scroll_vertical -= int(mm.relative.y)
+		get_viewport().set_input_as_handled()
+
 
 func _apply_text_theme():
 	var th := Theme.new()
@@ -186,7 +217,6 @@ func _build():
 		var rows: Array = by_arena.get(i, [])
 		if rows.is_empty():
 			continue
-		content.add_child(_arena_divider(i, rows))
 		var body := VBoxContainer.new()
 		body.add_theme_constant_override("separation", 0)
 		content.add_child(body)
@@ -202,6 +232,81 @@ func _build():
 		if i == trophy_arena and not marker_done:
 			current_marker = _current_marker()
 			body.add_child(current_marker)
+		# 队友位置：按奖杯插入当前竞技场
+		var team_rows: Array = []
+		for tm in _teammates:
+			if int(tm.get("arena", 0)) == i:
+				team_rows.append(tm)
+		team_rows.sort_custom(func(a, b): return int(a.get("trophies", 0)) > int(b.get("trophies", 0)))
+		for tm in team_rows:
+			body.add_child(_teammate_marker(tm))
+		# 竞技场图像放在里程碑下面，1 阶竞技场位于最底部
+		content.add_child(_arena_divider(i, rows))
+
+func _load_teammates() -> void:
+	if ClanManager == null:
+		return
+	ClanManager.get_my_clan(func(success, clan):
+		if not success or not (clan is Dictionary):
+			return
+		var members: Dictionary = clan.get("members", {})
+		var my_id := str(ClanManager.get_player_id())
+		var out: Array = []
+		for key in members.keys():
+			if str(key) == my_id:
+				continue
+			var m: Dictionary = Dictionary(members[key])
+			var nm := String(m.get("player_name", m.get("name", "队友")))
+			var tr := int(m.get("trophies", 0))
+			out.append({
+				"player_id": str(key), "name": nm, "trophies": tr,
+				"avatar_seed": int(m.get("avatar_seed", absi(hash(nm)))),
+				"avatar_index": int(m.get("avatar_index", 0)),
+				"arena": PlayerData._arena_index_for_trophies(tr),
+			})
+		_teammates = out
+		if not _teammates.is_empty() and content != null:
+			_build()
+	)
+
+func _teammate_marker(tm: Dictionary) -> Control:
+	var row := PanelContainer.new()
+	row.custom_minimum_size = Vector2(0, 58)
+	var sb := StyleBoxFlat.new()
+	sb.bg_color = Color(0.05, 0.11, 0.20, 0.95)
+	sb.border_color = Color(0.36, 0.72, 1.0, 0.55)
+	sb.set_border_width_all(1)
+	sb.set_corner_radius_all(10)
+	row.add_theme_stylebox_override("panel", sb)
+	var h := HBoxContainer.new()
+	h.add_theme_constant_override("separation", 10)
+	h.offset_left = 14
+	h.offset_right = -14
+	row.add_child(h)
+	var av = preload("res://scripts/ui/AvatarIcon.gd").new()
+	av.custom_minimum_size = Vector2(42, 42)
+	av.size = Vector2(42, 42)
+	var nm := String(tm.get("name", "队友"))
+	var seedv := int(tm.get("avatar_seed", absi(hash(nm))))
+	var idx := int(tm.get("avatar_index", 0))
+	av.setup(nm, seedv, idx)
+	h.add_child(av)
+	CloudAvatar.apply(av, String(tm.get("player_id", "")), nm, seedv, idx)
+	var info := VBoxContainer.new()
+	info.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	info.add_theme_constant_override("separation", 1)
+	h.add_child(info)
+	info.add_child(_label(String(tm.get("name", "队友")), 15, Color(0.82, 0.92, 1.0)))
+	info.add_child(_label("队友 · 🏆 %d" % int(tm.get("trophies", 0)), 12, Color(1.0, 0.86, 0.42)))
+	return row
+
+func _label(text: String, fs: int, color: Color) -> Label:
+	var l := Label.new()
+	l.text = text
+	l.add_theme_font_size_override("font_size", fs)
+	l.add_theme_color_override("font_color", color)
+	return l
+
 
 func _arena_divider(idx: int, rows: Array) -> Control:
 	var p := Panel.new()

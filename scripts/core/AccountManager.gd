@@ -171,23 +171,40 @@ func login_recent(email: String) -> Dictionary:
 	var cfg := _load_index()
 	if not cfg.has_section(email):
 		return {"ok": false, "error": "本机没有该云端账号记录"}
-	var refresh := String(cfg.get_value(email, "refresh", ""))
+	var index_refresh := String(cfg.get_value(email, "refresh", ""))
 	var uid := String(cfg.get_value(email, "user_id", ""))
-	if refresh == "":
+	if index_refresh == "":
 		return {"ok": false, "error": "账号会话已失效，请用密码登录"}
-	_refresh = refresh
-	_user_id = uid
-	_access = ""
 	account_email = email
 	account_username = String(cfg.get_value(email, "username", ""))
-	if not await _supabase_refresh():
-		return {"ok": false, "error": "云端会话已过期，请用密码登录"}
-	var user := await _supabase_get_user()
-	if user.is_empty():
-		return {"ok": false, "error": "无法恢复云端会话"}
-	_user_id = String(user.get("id", uid))
-	account_username = String(Dictionary(user.get("user_metadata", {})).get("username", account_username))
-	return await _finish_login(account_email, account_username, true)
+	# 1) 优先使用 session 里的 access token，避免刷新令牌轮换导致另一台设备失效
+	var sess := _load_session()
+	if String(sess.get("email", "")) == email and String(sess.get("access", "")) != "":
+		_access = String(sess.get("access", ""))
+		_refresh = String(sess.get("refresh", index_refresh))
+		_user_id = String(sess.get("user_id", uid))
+		var u0 := await _supabase_get_user()
+		if not u0.is_empty():
+			_user_id = String(u0.get("id", _user_id))
+			account_username = String(Dictionary(u0.get("user_metadata", {})).get("username", account_username))
+			return await _finish_login(account_email, account_username, true)
+	# 2) session refresh -> index refresh
+	var candidates: Array = []
+	if String(sess.get("email", "")) == email and String(sess.get("refresh", "")) != "":
+		candidates.append(String(sess.get("refresh", "")))
+	if index_refresh != "" and not candidates.has(index_refresh):
+		candidates.append(index_refresh)
+	for refresh in candidates:
+		_refresh = refresh
+		_access = ""
+		_user_id = uid
+		if await _supabase_refresh():
+			var user := await _supabase_get_user()
+			if not user.is_empty():
+				_user_id = String(user.get("id", uid))
+				account_username = String(Dictionary(user.get("user_metadata", {})).get("username", account_username))
+				return await _finish_login(account_email, account_username, true)
+	return {"ok": false, "error": "云端会话已过期，请用密码登录"}
 
 func register_username(username: String, password: String) -> Dictionary:
 	debug_log("REG_USERNAME_START", "username=%s pwlen=%d" % [username.strip_edges(), password.length()])
@@ -292,6 +309,10 @@ func _sync_cloud(_had_local: bool) -> void:
 	_syncing = false
 	cloud_status_changed.emit()
 
+func is_syncing_cloud() -> bool:
+	return _syncing or _uploading
+
+
 func notify_local_save() -> void:
 	if not is_authenticated:
 		return
@@ -320,6 +341,7 @@ func _process(_delta: float) -> void:
 func _sync_public_profile() -> void:
 	if not is_authenticated:
 		return
+	_sync_animation_cloud()
 	LeaderboardAPI.submit_trophies(PlayerData.trophies, PlayerData.player_name)
 	ClanManager.sync_my_profile()
 	ClanManager.sync_my_inventory()
@@ -577,6 +599,19 @@ func account_label() -> String:
 
 func supabase_token() -> String:
 	return _access
+
+func _sync_animation_cloud() -> void:
+	var store = load("res://scripts/data/CardAnimationStore.gd")
+	if store == null:
+		return
+	store.reset_cloud_cache()
+	await store.sync_from_cloud()
+	await store.upload_all_local_to_cloud()
+
+
+func refresh_supabase_session() -> bool:
+	return await _supabase_refresh()
+
 
 func is_supabase_authenticated() -> bool:
 	return is_authenticated and _access != ""

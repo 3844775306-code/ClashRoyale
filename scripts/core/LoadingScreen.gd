@@ -6,6 +6,8 @@ var _dots: Label
 var _panel: Panel
 var _t: float = 0.0
 var _visible := false
+var _back_btn: Button
+var _nav_token := 0
 
 func _ready():
 	layer = 200
@@ -95,10 +97,17 @@ func _ready():
 	hint.add_theme_font_size_override("font_size", 14)
 	hint.add_theme_color_override("font_color", Color(0.55, 0.68, 0.84))
 	v.add_child(hint)
+	_back_btn = ThemeHelper.make_muted_button("返回主菜单", Vector2(0, 48))
+	_back_btn.add_theme_font_size_override("font_size", 18)
+	_back_btn.focus_mode = Control.FOCUS_NONE
+	_back_btn.visible = false
+	_back_btn.pressed.connect(go_main_menu)
+	v.add_child(_back_btn)
 	set_process(false)
 
-func show_loading(text: String = "加载中…") -> void:
+func show_loading(text: String = "加载中…", show_back: bool = true) -> void:
 	_message.text = text
+	_back_btn.visible = show_back
 	_root.visible = true
 	_visible = true
 	_t = 0.0
@@ -112,7 +121,17 @@ func show_loading(text: String = "加载中…") -> void:
 func hide_loading() -> void:
 	_visible = false
 	_root.visible = false
+	if _back_btn:
+		_back_btn.visible = false
 	set_process(false)
+
+
+func go_main_menu() -> void:
+	_nav_token += 1
+	hide_loading()
+	if NetworkManager and NetworkManager.has_method("reset_net"):
+		NetworkManager.reset_net()
+	get_tree().change_scene_to_file("res://scenes/menu.tscn")
 
 func _process(delta):
 	if not _visible:
@@ -124,10 +143,16 @@ func _process(delta):
 	_panel.offset_bottom = 230 + sin(_t * 1.4) * 3.0
 
 func change_scene(path: String, text: String = "加载中…") -> void:
+	var token := _nav_token + 1
+	_nav_token = token
 	show_loading(text)
 	await get_tree().process_frame
 	await get_tree().process_frame
+	if token != _nav_token:
+		return
 	get_tree().change_scene_to_file(path)
 	await get_tree().process_frame
 	await get_tree().process_frame
+	if token != _nav_token:
+		return
 	hide_loading()

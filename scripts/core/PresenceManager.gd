@@ -14,6 +14,13 @@ var _pull_acc := 0.0
 var _publishing := false
 var _pulling := false
 var _active := false
+var local_battle_active := false
+var local_battle_mode := ""
+var local_battle_started := 0
+var local_battle_room := ""
+var local_battle_transport := ""
+var local_battle_ip := ""
+var local_battle_spectators := 0
 
 
 func _ready() -> void:
@@ -76,6 +83,29 @@ func _publish() -> void:
 		"trophies": PlayerData.trophies,
 		"clan": ClanManager.get_my_clan_name() if ClanManager.has_method("get_my_clan_name") else "",
 		"last_seen": int(Time.get_unix_time_from_system()),
+		"battle_active": local_battle_active,
+		"battle_mode": local_battle_mode,
+		"battle_started": local_battle_started,
+		"battle_room": local_battle_room,
+		"battle_transport": local_battle_transport,
+		"battle_ip": local_battle_ip,
+		"battle_spectators": local_battle_spectators,
+		"battle_wins": PlayerData.battle_wins,
+		"battle_losses": PlayerData.battle_losses,
+		"battle_draws": PlayerData.battle_draws,
+		"three_crowns": PlayerData.three_crown_wins,
+		"current_streak": PlayerData.current_streak,
+		"best_streak": PlayerData.best_streak,
+		"season_crowns": PlayerData.season_crowns,
+		"honor_title": PlayerData.honor_title,
+		"tower_choice": PlayerData.tower_choice,
+		"tower_used": PlayerData.get_most_used_tower(),
+		"bio": PlayerData.bio,
+		"role": PlayerData.clan_role,
+		"donations": PlayerData.total_donations,
+		"collection_level": PlayerData.get_collection_level(),
+		"current_deck": PlayerData.get_active_deck(),
+		"top_cards": PlayerData.get_most_used_cards(3),
 	})
 	_publishing = false
 	if not ok:
@@ -106,6 +136,82 @@ func _pull() -> void:
 	_pulling = false
 	if JSON.stringify(records) != before:
 		presence_changed.emit()
+
+
+func set_battle_spectators(n: int) -> void:
+	local_battle_spectators = n
+	if _active:
+		_publish()
+
+
+func set_battle_status(active: bool, mode: String = "", started: int = 0, room: String = "", transport: String = "", ip: String = "") -> void:
+	local_battle_active = active
+	local_battle_mode = mode
+	local_battle_started = started
+	local_battle_room = room
+	local_battle_transport = transport
+	local_battle_ip = ip
+	if not active:
+		local_battle_spectators = 0
+	if _active:
+		_publish()
+
+
+func get_battle_info(pid: String) -> Dictionary:
+	if pid == "":
+		return {}
+	if pid == _my_id():
+		return {
+			"battle_active": local_battle_active,
+			"battle_mode": local_battle_mode,
+			"battle_started": local_battle_started,
+		}
+	if not is_online(pid):
+		return {}
+	var v = records.get(pid, null)
+	if not (v is Dictionary):
+		return {}
+	return {
+		"battle_active": bool(v.get("battle_active", false)),
+		"battle_mode": String(v.get("battle_mode", "")),
+		"battle_started": int(v.get("battle_started", 0)),
+		"battle_room": String(v.get("battle_room", "")),
+		"battle_transport": String(v.get("battle_transport", "")),
+		"battle_ip": String(v.get("battle_ip", "")),
+		"battle_spectators": int(v.get("battle_spectators", 0)),
+	}
+
+
+func public_record(pid: String) -> Dictionary:
+	if pid == _my_id():
+		var d := {
+			"name": PlayerData.player_name,
+			"trophies": PlayerData.trophies,
+			"highest_trophies": PlayerData.highest_trophies,
+			"arena": PlayerData.get_arena(),
+			"clan": ClanManager.get_my_clan_name() if ClanManager.has_method("get_my_clan_name") else "",
+			"battle_wins": PlayerData.battle_wins,
+			"battle_losses": PlayerData.battle_losses,
+			"battle_draws": PlayerData.battle_draws,
+			"three_crowns": PlayerData.three_crown_wins,
+			"current_streak": PlayerData.current_streak,
+			"best_streak": PlayerData.best_streak,
+			"season_crowns": PlayerData.season_crowns,
+			"honor_title": PlayerData.honor_title,
+			"tower_choice": PlayerData.tower_choice,
+			"tower_used": PlayerData.get_most_used_tower(),
+			"bio": PlayerData.bio,
+			"role": PlayerData.clan_role,
+			"donations": PlayerData.total_donations,
+			"collection_level": PlayerData.get_collection_level(),
+			"current_deck": PlayerData.get_active_deck(),
+			"avatar_seed": PlayerData.avatar_seed,
+			"avatar_index": PlayerData.avatar_index,
+		}
+		d.merge(get_battle_info(pid), true)
+		return d
+	var v = records.get(pid, null)
+	return Dictionary(v).duplicate(true) if v is Dictionary else {}
 
 
 func online_players() -> Array:

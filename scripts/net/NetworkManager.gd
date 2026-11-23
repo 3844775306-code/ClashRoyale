@@ -10,6 +10,7 @@ signal match_started(info: Dictionary)
 signal snapshot_received(snap: Dictionary)
 signal deploy_rejected(reason: String)
 signal disconnected(reason: String)
+signal peer_lost(player_name: String)
 signal match_ended(info: Dictionary)
 signal emote_received(id: String, team: int)
 signal clients_ready
@@ -31,6 +32,9 @@ var network_draft_picks: Dictionary = {}   # peer -> 双向选卡：自己选的
 var network_draft_rejects: Dictionary = {} # peer -> 双向选卡：不要的 4 张
 var network_draft_swap: bool = false
 signal network_draft_started
+signal spectator_chat(from_name: String, text: String)
+signal spectator_emote(id: String, from_name: String)
+signal spectator_count_changed
 signal touchdown_break_received(round_no: int, score_a: int, score_b: int)
 signal touchdown_break_ended
 var room_code: String = ""
@@ -51,6 +55,10 @@ var clients_all_ready: bool = false
 var _required_peers: Array = []
 var _pending_code: String = ""
 var webrtc_mode: bool = false
+var spectator_mode: bool = false
+var spectators: Dictionary = {}
+var spectator_count: int = 0
+var local_spectator_host: bool = false
 var _webrtc_sender: int = 0
 
 # 兼容旧 1V1 字段
@@ -71,7 +79,9 @@ func _ready():
 	set_process(false)
 
 func _sender_id() -> int:
-	return _webrtc_sender if webrtc_mode else _sender_id()
+	if webrtc_mode:
+		return _webrtc_sender
+	return multiplayer.get_remote_sender_id()
 
 func _rpc_send(peer: int, method: String, args: Array) -> void:
 	if webrtc_mode:
@@ -128,7 +138,7 @@ func start_host(port: int = DEFAULT_PORT, mode: String = "1v1", ai0: int = 0, ai
 	reset_net()
 	room_mode = "1v1"
 	peer = ENetMultiplayerPeer.new()
-	var err := peer.create_server(port, 4, 4)
+	var err := peer.create_server(port, 12, 12)
 	if err != OK:
 		peer = null
 		lobby_status.emit("创建房间失败：%s" % error_string(err))
@@ -308,6 +318,23 @@ func all_players_seated() -> bool:
 
 func can_start() -> bool:
 	return role == Role.HOST and all_players_seated()
+
+
+func join_spectator_lan(ip: String, port: int = DEFAULT_PORT, code: String = "") -> bool:
+	reset_net()
+	peer = ENetMultiplayerPeer.new()
+	var err := peer.create_client(ip.strip_edges(), port)
+	if err != OK:
+		peer = null
+		lobby_status.emit("观战连接失败：%s" % error_string(err))
+		return false
+	multiplayer.multiplayer_peer = peer
+	role = Role.GUEST
+	spectator_mode = true
+	_pending_code = code.strip_edges()
+	set_process(true)
+	lobby_status.emit("正在加入局域网观战…")
+	return true
 
 
 func join_host(ip: String, port: int = DEFAULT_PORT, code: String = "") -> bool:
@@ -539,6 +566,154 @@ func start_match() -> void:
 
 
 @rpc("any_peer", "call_remote", "reliable")
+func request_spectate(pname: String) -> void:
+	if role != Role.HOST:
+		return
+	var pid := _sender_id()
+	if pid == 0 or players.has(pid) or spectators.has(pid):
+		return
+	var nm := String(pname if pname != "" else "好友")
+	if PlayerData.spectator_approval_required:
+		var dlg := ConfirmationDialog.new()
+		dlg.title = "观战请求"
+		dlg.dialog_text = "%s 想观看你的对局，是否允许？" % nm
+		dlg.ok_button_text = "允许观战"
+		dlg.cancel_button_text = "拒绝"
+		dlg.confirmed.connect(func():
+			_add_spectator(pid, nm)
+			if is_instance_valid(dlg): dlg.queue_free())
+		dlg.canceled.connect(func():
+			if is_instance_valid(dlg): dlg.queue_free())
+		var scene := get_tree().current_scene
+		if scene:
+			scene.add_child(dlg)
+			dlg.popup_centered(Vector2i(520, 220))
+	else:
+		_add_spectator(pid, nm)
+
+
+func _add_spectator(pid: int, nm: String) -> void:
+	if role != Role.HOST or players.has(pid) or spectators.size() >= 4:
+		return
+	spectators[pid] = {"name": nm}
+	spectator_count = spectators.size()
+	_rpc_send(pid, "spectate_accepted", [room_mode])
+	_broadcast_spectator_count()
+	PresenceManager.set_battle_spectators(spectator_count)
+	lobby_status.emit("%s 进入观战（%d 人）" % [nm, spectator_count])
+	_send_snapshot_now()
+
+
+func leave_spectate() -> void:
+	if spectator_mode and role == Role.GUEST:
+		_rpc_send(1, "net_spectator_leave", [])
+
+
+@rpc("any_peer", "call_remote", "reliable")
+func net_spectator_leave() -> void:
+	if role == Role.HOST:
+		var pid := _sender_id()
+		if spectators.has(pid):
+			spectators.erase(pid)
+			spectator_count = spectators.size()
+			_broadcast_spectator_count()
+			PresenceManager.set_battle_spectators(spectator_count)
+
+
+func _broadcast_spectator_count() -> void:
+	spectator_count = spectators.size()
+	for pid in _recipient_pids():
+		_rpc_send(pid, "net_spectator_count", [spectator_count])
+	spectator_count_changed.emit()
+
+
+@rpc("authority", "call_remote", "reliable")
+func net_spectator_count(n: int) -> void:
+	spectator_count = n
+	spectator_count_changed.emit()
+
+
+func send_spectator_chat(text: String) -> void:
+	text = text.strip_edges()
+	if text == "":
+		return
+	text = text.substr(0, 160)
+	if role == Role.HOST:
+		_deliver_spectator_chat(PlayerData.player_name, text)
+	elif role == Role.GUEST and spectator_mode:
+		_rpc_send(1, "net_spectator_chat", [PlayerData.player_name, text])
+
+
+@rpc("any_peer", "call_remote", "reliable")
+func net_spectator_chat(from_name: String, text: String) -> void:
+	if role == Role.HOST:
+		for pid in _recipient_pids():
+			_rpc_send(pid, "spectator_chat_deliver", [from_name, text])
+		_deliver_spectator_chat(from_name, text)
+	else:
+		_deliver_spectator_chat(from_name, text)
+
+
+@rpc("authority", "call_remote", "reliable")
+func spectator_chat_deliver(from_name: String, text: String) -> void:
+	_deliver_spectator_chat(from_name, text)
+
+
+func _deliver_spectator_chat(from_name: String, text: String) -> void:
+	spectator_chat.emit(from_name, text)
+
+
+func send_spectator_emote(id: String) -> void:
+	if id == "":
+		return
+	if role == Role.HOST:
+		_deliver_spectator_emote(PlayerData.player_name, id)
+	elif role == Role.GUEST and spectator_mode:
+		_rpc_send(1, "net_spectator_emote", [PlayerData.player_name, id])
+
+
+@rpc("any_peer", "call_remote", "reliable")
+func net_spectator_emote(from_name: String, id: String) -> void:
+	if role == Role.HOST:
+		for pid in _recipient_pids():
+			_rpc_send(pid, "spectator_emote_deliver", [from_name, id])
+		_deliver_spectator_emote(from_name, id)
+	else:
+		_deliver_spectator_emote(from_name, id)
+
+
+@rpc("authority", "call_remote", "reliable")
+func spectator_emote_deliver(from_name: String, id: String) -> void:
+	_deliver_spectator_emote(from_name, id)
+
+
+func _deliver_spectator_emote(from_name: String, id: String) -> void:
+	spectator_emote.emit(from_name, id)
+
+
+func _send_snapshot_now() -> void:
+	var b = get_tree().get_first_node_in_group("battle_manager")
+	if b and b.has_method("network_snapshot_now"):
+		b.network_snapshot_now()
+
+
+@rpc("authority", "call_remote", "reliable")
+func spectate_accepted(_mode: String) -> void:
+	lobby_status.emit("观战已连接")
+
+
+func _spectator_pids() -> Array:
+	return spectators.keys()
+
+
+func _recipient_pids() -> Array:
+	var out: Array = _guest_pids()
+	for pid in spectators.keys():
+		if not out.has(pid):
+			out.append(pid)
+	return out
+
+
 func request_join(code: String, deck: Array, levels: Dictionary, pname: String, tower_choice: int = 1, avatar_seed: int = 0, avatar_index: int = 0) -> void:
 	if role != Role.HOST:
 		return
@@ -651,7 +826,7 @@ func _guest_pids() -> Array:
 func send_snapshot(snap: Dictionary) -> void:
 	if role == Role.HOST and (peer or webrtc_mode):
 		var data := var_to_bytes(snap)
-		for pid in _guest_pids():
+		for pid in _recipient_pids():
 			_rpc_send(pid, "net_snapshot", [data])
 
 @rpc("authority", "call_remote", "reliable")
@@ -667,7 +842,7 @@ func net_emote(id: String, team: int) -> void:
 		var b = get_tree().get_first_node_in_group("battle_manager")
 		if b and b.hud:
 			b.hud.show_emote(id, team)
-		for pid in _guest_pids():
+		for pid in _recipient_pids():
 			_rpc_send(pid, "net_emote", [id, team])
 	else:
 		emote_received.emit(id, team)
@@ -678,13 +853,13 @@ func send_emote(id: String, team: int) -> void:
 
 func broadcast_emote(id: String, team: int) -> void:
 	if role == Role.HOST:
-		for pid in _guest_pids():
+		for pid in _recipient_pids():
 			_rpc_send(pid, "net_emote", [id, team])
 
 func send_entry_start() -> void:
 	if role != Role.HOST:
 		return
-	for pid in _guest_pids():
+	for pid in _recipient_pids():
 		_rpc_send(pid, "net_entry_start", [])
 
 @rpc("authority", "call_remote", "reliable")
@@ -694,7 +869,7 @@ func net_entry_start() -> void:
 func send_countdown(seconds: float) -> void:
 	if role != Role.HOST:
 		return
-	for pid in _guest_pids():
+	for pid in _recipient_pids():
 		_rpc_send(pid, "net_countdown", [seconds])
 
 @rpc("authority", "call_remote", "reliable")
@@ -704,7 +879,7 @@ func net_countdown(seconds: float) -> void:
 func send_match_end(winner: int, crowns: Array, duration: float = 0.0, extra: Dictionary = {}) -> void:
 	if role != Role.HOST:
 		return
-	for pid in _guest_pids():
+	for pid in _recipient_pids():
 		_rpc_send(pid, "net_match_end", [winner, crowns, duration, extra])
 
 @rpc("authority", "call_remote", "reliable")
@@ -717,6 +892,11 @@ func net_match_end(winner: int, crowns: Array, duration: float = 0.0, extra: Dic
 
 func _on_connected_to_server():
 	if role != Role.GUEST:
+		return
+	if spectator_mode:
+		print("NET spectator connected, request spectate")
+		_rpc_send(1, "request_spectate", [PlayerData.player_name])
+		lobby_status.emit("已连接，等待观战数据…")
 		return
 	var deck := PlayerData.get_active_deck().duplicate()
 	var levels := {}
@@ -739,6 +919,14 @@ func _on_peer_connected(pid: int):
 	print("NET peer_connected pid=", pid, " role=", role)
 
 func _on_peer_disconnected(pid: int):
+	var lost_name := ""
+	if players.has(pid):
+		lost_name = String(Dictionary(players[pid]).get("name", "玩家"))
+	if spectators.has(pid):
+		spectators.erase(pid)
+		spectator_count = spectators.size()
+		_broadcast_spectator_count()
+		PresenceManager.set_battle_spectators(spectator_count)
 	if players.has(pid):
 		players.erase(pid)
 		var lost_slot := -1
@@ -755,6 +943,7 @@ func _on_peer_disconnected(pid: int):
 		if pid == guest_peer_id:
 			guest_peer_id = 0
 		_broadcast_seats()
+		peer_lost.emit(lost_name if lost_name != "" else "玩家")
 		lobby_status.emit("玩家已断开，席位由 AI 接管")
 		if role == Role.HOST:
 			var b = get_tree().get_first_node_in_group("battle_manager")
@@ -798,6 +987,65 @@ func join_host_webrtc() -> bool:
 		call_deferred("_on_connected_to_server")
 	return true
 
+func host_spectator_room() -> bool:
+	reset_net()
+	var webrtc_ok := false
+	if AccountManager != null and AccountManager.is_supabase_authenticated() and SupabaseAPI.is_ready():
+		webrtc_ok = await WebRTCNet.host_room()
+	if webrtc_ok:
+		webrtc_mode = true
+		role = Role.HOST
+		room_code = WebRTCNet.room_code
+	else:
+		# 无 Supabase/TURN 时退回局域网观战，单机玩家同网段好友仍可观看
+		if not start_host(24500):
+			return false
+		webrtc_mode = false
+	local_spectator_host = true
+	spectator_mode = false
+	spectators.clear()
+	spectator_count = 0
+	set_process(true)
+	lobby_status.emit("单机观战房间已开放：%s（%s）" % [room_code, "WebRTC" if webrtc_mode else "LAN"])
+	return true
+
+
+func stop_spectator_room() -> void:
+	if not local_spectator_host:
+		return
+	local_spectator_host = false
+	reset_net()
+
+
+func resend_spectate_request() -> void:
+	if role != Role.GUEST or not spectator_mode:
+		return
+	if webrtc_mode:
+		if not WebRTCNet.is_room_connected():
+			return
+	elif peer == null or peer.get_connection_status() != MultiplayerPeer.CONNECTION_CONNECTED:
+		return
+	_rpc_send(1, "request_spectate", [PlayerData.player_name])
+
+
+func join_spectator_webrtc(code: String) -> bool:
+	var ok: bool = await WebRTCNet.join_room_as_spectator(code.strip_edges())
+	if not ok:
+		lobby_status.emit("观战连接失败")
+		return false
+	reset_net()
+	webrtc_mode = true
+	spectator_mode = true
+	role = Role.GUEST
+	room_code = WebRTCNet.room_code
+	_pending_code = room_code
+	set_process(true)
+	lobby_status.emit("正在加入观战房间 %s…" % room_code)
+	if WebRTCNet.is_room_connected():
+		call_deferred("_on_connected_to_server")
+	return true
+
+
 func reset_net():
 	if role == Role.HOST:
 		_remove_room_list()
@@ -810,6 +1058,9 @@ func reset_net():
 	if multiplayer.multiplayer_peer:
 		multiplayer.multiplayer_peer = null
 	role = Role.NONE
+	spectator_mode = false
+	spectators.clear()
+	spectator_count = 0
 	room_code = ""
 	room_mode = "1v1"
 	players.clear()

@@ -223,6 +223,10 @@ func _build_clan_home():
 	member_scroll.offset_top = 186
 	member_scroll.offset_right = -16
 	member_scroll.offset_bottom = 430
+	member_scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	member_scroll.vertical_scroll_mode = ScrollContainer.SCROLL_MODE_AUTO
+	member_scroll.scroll_deadzone = 24
+	member_scroll.follow_focus = true
 	clan_home_box.add_child(member_scroll)
 	member_list = VBoxContainer.new()
 	member_list.add_theme_constant_override("separation", 8)
@@ -263,6 +267,9 @@ func _build_clan_home():
 	chat_scroll.offset_right = -12
 	chat_scroll.offset_bottom = 248
 	chat_scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	chat_scroll.vertical_scroll_mode = ScrollContainer.SCROLL_MODE_AUTO
+	chat_scroll.scroll_deadzone = 24
+	chat_scroll.follow_focus = true
 	chat_panel.add_child(chat_scroll)
 	chat_list = VBoxContainer.new()
 	chat_list.size_flags_horizontal = Control.SIZE_EXPAND_FILL
@@ -448,8 +455,9 @@ func _on_refresh_my_clan(success, clan) -> void:
 		return
 	if success and clan != null:
 		_show_clan_home(clan)
-	else:
+	elif my_clan_data.is_empty():
 		_show_no_clan()
+	# 网络短时失败时保留当前部落界面
 
 
 func _poll_clan() -> void:
@@ -464,7 +472,8 @@ func _on_poll_clan(success, clan) -> void:
 	if not is_inside_tree() or not success:
 		return
 	if clan == null:
-		_show_no_clan()
+		if my_clan_data.is_empty():
+			_show_no_clan()
 	else:
 		_show_clan_home(clan)
 	ClanManager.sync_my_inventory(_on_inventory_synced)
@@ -548,6 +557,7 @@ func _refresh_members():
 			av.setup_local()
 		else:
 			av.setup(an, aseed, aidx)
+			CloudAvatar.apply(av, str(member_id), an, aseed, aidx)
 		var member_snapshot := {
 			"player_id": str(member_id), "name": an,
 			"trophies": int(m.get("trophies", 0)),
@@ -729,6 +739,7 @@ func _create_chat_node(msg: Dictionary) -> Control:
 		av.setup_local()
 	else:
 		av.setup(sender_name, seed_value, avatar_index)
+		CloudAvatar.apply(av, str(pid), sender_name, seed_value, avatar_index)
 	row.add_child(av)
 	av.mouse_filter = Control.MOUSE_FILTER_STOP
 	var chat_profile := {"player_id": str(pid), "name": sender_name, "avatar_seed": seed_value, "avatar_index": avatar_index, "clan": String(my_clan_data.get("name", "")), "trophies": 0, "role": ""}
@@ -913,6 +924,12 @@ func _on_donate_result(succ, data) -> void:
 		ClanManager.invalidate_cache()
 		_refresh_my_clan()
 		PlayerData.save_data()
+		UiComponents.refresh_topbar()
+		var gold := int(Dictionary(data).get("gold", 0)) if data is Dictionary else 0
+		if gold > 0:
+			_toast("捐赠成功，获得 %d 金币补贴" % gold)
+		else:
+			_toast("捐赠成功")
 	else:
 		_toast("捐赠失败：%s" % str(data))
 

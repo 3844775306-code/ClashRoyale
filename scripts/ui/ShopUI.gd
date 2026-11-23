@@ -416,7 +416,10 @@ func _on_buy_offer(offer_index: int):
 	PlayerData.add_card(int(offer.card_id), int(offer.qty))
 	offer["sold"] = true
 	PlayerData.shop_offers[offer_index] = offer
-	PlayerData.save_data()
+	if bool(offer.get("free", false)):
+		PlayerData.mark_shop_free_claimed()
+	else:
+		PlayerData.save_data()
 	if bool(offer.get("free", false)):
 		status_lbl.text = "已免费领取 %s ×%d" % [cfg.card_name if cfg else "卡牌", int(offer.qty)]
 		CLAIM_ANIM.play(self, "领取成功", "免费领取 %s ×%d" % [cfg.card_name if cfg else "卡牌", int(offer.qty)],

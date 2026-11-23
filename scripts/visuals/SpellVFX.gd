@@ -67,6 +67,12 @@ static func animate(root: Node3D, p: float, t: float) -> void:
 			c.visible = fp < 1.0 or pp < 0.85
 		elif n.begins_with("bolt"):
 			c.visible = fmod(t * 24.0 + float(c.get_index()), 1.0) > 0.15
+		elif n.begins_with("debris"):
+			var df: float = clampf(pp * 1.5 - float(c.get_index()) * 0.018, 0.0, 1.0)
+			var dbase: Vector3 = c.get_meta("base_pos", c.position)
+			c.position = dbase + Vector3(0.0, sin(df * PI) * 1.35, 0.0)
+			c.rotation.x = df * 6.0
+			c.rotation.z = df * 4.0
 	_fade(root, 1.0 - pp)
 
 static func _fade(node: Node, alpha: float) -> void:
@@ -155,10 +161,10 @@ static func _prism(root: Node3D, pos: Vector3, size: Vector3, mat: Material, nam
 	p.size = size
 	_mesh(root, p, pos, mat, name, rot)
 
-static func _box(root: Node3D, pos: Vector3, size: Vector3, mat: Material, name: String, rot: Vector3 = Vector3.ZERO) -> void:
+static func _box(root: Node3D, pos: Vector3, size: Vector3, mat: Material, name: String, rot: Vector3 = Vector3.ZERO) -> MeshInstance3D:
 	var b := BoxMesh.new()
 	b.size = size
-	_mesh(root, b, pos, mat, name, rot)
+	return _mesh(root, b, pos, mat, name, rot)
 
 # ---------- 万箭齐发 ----------
 static func _arrows(root: Node3D, radius: float) -> void:
@@ -442,3 +448,20 @@ static func _earthquake(root: Node3D, radius: float) -> void:
 		var r3: float = rng.randf_range(0.3, 1.0) * radius
 		_sphere(root, rng.randf_range(0.15, 0.30), Vector3(cos(a3) * r3, rng.randf_range(0.2, 0.7), sin(a3) * r3),
 			_mat(Color(0.58, 0.50, 0.40), 0.35, 0.4), "dust%d" % i)
+	# 飞散碎石：提升地震的爆发感
+	for i in 16:
+		var a4: float = rng.randf_range(0.0, TAU)
+		var r4: float = rng.randf_range(0.15, 0.9) * radius
+		var sz4: float = rng.randf_range(0.06, 0.16)
+		var pos4 := Vector3(cos(a4) * r4, rng.randf_range(0.12, 0.30), sin(a4) * r4)
+		_box(root, pos4, Vector3(sz4, sz4 * 0.8, sz4),
+			_mat(Color(0.46, 0.36, 0.24).lerp(Color(0.76, 0.60, 0.38), rng.randf()), 0.95), "debris%d" % i,
+			Vector3(rng.randf_range(0, TAU), rng.randf_range(0, TAU), rng.randf_range(0, TAU)))
+		var rock = root.get_child(root.get_child_count() - 1)
+		rock.set_meta("base_pos", pos4)
+	# 外层扬尘
+	for i in 10:
+		var a5: float = rng.randf_range(0.0, TAU)
+		var r5: float = rng.randf_range(0.5, 1.1) * radius
+		_sphere(root, rng.randf_range(0.18, 0.36), Vector3(cos(a5) * r5, rng.randf_range(0.1, 0.5), sin(a5) * r5),
+			_mat(Color(0.54, 0.44, 0.32), 0.25, 0.3), "dust%d" % (i + 6))

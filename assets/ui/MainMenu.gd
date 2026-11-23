@@ -52,6 +52,8 @@ func _ready():
 	_font = load(ThemeHelper.DEFAULT_FONT_PATH)
 	set_process(true)
 	PlayerData.ensure_daily_shop_offers()
+	if AccountManager.is_supabase_authenticated():
+		call_deferred("_check_weekly_rank_rewards")
 	_build_ui()
 	_build_friend_module()
 	_build_notifier()
@@ -61,7 +63,10 @@ func _ready():
 	if PlayerData.chest_reveal_pending:
 		call_deferred("_play_chest_reveal")
 	# 开场动画「王冠登场」：可轻触跳过；开启时不抢先播 BGM，等标题出现再进音乐
-	if OS.has_environment("CR_SKIP_INTRO"):
+	if TutorialTour.active:
+		_intro_finished = true
+		_start_bgm()
+	elif OS.has_environment("CR_SKIP_INTRO"):
 		_start_bgm()
 		UiComponents.ensure_player_name(self)
 	else:
@@ -70,7 +75,65 @@ func _ready():
 		_intro_instance.finished.connect(_on_intro_finished, CONNECT_ONE_SHOT)
 		add_child(_intro_instance)
 		get_tree().create_timer(3.4).timeout.connect(_on_intro_failsafe)
+	call_deferred("_maybe_play_arena_intro")
+	call_deferred("_maybe_play_tutorial_guide")
 
+
+var _arena_intro_shown := false
+var _tutorial_guide_shown := false
+
+func _maybe_play_arena_intro() -> void:
+	if _arena_intro_shown or not is_inside_tree() or TutorialTour.active:
+		return
+	var idx: int = PlayerData.check_new_arena()
+	if idx <= 0:
+		return
+	_arena_intro_shown = true
+	# 等主菜单开场动画结束/被跳过再播，避免两个全屏动画重叠
+	if _intro_instance != null and not _intro_finished:
+		while is_inside_tree() and not _intro_finished:
+			await get_tree().create_timer(0.15).timeout
+		if not is_inside_tree():
+			return
+		await get_tree().create_timer(0.25).timeout
+	else:
+		await get_tree().create_timer(0.35).timeout
+	if not is_inside_tree():
+		return
+	var intro = (load("res://assets/ui/ArenaIntro.gd") as GDScript).new()
+	intro.setup(idx, PlayerData.get_arena_name_at(idx))
+	intro.finished.connect(func():
+		PlayerData.mark_arena_seen(idx))
+	add_child(intro)
+
+
+func _maybe_play_tutorial_guide() -> void:
+	if _tutorial_guide_shown or not is_inside_tree():
+		return
+	if OS.get_environment("CR_SKIP_TUTORIAL_GUIDE") != "":
+		return
+	if not PlayerData.tutorial_done:
+		return
+	var tour_active: bool = TutorialTour.active
+	if not tour_active and PlayerData.tutorial_guide_seen:
+		return
+	# 新竞技场动画优先；引导留到下一次回主菜单
+	if not tour_active and PlayerData.check_new_arena() > 0:
+		return
+	_tutorial_guide_shown = true
+	if _intro_instance != null and not _intro_finished:
+		while is_inside_tree() and not _intro_finished:
+			await get_tree().create_timer(0.15).timeout
+		if not is_inside_tree():
+			return
+		await get_tree().create_timer(0.30).timeout
+	else:
+		await get_tree().create_timer(0.45).timeout
+	if not is_inside_tree():
+		return
+	if PlayerData.tutorial_guide_seen:
+		return
+	add_child((load("res://assets/ui/TutorialGuide.gd") as GDScript).new())
 
 
 func _on_friend_invite(invite: Dictionary) -> void:
@@ -1092,7 +1155,7 @@ func _auto_tutorial():
 	# 先等名字弹窗结束，避免在场景/节点添加过程中切换场景
 	await get_tree().create_timer(0.4).timeout
 	var waited := 0.0
-	while not PlayerData.name_chosen and waited < 20.0:
+	while (not PlayerData.name_chosen or get_tree().get_nodes_in_group("avatar_setup_dialog").size() > 0) and waited < 20.0:
 		await get_tree().create_timer(0.3).timeout
 		waited += 0.3
 	LoadingScreen.change_scene("res://scenes/tutorial.tscn", "正在打开新手训练营…")

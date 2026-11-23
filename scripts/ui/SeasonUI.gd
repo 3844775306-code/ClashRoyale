@@ -165,8 +165,10 @@ func _claim_all():
 	var got: Array = PlayerData.claim_all_season_rewards()
 	if got.is_empty():
 		return
-	var spec := _season_spec(got[0]) if not got.is_empty() else {"kind": "gold", "amount": 0}
-	CLAIM_ANIM.play(self, "领取成功", "主题赛季奖励 ×%d" % got.size(), spec)
+	var specs: Array = []
+	for r in got:
+		specs.append(_season_spec(r))
+	CLAIM_ANIM.play_many(self, "领取成功", "主题赛季奖励 ×%d" % got.size(), specs)
 	await get_tree().create_timer(1.1).timeout
 	get_tree().reload_current_scene()
 

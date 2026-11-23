@@ -238,6 +238,10 @@ static func _special(n: String) -> Dictionary:
 			return _building({"height": 1.16, "scale_mul": 0.8, "kind": "tower_cannon", "body": Color(0.74, 0.70, 0.62), "roof": Color(0.44, 0.32, 0.40), "turret": true, "turret_y": 1.34, "turret_off_z": 0.55, "tower_w": 1.02})
 		"国王塔":
 			return _building({"height": 1.365, "scale_mul": 0.8, "kind": "tower_king", "roof": Color(0.50, 0.36, 0.22), "body": Color(0.72, 0.68, 0.60), "turret": true, "turret_y": 1.74, "turret_off_z": 0.62, "tower_w": 1.139})
+		"厨师塔":
+			return _building({"height": 1.16, "scale_mul": 0.8, "kind": "tower_chef", "body": Color(0.68, 0.38, 0.20), "roof": Color(0.94, 0.86, 0.70), "wood": Color(0.52, 0.30, 0.16), "tower_w": 1.02})
+		"飞刀塔":
+			return _building({"height": 1.16, "scale_mul": 0.8, "kind": "tower_knife", "body": Color(0.38, 0.40, 0.46), "roof": Color(0.24, 0.30, 0.38), "metal": Color(0.72, 0.76, 0.82), "tower_w": 1.02})
 		"加农炮战车":
 			return {"archetype": "cannon_cart", "height": 1.10, "fly": false}
 		"十字连弩":

@@ -264,6 +264,9 @@ func _show_rewards(rewards: Dictionary):
 	var scroll := ScrollContainer.new()
 	scroll.custom_minimum_size = Vector2(0, 500)
 	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	scroll.vertical_scroll_mode = ScrollContainer.SCROLL_MODE_AUTO
+	scroll.scroll_deadzone = 24
+	scroll.follow_focus = true
 	vb.add_child(scroll)
 	var grid := GridContainer.new()
 	grid.columns = 4

@@ -62,7 +62,32 @@ func current_score_member_id() -> String:
 			return sid
 	return current_member_id()
 
+func build_leaderboard_payload(score: int, player_name: String) -> Dictionary:
+	PlayerData.ensure_week()
+	var pid := current_score_member_id()
+	return {
+		"player_name": player_name,
+		"player_id": pid,
+		"scoped_id": pid,
+		"score": score,
+		"avatar_seed": int(PlayerData.avatar_seed),
+		"avatar_index": int(PlayerData.avatar_index),
+		"highest_trophies": int(PlayerData.highest_trophies),
+		"week_key": String(PlayerData.weekly_week),
+		"weekly_score": int(PlayerData.weekly_trophies),
+		"weekly_wins": int(PlayerData.weekly_wins),
+		"weekly_three_crowns": int(PlayerData.weekly_three_crowns),
+		"honor_title": String(PlayerData.honor_title),
+		"collection_level": int(PlayerData.get_collection_level()),
+		"mastery_count": int(PlayerData.get_mastery_card_count()),
+		"battle_wins": int(PlayerData.battle_wins),
+		"battle_total": int(PlayerData.battle_total()),
+		"clan": ClanManager.get_my_clan_name() if ClanManager.has_method("get_my_clan_name") else "",
+	}
+
+
 func submit_trophies(score: int, player_name: String):
+	PlayerData.ensure_week()
 	var scoped := ""
 	var am = get_node_or_null("/root/AccountManager")
 	if am and am.has_method("scoped_player_id"):
@@ -75,15 +100,10 @@ func submit_trophies(score: int, player_name: String):
 	if pid == "":
 		pid = player_name
 	if SupabaseAPI and SupabaseAPI.is_ready():
-		await SupabaseAPI.upsert("leader:" + pid, {
-			"player_name": player_name,
-			"player_id": pid,
-			"scoped_id": scoped,
-			"score": score,
-			"avatar_seed": int(PlayerData.avatar_seed),
-			"avatar_index": int(PlayerData.avatar_index),
-			"clan": "",
-		})
+		var payload := build_leaderboard_payload(score, player_name)
+		payload["player_id"] = pid
+		payload["scoped_id"] = scoped
+		await SupabaseAPI.upsert("leader:" + pid, payload)
 		return
 	var meta := {
 		"player_name": player_name,
@@ -124,6 +144,54 @@ func _decode_metadata(raw) -> Dictionary:
 	var parsed = JSON.parse_string(decoded)
 	return parsed if parsed is Dictionary else {}
 
+func claim_weekly_rewards() -> void:
+	if not AccountManager.is_supabase_authenticated():
+		return
+	var d := Time.get_datetime_dict_from_system()
+	var wd := int(d.get("weekday", 0))
+	if wd != 0 and wd != 6:
+		return
+	PlayerData.ensure_week()
+	var wk := PlayerData.current_week_key()
+	if PlayerData.weekly_reward_week == wk:
+		return
+	var rows: Array = await SupabaseAPI.list_prefix("leader:", 500)
+	var list: Array = []
+	for row in rows:
+		if not (row is Dictionary) or not (row.get("value") is Dictionary):
+			continue
+		var v: Dictionary = row.value
+		if String(v.get("week_key", "")) != wk:
+			continue
+		list.append(v)
+	list.sort_custom(func(a, b): return int(a.get("weekly_score", 0)) > int(b.get("weekly_score", 0)))
+	if list.is_empty():
+		return
+	var my_pid := str(ClanManager.get_player_id())
+	var my_name := PlayerData.player_name
+	var rank := -1
+	for i in range(list.size()):
+		var v: Dictionary = list[i]
+		if String(v.get("scoped_id", "")) == my_pid or String(v.get("player_id", "")) == my_pid or String(v.get("player_name", "")) == my_name:
+			rank = i
+			break
+	PlayerData.weekly_reward_week = wk
+	if rank < 0 or rank > 2:
+		PlayerData.save_data()
+		return
+	var wl := PlayerData.current_week_label()
+	var titles := ["冠军", "亚军", "季军"]
+	var rewards := [
+		{"gold": 2000, "gems": 100},
+		{"gold": 1200, "gems": 60},
+		{"gold": 800, "gems": 30},
+	]
+	PlayerData.honor_title = "%s · %s" % [wl, titles[rank]]
+	PlayerData.add_mail("周排行榜奖励", "恭喜获得 %s 周榜%s（第 %d 名）！\n荣誉称号已显示在你的个人简介中。" % [wl, titles[rank], rank + 1], rewards[rank], "排行榜", "weekly", {"week": wk})
+	PlayerData.save_data()
+	ProfileAPI.publish_self()
+
+
 func get_leaderboard(callback: Callable):
 	last_error = ""
 	if SupabaseAPI and SupabaseAPI.is_ready():
@@ -142,6 +210,16 @@ func get_leaderboard(callback: Callable):
 				"avatar_index": int(v.get("avatar_index", 0)),
 				"clan": String(v.get("clan", "")),
 				"scoped_id": String(v.get("scoped_id", "")),
+				"highest_trophies": int(v.get("highest_trophies", v.get("score", 0))),
+				"week_key": String(v.get("week_key", "")),
+				"weekly_score": int(v.get("weekly_score", 0)),
+				"weekly_wins": int(v.get("weekly_wins", 0)),
+				"weekly_three_crowns": int(v.get("weekly_three_crowns", 0)),
+				"honor_title": String(v.get("honor_title", "")),
+				"collection_level": int(v.get("collection_level", 1)),
+				"mastery_count": int(v.get("mastery_count", 0)),
+				"battle_wins": int(v.get("battle_wins", 0)),
+				"battle_total": int(v.get("battle_total", 0)),
 			})
 		sb_entries.sort_custom(func(a, b): return int(a.score) > int(b.score))
 		for i in range(sb_entries.size()):

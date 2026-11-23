@@ -22,6 +22,7 @@ const HOST_ID := 1
 
 var active := false
 var is_host := false
+var is_spectator := false
 var room_code := ""
 var local_id := 0
 var sessions: Dictionary = {}
@@ -227,13 +228,18 @@ func host_room() -> bool:
 	return true
 
 
-func join_room(code: String) -> bool:
+func join_room_as_spectator(code: String) -> bool:
+	return await join_room(code, true)
+
+
+func join_room(code: String, as_spectator: bool = false) -> bool:
 	_reset_local()
 	if not SupabaseAPI.is_ready():
 		failed.emit("请先登录 Supabase 账号")
 		return false
 	await _ensure_turn()
 	is_host = false
+	is_spectator = as_spectator
 	room_code = code.strip_edges()
 	if room_code == "":
 		return false
@@ -253,7 +259,8 @@ func join_room(code: String) -> bool:
 		if parts.size() >= 3:
 			used.append(int(parts[2]))
 	var slot := 0
-	for cand in [2, 3, 4]:
+	var slots: Array = [5, 6, 7, 8] if as_spectator else [2, 3, 4]
+	for cand in slots:
 		if not used.has(cand):
 			slot = cand
 			break
@@ -265,7 +272,8 @@ func join_room(code: String) -> bool:
 	local_id = slot
 	await SupabaseAPI.upsert(CLAIM_PREFIX + room_code + ":" + str(slot), {
 		"guest_id": String(AccountManager.account_id), "guest_name": PlayerData.player_name,
-		"slot": slot, "created": int(Time.get_unix_time_from_system()),
+		"slot": slot, "role": "spectator" if as_spectator else "player",
+		"created": int(Time.get_unix_time_from_system()),
 	})
 	var offer := ""
 	for _i in range(16):
@@ -449,6 +457,7 @@ func _reset_local() -> void:
 		if s.get("pc"): s.pc.close()
 	sessions.clear()
 	_guest_slot = 0
+	is_spectator = false
 	_ice_seen.clear()
 	_ice_seq = 0
 	_poll_acc = 0.0

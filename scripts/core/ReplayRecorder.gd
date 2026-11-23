@@ -178,7 +178,9 @@ func build_snapshot() -> Dictionary:
 			"hp": float(u.health),
 			"max_hp": float(u.max_health),
 			"type": int(u.config.type),
-			"king_duo": bool(u.king_duo)
+			"king_duo": bool(u.king_duo),
+			"chef_progress": float(u.chef_progress),
+			"knife_count": int(u.knife_count),
 		}
 		if u.visual_root:
 			entry["rot"] = [float(u.visual_root.rotation.x), float(u.visual_root.rotation.y), float(u.visual_root.rotation.z)]

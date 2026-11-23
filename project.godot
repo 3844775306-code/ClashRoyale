@@ -29,17 +29,23 @@ GameSettings="*res://scripts/core/GameSettings.gd"
 PlayerData="*res://scripts/data/PlayerData.gd"
 ThemeHelper="*res://assets/ui/ThemeHelper.gd"
 UiComponents="*res://assets/ui/UiComponents.gd"
+CurrencyFX="*res://scripts/ui/CurrencyFX.gd"
 LootLockerSDK="*res://addons/LootLockerSDK/LootLockerSDK_Autoload.gd"
 LeaderboardAPI="*res://scripts/core/LeaderboardAPI.gd"
 AccountManager="*res://scripts/core/AccountManager.gd"
 SupabaseAPI="*res://scripts/core/SupabaseAPI.gd"
 ClanManager="*res://scripts/core/ClanManager.gd"
 PresenceManager="*res://scripts/core/PresenceManager.gd"
+ProfileAPI="*res://scripts/core/ProfileAPI.gd"
+CloudAvatar="*res://scripts/core/CloudAvatar.gd"
+AnnouncementManager="*res://scripts/core/AnnouncementManager.gd"
 WebRTCNet="*res://scripts/net/WebRTCNet.gd"
 NetworkManager="*res://scripts/net/NetworkManager.gd"
 FriendManager="*res://scripts/core/FriendManager.gd"
 LoadingScreen="*res://scripts/core/LoadingScreen.gd"
+TutorialTour="*res://scripts/core/TutorialTour.gd"
 WebTextCompat="*res://scripts/core/WebTextCompat.gd"
+PhoneNotification="*res://scripts/core/PhoneNotification.gd"
 
 [display]
 
@@ -47,7 +53,7 @@ window/size/viewport_width=800
 window/size/viewport_height=1600
 window/size/mode=1
 window/stretch/mode="canvas_items"
-window/stretch/aspect="keep"
+window/stretch/aspect="expand"
 window/handheld/orientation=1
 
 [editor_plugins]

@@ -5,6 +5,10 @@ const URL := "https://oewvixujojsbqwxfnkfk.supabase.co"
 const KEY := "sb_publishable_ppeyEdIwDfUDkcrmTFBVjQ_6P8i64F3"
 const TABLE := "cr_data"
 
+
+func _ready() -> void:
+	process_mode = Node.PROCESS_MODE_ALWAYS
+
 func _token() -> String:
 	var am = get_node_or_null("/root/AccountManager")
 	if am and am.has_method("supabase_token"):
@@ -71,7 +75,42 @@ window.crSupabaseFetch = function(method,url,token,body,extra,cb) {
 	return [HTTPRequest.RESULT_SUCCESS if int(state["status"]) else HTTPRequest.RESULT_CANT_CONNECT,
 		int(state["status"]), PackedStringArray(), text.to_utf8_buffer()]
 
+var _auth_refreshing := false
+var _active_requests := 0
+const MAX_CONCURRENT := 4
+
+
 func _request(method: int, path: String, body: Dictionary = {}, extra: Array = []) -> Array:
+	var res: Array = await _request_limited(method, path, body, extra)
+	# 网络短时断连/5xx：退避重试，避免排行榜、部落、观战信令一起瞬间清空
+	for attempt in range(2):
+		var code := int(res[1])
+		if code != 0 and code < 500:
+			break
+		await get_tree().create_timer(0.35 + attempt * 0.45).timeout
+		res = await _request_limited(method, path, body, extra)
+	if int(res[1]) == 401:
+		if not _auth_refreshing:
+			_auth_refreshing = true
+			var am = get_node_or_null("/root/AccountManager")
+			if am and am.has_method("refresh_supabase_session"):
+				await am.refresh_supabase_session()
+			_auth_refreshing = false
+		if _token() != "":
+			res = await _request_limited(method, path, body, extra)
+	return res
+
+
+func _request_limited(method: int, path: String, body: Dictionary, extra: Array) -> Array:
+	while _active_requests >= MAX_CONCURRENT:
+		await get_tree().process_frame
+	_active_requests += 1
+	var res: Array = await _request_once(method, path, body, extra)
+	_active_requests -= 1
+	return res
+
+
+func _request_once(method: int, path: String, body: Dictionary = {}, extra: Array = []) -> Array:
 	if OS.has_feature("web"):
 		return await _web_request(method, path, body, extra)
 	var http := HTTPRequest.new()
@@ -99,16 +138,21 @@ func list_prefix(prefix: String, limit: int = 500) -> Array:
 	var data = _parse(res)
 	return data if data is Array else []
 
-func get_value(key: String) -> Dictionary:
+func get_value_status(key: String) -> Dictionary:
 	var res: Array = await _request(HTTPClient.METHOD_GET,
 		"/rest/v1/%s?key=eq.%s&select=value" % [TABLE, key])
 	if int(res[1]) < 200 or int(res[1]) >= 300:
-		return {}
+		return {"ok": false, "value": {}}
 	var data = _parse(res)
 	if data is Array and data.size() > 0 and data[0] is Dictionary:
 		var v = data[0].get("value", {})
-		return v if v is Dictionary else {}
-	return {}
+		return {"ok": true, "value": v if v is Dictionary else {}}
+	return {"ok": true, "value": {}}
+
+
+func get_value(key: String) -> Dictionary:
+	var r := await get_value_status(key)
+	return Dictionary(r.get("value", {}))
 
 func edge_function(name: String, body: Dictionary = {}) -> Dictionary:
 	var res: Array = await _request(HTTPClient.METHOD_POST, "/functions/v1/" + name, body)

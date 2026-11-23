@@ -2,7 +2,10 @@ extends Control
 
 const TILE = preload("res://scripts/ui/DeckCardTile.gd")
 const DETAIL = preload("res://scripts/ui/CardDetailDialog.gd")
+const TVIEW = preload("res://scripts/visuals/CardVisualCatalog.gd")
+const TUMK = preload("res://scripts/visuals/UnitModelKit.gd")
 const CARD_RARITY = preload("res://scripts/data/CardRarity.gd")
+const TOWER_CATALOG = preload("res://scripts/data/TowerCatalog.gd")
 
 const CLASSIC_DECKS := {
 	"速弩": [55, 21, 4, 44, 11, 91, 20, 119],
@@ -46,7 +49,16 @@ var _sort_mode: String = "level"
 var _sort_menu: PopupMenu
 var _filter_buttons: Dictionary = {}
 var _upgrade_overlay: Control = null
+var _wild_confirm_overlay: Control = null
 var _tower_btns: Array = []
+var _tower_preview_choice: int = 1
+var _tower_tabs: Array = []
+var _tower_sub: SubViewport
+var _tower_model_root: Node3D
+var _tower_select_btn: Button
+var _tower_special_lbl: Label
+var _tower_stat_grid: GridContainer
+var _tower_model_frame: Control
 var _data_stamp: String = ""
 
 func _ready():
@@ -68,7 +80,7 @@ func _ready():
 		_idx = clampi(PlayerData.active_deck_index, 0, 4)
 	_slots = _pad_deck(_decks[_idx])
 	_sort_mode = String(PlayerData.deck_sort_mode)
-	if _sort_mode not in ["level", "rarity", "default"]:
+	if _sort_mode not in ["level", "rarity", "arena", "default"]:
 		_sort_mode = "level"
 	_build_ui()
 	_apply_sort()
@@ -84,6 +96,11 @@ func _notification(what):
 	if what == NOTIFICATION_APPLICATION_FOCUS_IN and is_inside_tree() and _data_stamp != "":
 		if _csv_stamp() != _data_stamp:
 			get_tree().reload_current_scene()
+
+func _process(delta: float) -> void:
+	if _tower_model_root:
+		_tower_model_root.rotation.y += delta * 0.35
+
 
 func _apply_text_theme() -> void:
 	var th := Theme.new()
@@ -153,22 +170,6 @@ func _build_ui():
 	mode_lbl.add_theme_font_size_override("font_size", 16)
 	mode_lbl.add_theme_color_override("font_color", Color(1.0, 0.72, 0.35) if PlayerData.test_mode else ThemeHelper.COLORS.text_muted)
 	top.add_child(mode_lbl)
-	var tlabel := Label.new()
-	tlabel.text = "皇家塔"
-	tlabel.add_theme_font_size_override("font_size", 14)
-	tlabel.add_theme_color_override("font_color", Color(0.86, 0.78, 0.58))
-	top.add_child(tlabel)
-	_tower_btns.clear()
-	for choice in [1, 2]:
-		var tb := Button.new()
-		tb.text = "👸 公主" if choice == 1 else "🤴 王子"
-		tb.custom_minimum_size = Vector2(84, 38)
-		tb.add_theme_font_size_override("font_size", 13)
-		_color_btn(tb, Color(0.90, 0.68, 0.24) if PlayerData.tower_choice == choice else Color(0.40, 0.52, 0.72))
-		var c: int = choice
-		tb.pressed.connect(func(): _on_tower_choice(c))
-		top.add_child(tb)
-		_tower_btns.append(tb)
 	var spacer := Control.new()
 	spacer.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	top.add_child(spacer)
@@ -192,6 +193,14 @@ func _build_ui():
 		b.pressed.connect(_on_tab_pressed.bind(i))
 		tabs.add_child(b)
 		_tab_buttons.append(b)
+	var anim_btn := Button.new()
+	anim_btn.text = "🎬 配置动画"
+	anim_btn.focus_mode = Control.FOCUS_NONE
+	anim_btn.custom_minimum_size = Vector2(132, 50)
+	anim_btn.add_theme_font_size_override("font_size", 13)
+	_color_btn(anim_btn, Color(0.66, 0.46, 0.94))
+	anim_btn.pressed.connect(_open_animation_studio)
+	tabs.add_child(anim_btn)
 
 	# 卡桌
 	var table_panel := Panel.new()
@@ -244,6 +253,8 @@ func _build_ui():
 	_avg.add_theme_color_override("font_color", Color(0.88, 0.76, 1.0))
 	avg_box.add_child(_avg)
 
+	_build_tower_section()
+
 	# 工具栏
 	var tools := HBoxContainer.new()
 	tools.position = Vector2(30, 720)
@@ -262,6 +273,7 @@ func _build_ui():
 	_sort_menu.add_item("默认顺序", 0)
 	_sort_menu.add_item("等级（高→低）", 1)
 	_sort_menu.add_item("稀有度（高→低）", 2)
+	_sort_menu.add_item("竞技场（低→高）", 3)
 	_sort_menu.id_pressed.connect(_on_sort_selected)
 	_classic_menu = PopupMenu.new()
 	add_child(_classic_menu)
@@ -297,18 +309,33 @@ func _build_ui():
 		_filter_buttons[String(item[0])] = cb
 
 	_pool_count = Label.new()
-	_pool_count.position = Vector2(30, 816)
-	_pool_count.size = Vector2(300, 20)
+	# 锚定在底部卡池上方：手机长屏拉伸时不会与卡牌栏拉开固定距离
+	_pool_count.anchor_left = 0.0
+	_pool_count.anchor_right = 0.0
+	_pool_count.anchor_top = 1.0
+	_pool_count.anchor_bottom = 1.0
+	_pool_count.offset_left = 30
+	_pool_count.offset_right = 330
+	_pool_count.offset_top = -556
+	_pool_count.offset_bottom = -536
 	_pool_count.add_theme_font_size_override("font_size", 14)
 	_pool_count.add_theme_color_override("font_color", ThemeHelper.COLORS.text_muted)
 	add_child(_pool_count)
 
 	# 卡池
 	var scroll := ScrollContainer.new()
-	scroll.position = Vector2(30, 838)
-	scroll.size = Vector2(740, 708)
+	scroll.anchor_left = 0.0
+	scroll.anchor_right = 1.0
+	scroll.anchor_top = 1.0
+	scroll.anchor_bottom = 1.0
+	scroll.offset_left = 30
+	scroll.offset_right = -30
+	scroll.offset_top = -532
+	scroll.offset_bottom = -54
 	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
 	scroll.vertical_scroll_mode = ScrollContainer.SCROLL_MODE_SHOW_ALWAYS
+	scroll.scroll_deadzone = 24
+	scroll.follow_focus = true
 	add_child(scroll)
 	scroll.get_v_scroll_bar().value_changed.connect(func(_v): _close_actions())
 	_pool_box = VBoxContainer.new()
@@ -601,8 +628,10 @@ func _upgrade_action_btn(cid: int) -> Button:
 	coin.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	hb.add_child(coin)
 	b.add_child(hb)
-	b.tooltip_text = "需要 %d 张卡（拥有 %d）" % [need_cards, own_cards]
-	b.disabled = PlayerData.gold < cost_gold or own_cards < need_cards
+	var wild_have: int = PlayerData.get_wildcard_for_card(cid)
+	var missing: int = maxi(0, need_cards - own_cards)
+	b.tooltip_text = "需要 %d 张卡（拥有 %d，万能卡 %d）" % [need_cards, own_cards, wild_have]
+	b.disabled = PlayerData.gold < cost_gold or (own_cards < need_cards and wild_have < missing)
 	b.pressed.connect(func(): _close_actions(); _on_upgrade(cid))
 	return b
 
@@ -648,6 +677,26 @@ func _on_deck_remove(cid: int):
 
 func _on_upgrade(cid: int):
 	var old_lv: int = PlayerData.get_card_level(cid)
+	var need: int = PlayerData.calculate_upgrade_cards_needed(cid, old_lv)
+	var own: int = PlayerData.get_card_quantity(cid)
+	var missing: int = maxi(0, need - own)
+	var wild_have: int = PlayerData.get_wildcard_for_card(cid)
+	var cost_gold: int = PlayerData.calculate_upgrade_gold(cid, old_lv)
+	if missing > 0:
+		if wild_have < missing:
+			_set_status("万能卡不足，无法补足升级所需卡牌")
+			return
+		# 需要消耗万能卡时必须先弹确认窗口
+		_show_wildcard_confirm(cid, old_lv, need, own, missing, wild_have, cost_gold)
+		return
+	_do_upgrade(cid, 0)
+
+
+func _do_upgrade(cid: int, wild_use: int):
+	var old_lv: int = PlayerData.get_card_level(cid)
+	if wild_use > 0 and not PlayerData.use_wildcard_on_card(cid, wild_use):
+		_set_status("万能卡不足，升级取消")
+		return
 	if PlayerData.upgrade_card(cid):
 		var new_lv: int = PlayerData.get_card_level(cid)
 		_set_status("升级成功！Lv.%d → Lv.%d" % [old_lv, new_lv])
@@ -660,6 +709,78 @@ func _on_upgrade(cid: int):
 		_show_upgrade_animation(cid, old_lv, new_lv)
 	else:
 		_set_status("升级失败：金币或卡牌不足")
+
+
+func _show_wildcard_confirm(cid: int, level: int, need: int, own: int, missing: int, wild_have: int, cost_gold: int):
+	if _wild_confirm_overlay and is_instance_valid(_wild_confirm_overlay):
+		_wild_confirm_overlay.queue_free()
+	var overlay := Control.new()
+	overlay.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	overlay.mouse_filter = Control.MOUSE_FILTER_STOP
+	overlay.z_index = 1100
+	add_child(overlay)
+	_wild_confirm_overlay = overlay
+	var dim := ColorRect.new()
+	dim.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	dim.color = Color(0, 0, 0, 0.70)
+	overlay.add_child(dim)
+	var panel := Panel.new()
+	panel.anchor_left = 0.5
+	panel.anchor_right = 0.5
+	panel.anchor_top = 0.5
+	panel.anchor_bottom = 0.5
+	panel.offset_left = -330
+	panel.offset_right = 330
+	panel.offset_top = -280
+	panel.offset_bottom = 280
+	var sb := StyleBoxFlat.new()
+	sb.bg_color = Color(0.055, 0.075, 0.14, 0.99)
+	sb.border_color = Color(0.72, 0.52, 0.98)
+	sb.set_border_width_all(3)
+	sb.set_corner_radius_all(20)
+	sb.shadow_color = Color(0.55, 0.30, 0.95, 0.4)
+	sb.shadow_size = 18
+	panel.add_theme_stylebox_override("panel", sb)
+	overlay.add_child(panel)
+	var v := VBoxContainer.new()
+	v.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	v.offset_left = 24; v.offset_right = -24; v.offset_top = 24; v.offset_bottom = -24
+	v.add_theme_constant_override("separation", 12)
+	panel.add_child(v)
+	var title := Label.new()
+	title.text = "使用万能卡升级"
+	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	title.add_theme_font_size_override("font_size", 30)
+	title.add_theme_color_override("font_color", Color(0.86, 0.74, 1.0))
+	v.add_child(title)
+	var cfg: CardData = _cfgs.get(cid, null)
+	var card_name := String(cfg.card_name) if cfg else "卡牌"
+	var desc := Label.new()
+	desc.text = "%s  Lv.%d → Lv.%d\n普通/稀有/史诗/传奇万能卡按同稀有度消耗" % [card_name, level, level + 1]
+	desc.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	desc.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	desc.add_theme_font_size_override("font_size", 18)
+	desc.add_theme_color_override("font_color", Color(0.82, 0.88, 1.0))
+	v.add_child(desc)
+	var info := Label.new()
+	var remaining := wild_have - missing
+	info.text = "万能卡库存：%d 张\n本次消耗：%d 张\n升级后剩余：%d 张\n金币消耗：%d（持有 %d）\n卡牌：%d/%d" % [
+		wild_have, missing, remaining, cost_gold, PlayerData.gold, own, need]
+	info.add_theme_font_size_override("font_size", 20)
+	info.add_theme_color_override("font_color", Color(1.0, 0.84, 0.48))
+	v.add_child(info)
+	var btns := HBoxContainer.new()
+	btns.add_theme_constant_override("separation", 16)
+	btns.alignment = BoxContainer.ALIGNMENT_CENTER
+	v.add_child(btns)
+	var cancel := UiComponents.make_secondary_button("取消", func(): overlay.queue_free(), Vector2(0, 54))
+	cancel.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	btns.add_child(cancel)
+	var confirm := UiComponents.make_primary_button("确认升级", func():
+		overlay.queue_free()
+		_do_upgrade(cid, missing), Vector2(0, 54))
+	confirm.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	btns.add_child(confirm)
 
 func _show_upgrade_animation(cid: int, old_lv: int, new_lv: int):
 	if _upgrade_overlay and is_instance_valid(_upgrade_overlay):
@@ -908,7 +1029,7 @@ func _on_sort_popup():
 	_sort_menu.popup()
 
 func _on_sort_selected(id: int):
-	_sort_mode = "default" if id == 0 else ("level" if id == 1 else "rarity")
+	_sort_mode = "default" if id == 0 else ("level" if id == 1 else ("rarity" if id == 2 else "arena"))
 	PlayerData.deck_sort_mode = _sort_mode
 	PlayerData.save_data()
 	_apply_sort()
@@ -938,6 +1059,14 @@ func _apply_sort():
 			if ra == rb:
 				return a.card_id < b.card_id
 			return ra > rb
+		)
+	elif _sort_mode == "arena":
+		order.sort_custom(func(a, b):
+			var aa: int = CARD_RARITY.arena_unlock_by_id(a.card_id)
+			var ab: int = CARD_RARITY.arena_unlock_by_id(b.card_id)
+			if aa == ab:
+				return a.card_id < b.card_id
+			return aa < ab
 		)
 	var owned_order: Array = []
 	var locked_order: Array = []
@@ -981,12 +1110,171 @@ func _on_classic_selected(id: int):
 	_set_status("已载入经典卡组：%s" % String(names[id]))
 
 func _on_tower_choice(choice: int):
-	PlayerData.tower_choice = clampi(choice, 1, 2)
+	PlayerData.tower_choice = clampi(choice, 1, 4)
 	PlayerData.save_data()
-	for i in range(_tower_btns.size()):
-		var b: Button = _tower_btns[i]
-		_color_btn(b, Color(0.90, 0.68, 0.24) if i + 1 == PlayerData.tower_choice else Color(0.40, 0.52, 0.72))
-	_set_status("皇家塔已切换为%s" % ("公主塔" if PlayerData.tower_choice == 1 else "王子塔"))
+	_tower_preview_choice = PlayerData.tower_choice
+	_preview_tower(_tower_preview_choice)
+	_set_status("皇家塔已切换为%s" % TOWER_CATALOG.tower_name(PlayerData.tower_choice))
+
+
+func _build_tower_section() -> void:
+	var panel := Panel.new()
+	panel.position = Vector2(30, 820)
+	panel.size = Vector2(740, 220)
+	var sb := StyleBoxFlat.new()
+	sb.bg_color = Color(0.045, 0.055, 0.10, 0.97)
+	sb.border_color = Color(0.62, 0.48, 0.22)
+	sb.set_border_width_all(2)
+	sb.set_corner_radius_all(16)
+	panel.add_theme_stylebox_override("panel", sb)
+	add_child(panel)
+	var title := Label.new()
+	title.text = "皇家塔"
+	title.position = Vector2(16, 8)
+	title.add_theme_font_size_override("font_size", 22)
+	title.add_theme_color_override("font_color", Color(1.0, 0.86, 0.45))
+	panel.add_child(title)
+	var sub := Label.new()
+	sub.text = "选择出战皇家塔（4 种）"
+	sub.position = Vector2(16, 36)
+	sub.size = Vector2(230, 22)
+	sub.add_theme_font_size_override("font_size", 12)
+	sub.add_theme_color_override("font_color", Color(0.66, 0.72, 0.84))
+	panel.add_child(sub)
+	var tabs := HBoxContainer.new()
+	tabs.position = Vector2(250, 8)
+	tabs.size = Vector2(472, 36)
+	tabs.add_theme_constant_override("separation", 5)
+	panel.add_child(tabs)
+	for choice in [1, 2, 3, 4]:
+		var b := Button.new()
+		b.text = TOWER_CATALOG.tower_name(choice)
+		b.custom_minimum_size = Vector2(0, 34)
+		b.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		b.add_theme_font_size_override("font_size", 13)
+		b.focus_mode = Control.FOCUS_NONE
+		_color_btn(b, Color(0.40, 0.52, 0.72))
+		var c: int = choice
+		b.pressed.connect(func(): _preview_tower(c))
+		tabs.add_child(b)
+		_tower_tabs.append(b)
+	_tower_model_frame = Panel.new()
+	_tower_model_frame.position = Vector2(12, 60)
+	_tower_model_frame.size = Vector2(210, 148)
+	var msb := StyleBoxFlat.new()
+	msb.bg_color = Color(0.015, 0.025, 0.06, 0.98)
+	msb.set_corner_radius_all(12)
+	msb.set_border_width_all(1)
+	msb.border_color = Color(1, 1, 1, 0.10)
+	_tower_model_frame.add_theme_stylebox_override("panel", msb)
+	panel.add_child(_tower_model_frame)
+	var svc := SubViewportContainer.new()
+	svc.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	svc.stretch = true
+	_tower_model_frame.add_child(svc)
+	_tower_sub = SubViewport.new()
+	_tower_sub.size = Vector2i(210, 148)
+	_tower_sub.transparent_bg = true
+	_tower_sub.own_world_3d = true
+	_tower_sub.render_target_update_mode = SubViewport.UPDATE_ALWAYS
+	svc.add_child(_tower_sub)
+	_tower_model_root = Node3D.new()
+	_tower_sub.add_child(_tower_model_root)
+	var cam := Camera3D.new()
+	cam.current = true
+	cam.position = Vector3(0, 2.3, 4.2)
+	cam.fov = 35.0
+	_tower_sub.add_child(cam)
+	cam.look_at(Vector3(0, 0.75, 0), Vector3.UP)
+	var light := DirectionalLight3D.new()
+	light.rotation_degrees = Vector3(-45, 35, 0)
+	light.light_energy = 1.2
+	_tower_sub.add_child(light)
+	var we := WorldEnvironment.new()
+	var env := Environment.new()
+	env.background_mode = Environment.BG_CLEAR_COLOR
+	env.background_color = Color(0, 0, 0, 0)
+	env.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR
+	env.ambient_light_color = Color(0.82, 0.84, 0.94)
+	env.ambient_light_energy = 0.7
+	we.environment = env
+	_tower_sub.add_child(we)
+
+	_tower_stat_grid = GridContainer.new()
+	_tower_stat_grid.position = Vector2(234, 58)
+	_tower_stat_grid.size = Vector2(290, 94)
+	_tower_stat_grid.columns = 2
+	_tower_stat_grid.add_theme_constant_override("h_separation", 5)
+	_tower_stat_grid.add_theme_constant_override("v_separation", 5)
+	panel.add_child(_tower_stat_grid)
+	_tower_special_lbl = Label.new()
+	_tower_special_lbl.position = Vector2(234, 156)
+	_tower_special_lbl.size = Vector2(292, 52)
+	_tower_special_lbl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	_tower_special_lbl.add_theme_font_size_override("font_size", 12)
+	_tower_special_lbl.add_theme_color_override("font_color", Color(0.72, 0.80, 0.94))
+	panel.add_child(_tower_special_lbl)
+	_tower_select_btn = Button.new()
+	_tower_select_btn.position = Vector2(534, 166)
+	_tower_select_btn.size = Vector2(188, 42)
+	_tower_select_btn.add_theme_font_size_override("font_size", 15)
+	_tower_select_btn.focus_mode = Control.FOCUS_NONE
+	_tower_select_btn.pressed.connect(func(): _on_tower_choice(_tower_preview_choice))
+	panel.add_child(_tower_select_btn)
+	_tower_preview_choice = PlayerData.tower_choice if TOWER_CATALOG.has_choice(PlayerData.tower_choice) else 1
+	_preview_tower(_tower_preview_choice)
+
+
+func _preview_tower(choice: int) -> void:
+	_tower_preview_choice = choice
+	var data: Dictionary = TOWER_CATALOG.get_tower(choice)
+	for i in range(_tower_tabs.size()):
+		var b: Button = _tower_tabs[i]
+		_color_btn(b, Color(0.90, 0.68, 0.24) if i + 1 == choice else Color(0.40, 0.52, 0.72))
+	# model
+	for c in _tower_model_root.get_children():
+		c.queue_free()
+	var model_cfg = TOWER_CATALOG.get_tower(choice)
+	var spec: Dictionary = TVIEW.spec_for(String(data.name), Config.Team.PLAYER, float(data.range))
+	var model: Node3D = TUMK.create_unit(spec)
+	_tower_model_root.add_child(model)
+	# stats
+	for c in _tower_stat_grid.get_children():
+		c.queue_free()
+	_tower_stat_grid.add_child(_tower_stat("生命", int(data.hp), Color(0.95, 0.55, 0.55)))
+	_tower_stat_grid.add_child(_tower_stat("伤害", int(data.damage), Color(1.0, 0.72, 0.38)))
+	_tower_stat_grid.add_child(_tower_stat("攻速", "%.1f/秒" % (1000.0 / maxf(1.0, float(data.attack_speed))), Color(0.65, 0.82, 1.0)))
+	_tower_stat_grid.add_child(_tower_stat("射程", "%.1f" % float(data.range), Color(0.76, 0.70, 1.0)))
+	_tower_special_lbl.text = "%s
+%s" % [String(data.desc), "特殊：%s" % String(data.special)]
+	var selected: bool = choice == int(PlayerData.tower_choice)
+	_tower_select_btn.text = "已选择" if selected else "选择 %s" % String(data.name)
+	_tower_select_btn.disabled = selected
+	_color_btn(_tower_select_btn, Color(0.90, 0.68, 0.24) if not selected else Color(0.32, 0.38, 0.48))
+
+
+func _tower_stat(label: String, value, color: Color) -> PanelContainer:
+	var p := PanelContainer.new()
+	var sb := StyleBoxFlat.new()
+	sb.bg_color = Color(0.07, 0.09, 0.16, 0.95)
+	sb.set_corner_radius_all(8)
+	sb.set_border_width_all(1)
+	sb.border_color = Color(color.r, color.g, color.b, 0.30)
+	p.add_theme_stylebox_override("panel", sb)
+	var v := VBoxContainer.new()
+	v.add_theme_constant_override("separation", 0)
+	p.add_child(v)
+	var n := Label.new()
+	n.text = label
+	n.add_theme_font_size_override("font_size", 11)
+	n.add_theme_color_override("font_color", Color(0.66, 0.72, 0.84))
+	v.add_child(n)
+	var val := Label.new()
+	val.text = str(value)
+	val.add_theme_font_size_override("font_size", 20)
+	val.add_theme_color_override("font_color", color)
+	v.add_child(val)
+	return p
 
 func _on_save():
 	if _party_edit:
@@ -996,7 +1284,7 @@ func _on_save():
 				saved.append(int(cid))
 		PlayerData.party_deck = saved
 		PlayerData.save_data()
-		get_tree().change_scene_to_file("res://scenes/party_select.tscn")
+		LoadingScreen.change_scene("res://scenes/party_select.tscn", "正在返回派对…")
 		return
 	_decks[_idx] = _slots.duplicate()
 	PlayerData.custom_decks = _decks.duplicate(true)
@@ -1006,6 +1294,11 @@ func _on_save():
 	_update_top_info()
 	_set_status("已保存卡组 %d（%s）" % [_idx + 1, "使用配置卡组" if PlayerData.use_custom_deck else "随机卡组"])
 
+func _open_animation_studio() -> void:
+	_on_save()
+	LoadingScreen.change_scene("res://scenes/card_animation_studio.tscn", "正在进入动画配置…")
+
+
 func _on_back():
 	if _party_edit:
 		var saved: Array = []
@@ -1014,7 +1307,7 @@ func _on_back():
 				saved.append(int(cid))
 		PlayerData.party_deck = saved
 		PlayerData.save_data()
-		get_tree().change_scene_to_file("res://scenes/party_select.tscn")
+		LoadingScreen.change_scene("res://scenes/party_select.tscn", "正在返回派对…")
 		return
 	_decks[_idx] = _slots.duplicate()
 	PlayerData.custom_decks = _decks.duplicate(true)

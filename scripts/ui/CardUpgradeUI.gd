@@ -68,6 +68,9 @@ func _make_upgrade_row(cfg) -> Panel:
 	var own: int = PlayerData.get_card_quantity(card_id)
 	var need: int = PlayerData.calculate_upgrade_cards_needed(card_id, level)
 	var cost_gold: int = PlayerData.calculate_upgrade_gold(card_id, level)
+	var wild_have: int = PlayerData.get_wildcard_for_card(card_id)
+	var missing: int = maxi(0, need - own)
+	var wild_cover: int = mini(wild_have, missing)
 	var at_max := level >= MAX_LEVEL
 
 	var row := UiComponents.make_list_row(ThemeHelper.cost_rarity(cfg.cost), 96)
@@ -113,7 +116,7 @@ func _make_upgrade_row(cfg) -> Panel:
 	ThemeHelper.apply_progress_gold(bar)
 	progress_row.add_child(bar)
 	var count_lbl := Label.new()
-	count_lbl.text = "%d/%d" % [own, need] if not at_max else "MAX"
+	count_lbl.text = ("%d/%d  ·  🃏%d" % [own, need, wild_have]) if not at_max else "MAX"
 	count_lbl.add_theme_font_size_override("font_size", 12)
 	count_lbl.add_theme_color_override("font_color", ThemeHelper.COLORS.text_muted)
 	count_lbl.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
@@ -135,7 +138,8 @@ func _make_upgrade_row(cfg) -> Panel:
 
 	# 升级按钮
 	var up_btn := UiComponents.make_primary_button("升级", func(): _on_upgrade_pressed(card_id), Vector2(96, 48))
-	up_btn.disabled = not (PlayerData.gold >= cost_gold and own >= need and not at_max)
+	up_btn.disabled = not (PlayerData.gold >= cost_gold and (own >= need or wild_cover >= missing) and not at_max)
+	up_btn.tooltip_text = "卡牌不足时自动使用 %d 张万能卡" % missing if missing > 0 else ""
 	hbox.add_child(up_btn)
 
 	# 详情按钮
@@ -198,6 +202,10 @@ func _show_card_info(card_id: int):
 	scroll.offset_top = 16
 	scroll.offset_right = -18
 	scroll.offset_bottom = -16
+	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	scroll.vertical_scroll_mode = ScrollContainer.SCROLL_MODE_AUTO
+	scroll.scroll_deadzone = 24
+	scroll.follow_focus = true
 	panel.add_child(scroll)
 
 	var content := VBoxContainer.new()
@@ -344,6 +352,21 @@ func _show_card_info(card_id: int):
 		prog_row.add_child(need_lbl)
 		content.add_child(prog_row)
 
+		var wild_n: int = PlayerData.get_wildcard_for_card(card_id)
+		var missing: int = maxi(0, need - own)
+		var wild_tip := Label.new()
+		wild_tip.text = "🃏 万能卡库存：%d 张" % wild_n
+		wild_tip.add_theme_font_size_override("font_size", 15)
+		wild_tip.add_theme_color_override("font_color", Color(0.74, 0.66, 0.98))
+		content.add_child(wild_tip)
+		if missing > 0:
+			var wild_btn := UiComponents.make_secondary_button("使用万能卡补足 %d 张" % missing, func():
+				_on_upgrade_pressed(card_id)
+				_close_info_panel(), Vector2(0, 46))
+			wild_btn.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+			wild_btn.disabled = wild_n < missing or PlayerData.gold < cost_gold
+			content.add_child(wild_btn)
+
 		var upgrade_row := HBoxContainer.new()
 		upgrade_row.alignment = BoxContainer.ALIGNMENT_CENTER
 		upgrade_row.add_theme_constant_override("separation", 14)
@@ -356,7 +379,7 @@ func _show_card_info(card_id: int):
 		var up_btn := UiComponents.make_primary_button("升级", func():
 			_on_upgrade_pressed(card_id)
 			_close_info_panel(), Vector2(150, 52))
-		up_btn.disabled = not (PlayerData.gold >= cost_gold and own >= need)
+		up_btn.disabled = not (PlayerData.gold >= cost_gold and (own >= need or PlayerData.get_wildcard_for_card(card_id) >= maxi(0, need - own)))
 		upgrade_row.add_child(up_btn)
 		content.add_child(upgrade_row)
 
@@ -408,6 +431,13 @@ func _get_card_config(card_id: int) -> CardData:
 
 func _on_upgrade_pressed(card_id: int):
 	var old_lv := PlayerData.get_card_level(card_id)
+	var need: int = PlayerData.calculate_upgrade_cards_needed(card_id, old_lv)
+	var own: int = PlayerData.get_card_quantity(card_id)
+	var missing: int = maxi(0, need - own)
+	if missing > 0:
+		# 先消耗同稀有度万能卡补足升级所需
+		if not PlayerData.use_wildcard_on_card(card_id, missing):
+			return
 	if PlayerData.upgrade_card(card_id):
 		var new_lv := PlayerData.get_card_level(card_id)
 		_refresh_ui()

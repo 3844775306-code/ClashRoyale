@@ -4,6 +4,7 @@
 class_name Spell
 extends Node3D
 const SpellVFX := preload("res://scripts/visuals/SpellVFX.gd")
+const ProjectileKit := preload("res://scripts/visuals/ProjectileKit.gd")
 var team: int
 var damage: float
 var damage_range: float
@@ -26,6 +27,16 @@ var _vines_targets: Array = []
 var is_lightning: bool = false
 var lightning_targets: Array = []
 var damaged = 0
+var _arrow_waves := 0
+var _arrow_rain := false
+var _tornado_mode := false
+var _tornado_ticks := 0
+var _tornado_pull := {}
+var _area_cast := false
+var _cast_ring: MeshInstance3D = null
+var _range_ring: MeshInstance3D = null
+var _damage_start_frame := 0
+var _damage_end_frame := 999999
 static func create(pos: Vector3, team: int, dmg: float, range: float, from_unit: int, atk_type: int, tgt_type: int) -> Spell:
 	var spell = Spell.new()
 	spell.position = pos
@@ -43,9 +54,23 @@ func _ready():
 	if time!=0:
 		max_duration = 0.05*time
 	add_to_group("spells")
-	# 程序化法术特效（按卡牌区分）
 	vfx = SpellVFX.build(card_id, damage_range, team, attack_type)
 	add_child(vfx)
+	if card_id == 10:
+		_arrow_rain = true
+		max_duration = 60
+		vfx.visible = false
+	elif card_id == 104:
+		_tornado_mode = true
+		max_duration = 75
+	elif card_id in [85, 107, 113, 116]:
+		_area_cast = true
+		max_duration += 50
+		_damage_start_frame = 25
+		_damage_end_frame = max_duration - 25
+		_build_cast_ring()
+	elif card_id == 80:
+		_build_range_ring(Color(0.62, 0.88, 1.0))
 	# 点光源颜色随法术变化；手机端关闭，避免大量动态光源压垮 GLES 驱动
 	if not OS.has_feature("mobile"):
 		var light = OmniLight3D.new()
@@ -85,14 +110,32 @@ func _process(delta):
 		queue_free()
 		return
 	
-	# 视觉效果进度始终跟随法术总时长（长时法术也会持续整个持续时间并在结束前淡出）
 	var progress = animation_frame / float(max_duration)
-	SpellVFX.animate(vfx, progress, elapsed_time)
+	if vfx and vfx.visible:
+		SpellVFX.animate(vfx, progress, elapsed_time)
 	var l := get_child(1) as OmniLight3D
 	if l:
 		l.light_energy = 1.6 * (1.0 - progress)
-	
-	# 伤害检测：在过程的第一帧施加伤害（避免每帧伤害）
+	if _arrow_rain:
+		_process_arrow_rain()
+		return
+	if _tornado_mode:
+		_process_tornado()
+		return
+	if _area_cast:
+		_update_cast_ring()
+		if animation_frame < _damage_start_frame or animation_frame > _damage_end_frame:
+			return
+		if elapsed_time - last_effect >= 0.5:
+			last_effect = elapsed_time
+			apply_damage()
+		return
+	if card_id == 80 and _range_ring:
+		_range_ring.visible = true
+		var fade := clampf((max_duration - animation_frame) / 25.0, 0.0, 1.0)
+		var rm := _range_ring.material_override as StandardMaterial3D
+		if rm:
+			rm.albedo_color.a = 0.34 * fade
 	if time ==0:
 		if damaged == 0:
 			damaged = 1
@@ -101,6 +144,186 @@ func _process(delta):
 		if elapsed_time-last_effect>0.5:
 			last_effect = elapsed_time
 			apply_damage()
+func _build_cast_ring() -> void:
+	_cast_ring = MeshInstance3D.new()
+	var tor := TorusMesh.new()
+	tor.inner_radius = maxf(0.2, damage_range * 0.70)
+	tor.outer_radius = maxf(0.3, damage_range * 0.78)
+	tor.rings = 32
+	tor.ring_segments = 6
+	_cast_ring.mesh = tor
+	var m := StandardMaterial3D.new()
+	m.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	m.albedo_color = Color(0.55, 0.72, 1.0, 0.55)
+	m.emission_enabled = true
+	m.emission = Color(0.32, 0.48, 0.95)
+	m.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	_cast_ring.material_override = m
+	_cast_ring.position.y = 0.07
+	_cast_ring.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	add_child(_cast_ring)
+
+
+func _update_cast_ring() -> void:
+	if _cast_ring == null:
+		return
+	var f := float(animation_frame)
+	var total := float(max_duration)
+	var s := 0.05
+	if f < 25.0:
+		s = lerpf(0.05, 1.0, f / 25.0)
+	elif f > total - 25.0:
+		s = lerpf(1.0, 0.05, (f - (total - 25.0)) / 25.0)
+	_cast_ring.scale = Vector3(s, 1.0, s)
+	if vfx:
+		vfx.scale = Vector3(s, 1.0, s)
+
+
+func _build_range_ring(c: Color) -> void:
+	_range_ring = MeshInstance3D.new()
+	var tor := TorusMesh.new()
+	tor.inner_radius = maxf(0.2, damage_range - 0.08)
+	tor.outer_radius = damage_range + 0.02
+	tor.rings = 40
+	tor.ring_segments = 4
+	_range_ring.mesh = tor
+	var m := StandardMaterial3D.new()
+	m.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	m.albedo_color = Color(c.r, c.g, c.b, 0.34)
+	m.emission_enabled = true
+	m.emission = c
+	m.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	_range_ring.material_override = m
+	_range_ring.position.y = 0.065
+	_range_ring.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	add_child(_range_ring)
+
+
+func _process_arrow_rain() -> void:
+	var battle = get_tree().get_first_node_in_group("battle_manager")
+	if battle == null:
+		return
+	if _arrow_waves < 3:
+		var need := 20 * _arrow_waves
+		if animation_frame >= need:
+			_arrow_waves += 1
+			_spawn_arrow_wave(battle)
+			_apply_arrow_damage(battle)
+
+
+func _spawn_arrow_wave(battle) -> void:
+	var king = battle.get_king_tower(team) if battle.has_method("get_king_tower") else null
+	var start: Vector3 = king.global_position + Vector3.UP * 1.4 if king and is_instance_valid(king) else global_position + Vector3(0, 8, 0)
+	for i in 8:
+		var ang := randf() * TAU
+		var rad := sqrt(randf()) * damage_range
+		var target := global_position + Vector3(cos(ang) * rad, 0.2, sin(ang) * rad)
+		_spawn_arrow(start, target)
+
+
+func _spawn_arrow(start: Vector3, end: Vector3) -> void:
+	var arrow: Node3D = ProjectileKit.create("arrow")
+	arrow.scale = Vector3.ONE * 1.725
+	arrow.position = start
+	var battle = get_tree().get_first_node_in_group("battle_manager")
+	var parent = battle if battle else self
+	parent.add_child(arrow)
+	var d := end - start
+	if d.length() > 0.01:
+		arrow.look_at_from_position(start, end, Vector3.UP)
+		arrow.rotate_object_local(Vector3.UP, PI)
+		arrow.rotate_object_local(Vector3.RIGHT, -0.12)
+	var tw := arrow.create_tween()
+	tw.tween_property(arrow, "position", end, 0.28).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN)
+	tw.tween_callback(func(): _stick_arrow(arrow, end, d, parent))
+
+
+func _stick_arrow(arrow: Node3D, end: Vector3, flight_dir: Vector3, parent: Node) -> void:
+	if not is_instance_valid(arrow):
+		return
+	arrow.position = Vector3(end.x, 0.13, end.z)
+	var yaw := atan2(flight_dir.x, flight_dir.z)
+	arrow.rotation = Vector3(deg_to_rad(70.0 + randf_range(-5.0, 10.0)), yaw + randf_range(-0.25, 0.25), 0.0)
+	var shadow := MeshInstance3D.new()
+	var cyl := CylinderMesh.new()
+	cyl.top_radius = 0.14
+	cyl.bottom_radius = 0.14
+	cyl.height = 0.008
+	cyl.radial_segments = 10
+	shadow.mesh = cyl
+	var sm := StandardMaterial3D.new()
+	sm.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	sm.albedo_color = Color(0.02, 0.03, 0.05, 0.42)
+	sm.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	shadow.material_override = sm
+	shadow.position = Vector3(end.x, 0.018, end.z)
+	shadow.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	parent.add_child(shadow)
+	var fade := arrow.create_tween()
+	fade.tween_interval(1.0)
+	fade.tween_method(func(v: float):
+		_set_arrow_alpha(arrow, v)
+		sm.albedo_color.a = 0.42 * (1.0 - v)
+	, 0.0, 1.0, 0.4)
+	fade.tween_callback(func():
+		if is_instance_valid(arrow): arrow.queue_free()
+		if is_instance_valid(shadow): shadow.queue_free())
+
+
+func _set_arrow_alpha(node: Node, v: float) -> void:
+	if node is GeometryInstance3D:
+		(node as GeometryInstance3D).transparency = v
+	for c in node.get_children():
+		_set_arrow_alpha(c, v)
+
+
+func _apply_arrow_damage(battle) -> void:
+	for u in battle.units.get_children():
+		if not (u is Unit) or u.team == team or u.health <= 0:
+			continue
+		if u.global_position.distance_to(global_position) > damage_range + 0.2:
+			continue
+		var d := damage / 3.0
+		if u.config.card_id <= 3:
+			battle.add_tower_damage(team, card_id, d)
+		u.take_damage(d, null)
+
+
+func _process_tornado() -> void:
+	var battle = get_tree().get_first_node_in_group("battle_manager")
+	if battle == null:
+		return
+	var ticks := [0, 25, 50]
+	if _tornado_ticks < 3 and animation_frame >= int(ticks[_tornado_ticks]):
+		_tornado_ticks += 1
+		_tornado_apply(battle)
+
+
+func _tornado_apply(battle) -> void:
+	for u in battle.units.get_children():
+		if not (u is Unit) or u.team == team or u.health <= 0:
+			continue
+		var delta_v: Vector3 = global_position - u.global_position
+		var dist: float = delta_v.length()
+		if dist > damage_range + 0.3:
+			continue
+		var d := damage / 3.0
+		if u.config.card_id <= 3:
+			battle.add_tower_damage(team, card_id, d)
+		u.take_damage(d, null)
+		if u.health <= 0:
+			continue
+		var key: int = u.get_instance_id()
+		var total: float = float(_tornado_pull.get(key, -1.0))
+		if total < 0.0:
+			var sz := float(u.config.size)
+			var heavy := clampf((sz - 0.33) / 0.72, 0.0, 1.0)
+			total = lerpf(dist, 1.5, heavy)
+			_tornado_pull[key] = total
+		if dist > 0.05:
+			u.global_position += delta_v / dist * minf(total / 3.0, dist)
+
+
 func apply_damage():
 	#print(1)
 	var battle = get_tree().get_first_node_in_group("battle_manager")

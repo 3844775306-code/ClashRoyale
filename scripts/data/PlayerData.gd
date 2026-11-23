@@ -25,12 +25,30 @@ var email_bind_reward_claimed: bool = false
 var experience: int = 0
 var player_name:String = "玩家"
 var name_chosen: bool = false        # 玩家是否已完成取名（首次启动强制取名）
+signal mail_added(title: String, body: String, sender: String)
+var bio: String = "热爱皇室战争的玩家，欢迎一起交流卡组与战术。"
+var clan_role: String = ""
+var total_donations: int = 0
 var challenge_state: Dictionary = {}   # 挑战/锦标赛进度（active: {id,wins,losses}）
 var party_deck: Array = []             # 派对模式专用卡组（全卡可用，固定 11 级）
-var trophies: int = 0          # 新增奖杯
+var trophies: int = 0          # 当前奖杯（永不为负）
 var highest_trophies: int = 0  # 历史最高奖杯（奖杯门保护）
+var arena_seen: int = 0        # 已看过入场动画的最高竞技场
 var claimed_achievements: Array = []  # 已领取的皇室征程成就（竞技场序号）
 var donations_used: int = 0          # 今日已捐赠次数
+var battle_wins: int = 0
+var weekly_week: String = ""
+var weekly_trophies: int = 0
+var weekly_wins: int = 0
+var weekly_three_crowns: int = 0
+var weekly_reward_week: String = ""
+var honor_title: String = ""
+var battle_losses: int = 0
+var battle_draws: int = 0
+var three_crown_wins: int = 0
+var current_streak: int = 0
+var best_streak: int = 0
+var recent_battles: Array = []
 var chest_reward_day: String = ""    # 每日宝箱奖励日期
 var chest_reward_wins: int = 0        # 当日已获得宝箱的胜利次数
 # 卡牌拥有数量 { card_id: int }
@@ -41,6 +59,7 @@ var new_cards: Dictionary = {}   # 新获得但尚未点击查看的卡牌 {cid:
 # 宝箱队列（存储 Chest 数据，可序列化）
 var chests: Array = []   # 每个元素 { "rarity": "silver"/"gold"/"magical", "ready": bool }
 var ai_levels: Dictionary = {}
+var ai_king_level: int = 1
 var custom_decks: Array = [[], [], [], [], []]   # 5 套自定义卡组
 var active_deck_index: int = 0
 var deck_clipboard: Array = []
@@ -50,13 +69,17 @@ var test_mode: bool = false            # 测试模式：随机卡组 + 固定11�
 var deck_sort_mode: String = "level"   # 卡组配置排序记忆：level/rarity/default
 var chest_open_index: int = -1        # 当前进入开箱界面的宝箱索引（不持久化）
 var shop_day: String = ""
+var shop_free_claimed_day: String = ""
 var shop_offers: Array = []
 var owned_emotes: Array = []
 var wildcards: Dictionary = {}
-var tower_choice: int = 1   # 1=公主塔, 2=王子塔
+var tower_choice: int = 1   # 1=公主塔, 2=王子塔, 3=厨师塔, 4=飞刀塔
+var tower_usage: Dictionary = {}
 var last_card_request: float = 0.0
 var record_replays: bool = true
+var spectator_approval_required: bool = false
 var tutorial_done: bool = false
+var tutorial_guide_seen: bool = false
 var tutorial_practice: bool = false
 var tutorial_chest_claimed: bool = false
 var starter_cards_v2: bool = false
@@ -66,6 +89,7 @@ var card_mastery: Dictionary = {}
 var mailbox: Array = []
 var mail_alert_pending: String = ""
 var mail_version_seen: String = ""
+var announcement_seen: int = 0
 var _global_mail_busy: bool = false
 var season_key: String = ""
 var season_crowns: int = 0
@@ -469,13 +493,39 @@ func calculate_upgrade_cards_needed(card_id: int, level: int) -> int:
 	return CARD_RARITY.copies_needed_by_id(card_id, level + 1)
 # --- 奖杯操作 ---
 func add_trophies(amount: int):
-	trophies += amount
+	if amount < 0:
+		# 失败扣杯：不允许低于 0，同时保留历史竞技场奖杯门保护
+		var floor_t: int = maxi(0, _arena_floor_by_highest())
+		trophies = maxi(floor_t, trophies + amount)
+	else:
+		trophies += amount
+	trophies = maxi(0, trophies)
 	highest_trophies = maxi(highest_trophies, trophies)
 	save_data()
 
 func remove_trophies(amount: int):
-	trophies = maxi(_arena_floor_by_highest(), trophies - amount)
+	var floor_t: int = maxi(0, _arena_floor_by_highest())
+	trophies = maxi(floor_t, trophies - amount)
+	trophies = maxi(0, trophies)
 	save_data()
+
+
+func check_new_arena() -> int:
+	# 返回本次新进入的竞技场序号；首次加载只记录当前竞技场，不播动画
+	var cur: int = get_arena()
+	if arena_seen <= 0:
+		arena_seen = cur
+		save_data()
+		return 0
+	if cur > arena_seen:
+		return cur
+	return 0
+
+
+func mark_arena_seen(arena_idx: int) -> void:
+	if arena_idx > arena_seen:
+		arena_seen = arena_idx
+		save_data()
 
 func can_lose_trophies() -> bool:
 	return trophies >= 100
@@ -714,21 +764,28 @@ func load_data():
 		# 每个字段先设默认，再尝试用存档值覆盖
 		player_name = config.get_value("player", "name", "玩家")
 		name_chosen = bool(config.get_value("player", "name_chosen", false))
+		bio = String(config.get_value("player", "bio", "热爱皇室战争的玩家，欢迎一起交流卡组与战术。"))
+		clan_role = String(config.get_value("player", "clan_role", ""))
+		total_donations = int(config.get_value("player", "total_donations", 0))
 		challenge_state = config.get_value("player", "challenge_state", {})
 		party_deck = config.get_value("player", "party_deck", [])
 		gold = config.get_value("player", "gold", 100)
 		gems = config.get_value("player", "gems", 10)
 		email_bind_reward_claimed = bool(config.get_value("player", "email_bind_reward_claimed", false))
 		shop_day = String(config.get_value("shop", "day", ""))
+		shop_free_claimed_day = String(config.get_value("shop", "free_claimed_day", ""))
 		chest_reward_day = String(config.get_value("player", "chest_reward_day", ""))
 		chest_reward_wins = int(config.get_value("player", "chest_reward_wins", 0))
 		shop_offers = config.get_value("shop", "offers", [])
 		owned_emotes = config.get_value("emotes", "owned", [])
 		wildcards = config.get_value("emotes", "wildcards", {})
 		tower_choice = int(config.get_value("player", "tower_choice", 1))
+		tower_usage = Dictionary(config.get_value("player", "tower_usage", {}))
 		last_card_request = float(config.get_value("player", "last_card_request", 0.0))
 		record_replays = bool(config.get_value("player", "record_replays", true))
+		spectator_approval_required = bool(config.get_value("player", "spectator_approval_required", false))
 		tutorial_done = bool(config.get_value("player", "tutorial_done", false))
+		tutorial_guide_seen = bool(config.get_value("player", "tutorial_guide_seen", false))
 		tutorial_chest_claimed = bool(config.get_value("player", "tutorial_chest_claimed", false))
 		starter_cards_v2 = bool(config.get_value("player", "starter_cards_v2", false))
 		chest_reveal_pending = bool(config.get_value("player", "chest_reveal_pending", false))
@@ -742,12 +799,14 @@ func load_data():
 			if _m is Dictionary and String(_m.get("body", "")).contains("\\n"):
 				_m["body"] = String(_m.get("body", "")).replace("\\n", "\n")
 		mail_version_seen = String(config.get_value("player", "mail_version_seen", ""))
+		announcement_seen = int(config.get_value("player", "announcement_seen", 0))
 		season_key = String(config.get_value("player", "season_key", ""))
 		season_crowns = int(config.get_value("player", "season_crowns", 0))
 		season_claimed = config.get_value("player", "season_claimed", [])
 		experience = config.get_value("player", "experience", 0)
-		trophies = config.get_value("player", "trophies", 0)
-		highest_trophies = config.get_value("player", "highest_trophies", trophies)
+		trophies = maxi(0, int(config.get_value("player", "trophies", 0)))
+		highest_trophies = maxi(trophies, int(config.get_value("player", "highest_trophies", trophies)))
+		arena_seen = maxi(0, int(config.get_value("player", "arena_seen", 0)))
 		claimed_achievements = config.get_value("player", "claimed_achievements", [])
 		card_levels = config.get_value("player", "card_levels", {})
 		card_quantities = config.get_value("player", "card_quantities", {})
@@ -779,6 +838,9 @@ func _apply_defaults():
 	# 切换账号/新账号时必须清空全部持久化字段，避免上一账号数据串档
 	player_name = "玩家"
 	name_chosen = false
+	bio = "热爱皇室战争的玩家，欢迎一起交流卡组与战术。"
+	clan_role = ""
+	total_donations = 0
 	challenge_state = {}
 	party_deck = []
 	gold = 100
@@ -787,19 +849,24 @@ func _apply_defaults():
 	experience = 0
 	trophies = 0
 	highest_trophies = 0
+	arena_seen = 0
 	claimed_achievements.clear()
 	card_levels.clear()
 	card_quantities.clear()
 	new_cards.clear()
 	chests.clear()
 	shop_day = ""
+	shop_free_claimed_day = ""
 	shop_offers = []
 	owned_emotes.clear()
 	wildcards.clear()
 	tower_choice = 1
+	tower_usage.clear()
 	last_card_request = 0.0
 	record_replays = true
+	spectator_approval_required = false
 	tutorial_done = false
+	tutorial_guide_seen = false
 	tutorial_practice = false
 	tutorial_chest_claimed = false
 	starter_cards_v2 = false
@@ -812,10 +879,24 @@ func _apply_defaults():
 	mailbox = []
 	mail_alert_pending = ""
 	mail_version_seen = ""
+	announcement_seen = 0
 	season_key = ""
 	season_crowns = 0
 	season_claimed = []
 	donations_used = 0
+	battle_wins = 0
+	weekly_week = ""
+	weekly_trophies = 0
+	weekly_wins = 0
+	weekly_three_crowns = 0
+	weekly_reward_week = ""
+	honor_title = ""
+	battle_losses = 0
+	battle_draws = 0
+	three_crown_wins = 0
+	current_streak = 0
+	best_streak = 0
+	recent_battles.clear()
 	custom_deck = []
 	custom_decks = [[], [], [], [], []]
 	active_deck_index = 0
@@ -838,21 +919,26 @@ func build_save_config() -> ConfigFile:
 	config.set_value("player", "experience", experience)
 	config.set_value("player", "trophies", trophies)
 	config.set_value("player", "highest_trophies", highest_trophies)
+	config.set_value("player", "arena_seen", arena_seen)
 	config.set_value("player", "claimed_achievements", claimed_achievements)
 	config.set_value("player", "card_levels", card_levels)
 	config.set_value("player", "card_quantities", card_quantities)
 	config.set_value("player", "new_cards", new_cards)
 	config.set_value("player", "chests", chests)
 	config.set_value("shop", "day", shop_day)
+	config.set_value("shop", "free_claimed_day", shop_free_claimed_day)
 	config.set_value("player", "chest_reward_day", chest_reward_day)
 	config.set_value("player", "chest_reward_wins", chest_reward_wins)
 	config.set_value("shop", "offers", shop_offers)
 	config.set_value("emotes", "owned", owned_emotes)
 	config.set_value("emotes", "wildcards", wildcards)
 	config.set_value("player", "tower_choice", tower_choice)
+	config.set_value("player", "tower_usage", tower_usage)
 	config.set_value("player", "last_card_request", last_card_request)
 	config.set_value("player", "record_replays", record_replays)
+	config.set_value("player", "spectator_approval_required", spectator_approval_required)
 	config.set_value("player", "tutorial_done", tutorial_done)
+	config.set_value("player", "tutorial_guide_seen", tutorial_guide_seen)
 	config.set_value("player", "tutorial_chest_claimed", tutorial_chest_claimed)
 	config.set_value("player", "starter_cards_v2", starter_cards_v2)
 	config.set_value("player", "chest_reveal_pending", chest_reveal_pending)
@@ -863,10 +949,27 @@ func build_save_config() -> ConfigFile:
 	config.set_value("player", "card_mastery", card_mastery)
 	config.set_value("player", "mailbox", mailbox)
 	config.set_value("player", "mail_version_seen", mail_version_seen)
+	config.set_value("player", "announcement_seen", announcement_seen)
 	config.set_value("player", "season_key", season_key)
 	config.set_value("player", "season_crowns", season_crowns)
 	config.set_value("player", "season_claimed", season_claimed)
 	config.set_value("player", "donations_used", donations_used)
+	config.set_value("player", "battle_wins", battle_wins)
+	config.set_value("player", "weekly_week", weekly_week)
+	config.set_value("player", "weekly_trophies", weekly_trophies)
+	config.set_value("player", "weekly_wins", weekly_wins)
+	config.set_value("player", "weekly_three_crowns", weekly_three_crowns)
+	config.set_value("player", "weekly_reward_week", weekly_reward_week)
+	config.set_value("player", "bio", bio)
+	config.set_value("player", "clan_role", clan_role)
+	config.set_value("player", "total_donations", total_donations)
+	config.set_value("player", "honor_title", honor_title)
+	config.set_value("player", "battle_losses", battle_losses)
+	config.set_value("player", "battle_draws", battle_draws)
+	config.set_value("player", "three_crown_wins", three_crown_wins)
+	config.set_value("player", "current_streak", current_streak)
+	config.set_value("player", "best_streak", best_streak)
+	config.set_value("player", "recent_battles", recent_battles)
 	config.set_value("player", "custom_deck", custom_deck)
 	config.set_value("player", "custom_decks", custom_decks)
 	config.set_value("player", "active_deck_index", active_deck_index)
@@ -957,18 +1060,33 @@ func get_avatar_texture() -> Texture2D:
 		return null
 	return ImageTexture.create_from_image(img)
 
-func set_custom_avatar(source_path: String) -> bool:
-	var img := Image.load_from_file(source_path)
-	if img == null:
+func set_custom_avatar_image(img: Image) -> bool:
+	if img == null or img.get_width() <= 0 or img.get_height() <= 0:
 		return false
-	img.resize(128, 128, Image.INTERPOLATE_LANCZOS)
+	# 头像必须是正方形：居中裁剪最大正方形，再缩放到 128，避免拉伸变形
+	var side: int = mini(img.get_width(), img.get_height())
+	var ox: int = int((img.get_width() - side) / 2)
+	var oy: int = int((img.get_height() - side) / 2)
+	var cropped := img.get_region(Rect2i(ox, oy, side, side))
+	if cropped == null:
+		return false
+	cropped.resize(128, 128, Image.INTERPOLATE_LANCZOS)
 	var dst := "user://avatar_custom.png"
-	var err := img.save_png(ProjectSettings.globalize_path(dst))
+	if account_save_path != "":
+		dst = account_save_path.get_base_dir() + "/avatar_custom.png"
+	var global_dst := ProjectSettings.globalize_path(dst)
+	DirAccess.make_dir_recursive_absolute(global_dst.get_base_dir())
+	var err := cropped.save_png(global_dst)
 	if err != OK:
 		return false
 	avatar_custom_path = dst
 	save_data()
 	return true
+
+
+func set_custom_avatar(source_path: String) -> bool:
+	var img := Image.load_from_file(source_path)
+	return set_custom_avatar_image(img)
 
 func randomize_avatar() -> void:
 	avatar_custom_path = ""
@@ -1105,44 +1223,61 @@ func ensure_daily_shop_offers() -> void:
 				qty += 5 * rng.randi_range(0, 3)
 			shop_offers.append({"card_id": cid, "qty": qty, "unit": unit, "price": unit * qty, "sold": false})
 		shop_day = today
-	# 确保每天恰好一个免费卡牌。周日固定为价值 5000 金币的史诗卡。
-	var sunday: bool = int(d.weekday) == 0
-	if sunday:
-		var epic_idx := -1
-		for i in range(shop_offers.size()):
-			if CARD_RARITY.rarity_of_id(int(shop_offers[i].get("card_id", 0))) == "epic":
-				epic_idx = i
+		# 每天恰好一个免费卡牌；周日固定 5 张随机史诗卡
+	var free_claimed_today := shop_free_claimed_day == today
+	# 兼容旧存档：已售罄的免费卡视为今日已领取，绝不再生成第二件
+	if not free_claimed_today:
+		for o in shop_offers:
+			if bool(o.get("free", false)) and bool(o.get("sold", false)):
+				free_claimed_today = true
+				shop_free_claimed_day = today
 				break
-		if epic_idx < 0:
-			var epic_id := 15
-			for cid in allowed_now.keys():
-				if CARD_RARITY.rarity_of_id(int(cid)) == "epic":
-					epic_id = int(cid)
-					break
-			shop_offers[0] = {"card_id": epic_id, "qty": 25, "unit": 200, "price": 5000, "sold": false}
-			epic_idx = 0
-		# 清掉旧的免费标记/恢复原价，再固定史诗免费卡
+	if free_claimed_today:
 		for o in shop_offers:
 			if bool(o.get("free", false)):
-				if o.has("original_price"):
-					o["price"] = int(o.get("original_price", o.get("price", 0)))
 				o["free"] = false
-		var eo: Dictionary = shop_offers[epic_idx]
-		eo["card_id"] = int(eo.get("card_id", 15))
-		eo["qty"] = 25
+				o["sold"] = true
+				o["price"] = int(o.get("original_price", o.get("price", 0)))
+		shop_day = today
+		save_data()
+		return
+
+	var free_idx := -1
+	for i in range(shop_offers.size()):
+		if bool(shop_offers[i].get("free", false)):
+			free_idx = i
+			break
+	var sunday: bool = int(d.weekday) == 0
+	if sunday:
+		var epic_ids: Array = []
+		for cid in allowed_now.keys():
+			if CARD_RARITY.rarity_of_id(int(cid)) == "epic":
+				epic_ids.append(int(cid))
+		if epic_ids.is_empty():
+			epic_ids = [15]
+		epic_ids.sort()
+		var rng_epic := RandomNumberGenerator.new()
+		rng_epic.seed = today.hash() ^ 0x5EED
+		var epic_id: int = int(epic_ids[rng_epic.randi_range(0, epic_ids.size() - 1)])
+		if free_idx < 0:
+			for i in range(shop_offers.size()):
+				if CARD_RARITY.rarity_of_id(int(shop_offers[i].get("card_id", 0))) == "epic":
+					free_idx = i
+					break
+			if free_idx < 0:
+				free_idx = 0
+		var eo: Dictionary = shop_offers[free_idx]
+		eo["card_id"] = epic_id
+		eo["qty"] = 5
 		eo["unit"] = 200
 		eo["original_price"] = 5000
 		eo["price"] = 0
 		eo["free"] = true
+		eo["sold"] = false
 		eo["sunday_epic"] = true
-		shop_offers[epic_idx] = eo
+		shop_offers[free_idx] = eo
 	else:
-		var has_free := false
-		for o in shop_offers:
-			if bool(o.get("free", false)):
-				has_free = true
-				break
-		if not has_free:
+		if free_idx < 0:
 			var candidates: Array = []
 			for i in range(shop_offers.size()):
 				var o: Dictionary = shop_offers[i]
@@ -1153,13 +1288,27 @@ func ensure_daily_shop_offers() -> void:
 			if not candidates.is_empty():
 				var rng2 := RandomNumberGenerator.new()
 				rng2.seed = today.hash() + 991
-				var pick: int = int(candidates[rng2.randi_range(0, candidates.size() - 1)])
-				var chosen: Dictionary = shop_offers[pick]
+				free_idx = int(candidates[rng2.randi_range(0, candidates.size() - 1)])
+				var chosen: Dictionary = shop_offers[free_idx]
 				chosen["original_price"] = int(chosen.get("price", 0))
 				chosen["price"] = 0
 				chosen["free"] = true
-				shop_offers[pick] = chosen
+				shop_offers[free_idx] = chosen
+	# 清理多余的免费标记，保证全天只有一个免费位
+	for i in range(shop_offers.size()):
+		if i != free_idx and bool(shop_offers[i].get("free", false)):
+			var extra: Dictionary = shop_offers[i]
+			extra["free"] = false
+			extra["price"] = int(extra.get("original_price", extra.get("price", 0)))
+			shop_offers[i] = extra
 	shop_day = today
+	save_data()
+
+
+
+func mark_shop_free_claimed() -> void:
+	var d := Time.get_date_dict_from_system()
+	shop_free_claimed_day = "%04d-%02d-%02d" % [int(d.year), int(d.month), int(d.day)]
 	save_data()
 
 func get_shop_free_pending_count() -> int:
@@ -1192,6 +1341,21 @@ func record_card_use(card_id: int) -> void:
 func get_mastery_uses(card_id: int) -> int:
 	return int(_mastery_entry(card_id).get("uses", 0))
 
+func get_most_used_cards(limit: int = 3) -> Array:
+	var out: Array = []
+	for key in card_mastery.keys():
+		var e = card_mastery[key]
+		if not (e is Dictionary):
+			continue
+		var cid: int = int(key)
+		var uses: int = int(e.get("uses", 0))
+		if uses <= 0:
+			continue
+		out.append({"id": cid, "uses": uses, "level": get_card_level(cid)})
+	out.sort_custom(func(a, b): return int(a.uses) > int(b.uses))
+	return out.slice(0, limit)
+
+
 func get_mastery_next_tier(card_id: int) -> int:
 	var e := _mastery_entry(card_id)
 	var claimed: Array = Array(e.get("claimed", []))
@@ -1209,6 +1373,15 @@ func get_mastery_claimable_count_for(card_id: int) -> int:
 		if not claimed.has(i + 1) and uses >= int(MASTERY_USES[i]):
 			n += 1
 	return n
+
+func get_mastery_card_count() -> int:
+	var n := 0
+	for key in card_mastery.keys():
+		var e = card_mastery[key]
+		if e is Dictionary and int(e.get("uses", 0)) > 0:
+			n += 1
+	return n
+
 
 func get_mastery_claimable_count() -> int:
 	var n := 0
@@ -1382,6 +1555,7 @@ func add_mail(title: String, body: String, reward: Dictionary = {}, sender: Stri
 	for k in extra.keys():
 		mail[k] = extra[k]
 	mailbox.push_front(mail)
+	mail_added.emit(title, body, sender)
 	if not (reward.get("cards", {}) as Dictionary).is_empty():
 		mail_alert_pending = "收到来自 %s 的赠卡，已放入邮箱" % sender
 	save_data()
@@ -1530,6 +1704,100 @@ func get_tower_level() -> int:
 			break
 	return lv
 
+func current_week_key() -> String:
+	var d := Time.get_date_dict_from_system()
+	var day := int(d.get("day", 1))
+	var month := int(d.get("month", 1))
+	var year := int(d.get("year", 2026))
+	var jan1 := Time.get_unix_time_from_datetime_dict({"year": year, "month": 1, "day": 1, "hour": 0, "minute": 0, "second": 0})
+	var now := Time.get_unix_time_from_system()
+	var week := int((now - jan1) / 604800.0) + 1
+	return "%04d-W%02d" % [year, week]
+
+
+func ensure_week() -> void:
+	var wk := current_week_key()
+	if weekly_week == wk:
+		return
+	weekly_week = wk
+	weekly_trophies = 0
+	weekly_wins = 0
+	weekly_three_crowns = 0
+	weekly_reward_week = ""
+	save_data()
+
+
+func add_weekly_trophies(n: int) -> void:
+	ensure_week()
+	weekly_trophies += n
+	save_data()
+
+
+func current_week_label() -> String:
+	var d := Time.get_date_dict_from_system()
+	var year := int(d.get("year", 2026))
+	var jan1 := Time.get_unix_time_from_datetime_dict({"year": year, "month": 1, "day": 1, "hour": 0, "minute": 0, "second": 0})
+	var wk_parts := current_week_key().split("-W")
+	var wk_no: int = int(wk_parts[1]) if wk_parts.size() > 1 else 1
+	var start := int(jan1 + (wk_no - 1) * 604800)
+	var s := Time.get_datetime_dict_from_unix_time(start)
+	var e := Time.get_datetime_dict_from_unix_time(start + 6 * 86400)
+	return "%04d-%02d-%02d ~ %02d-%02d" % [int(s.year), int(s.month), int(s.day), int(e.month), int(e.day)]
+
+
+func record_tower_use(choice: int) -> void:
+	if choice < 1 or choice > 4:
+		return
+	tower_usage[str(choice)] = int(tower_usage.get(str(choice), 0)) + 1
+	save_data()
+
+
+func get_most_used_tower() -> int:
+	var best := int(tower_choice)
+	var best_n := -1
+	for k in tower_usage.keys():
+		var n := int(tower_usage[k])
+		if n > best_n:
+			best_n = n
+			best = int(k)
+	return clampi(best, 1, 4)
+
+
+func battle_total() -> int:
+	return battle_wins + battle_losses + battle_draws
+
+func win_rate() -> int:
+	var total := battle_total()
+	return 0 if total <= 0 else int(round(float(battle_wins) * 100.0 / float(total)))
+
+func record_battle_result(win: bool, draw: bool, crowns_for: int, crowns_against: int, mode: String, duration: float, opponent: String = "", extra: Dictionary = {}) -> void:
+	if draw:
+		battle_draws += 1
+		current_streak = 0
+	elif win:
+		ensure_week()
+		battle_wins += 1
+		weekly_wins += 1
+		current_streak += 1
+		best_streak = maxi(best_streak, current_streak)
+		if crowns_for >= 3:
+			three_crown_wins += 1
+			weekly_three_crowns += 1
+	else:
+		battle_losses += 1
+		current_streak = 0
+	var row := {
+		"win": win, "draw": draw,
+		"crowns_for": int(crowns_for), "crowns_against": int(crowns_against),
+		"mode": String(mode), "duration": float(duration),
+		"opponent": String(opponent), "ts": int(Time.get_unix_time_from_system()),
+	}
+	row.merge(extra, true)
+	recent_battles.push_front(row)
+	while recent_battles.size() > 10:
+		recent_battles.pop_back()
+	save_data()
+
 func get_collection_level() -> int:
 	var total: int = 0
 	for cid in card_levels.keys():
@@ -1564,11 +1832,40 @@ func get_ai_card_level() -> int:
 	var player_level = get_tower_level()
 	var lv = player_level + randi_range(-1, 1)
 	return clampi(lv, 1, Config.LEVEL_MAX)
+
+func _ai_level_from_trophies(card_id: int) -> int:
+	var rarity: String = String(CARD_RARITY.rarity_of_id(card_id))
+	var coeff: float = float({"common": 0.5, "rare": 0.1, "epic": 0.01, "legendary": 0.001}.get(rarity, 0.5))
+	var copies: int = int(float(trophies) * coeff * randf_range(0.8, 1.2))
+	var lv: int = int(CARD_RARITY.start_level_by_id(card_id))
+	var costs: Dictionary = CARD_RARITY.COPY_COSTS.get(rarity, {})
+	while lv < Config.LEVEL_MAX:
+		var need := int(costs.get(lv + 1, 0))
+		if need <= 0 or copies < need:
+			break
+		copies -= need
+		lv += 1
+	return clampi(lv, 1, Config.LEVEL_MAX)
+
+func refresh_ai_levels() -> void:
+	ai_king_level = clampi(get_tower_level() + randi_range(-1, 1), 1, Config.LEVEL_MAX)
+	ai_levels.clear()
+	for cid in range(1, 130):
+		ai_levels[cid] = _ai_level_from_trophies(int(cid))
+
 func ai_level(card_id):
-	# AI 卡牌等级下限按稀有度：普通1/稀有3/史诗6/传奇9
-	var base: int = int(ai_levels.get(card_id, 1))
-	var min_lv: int = CARD_RARITY.start_level_by_id(int(card_id))
-	return clampi(maxi(base, min_lv), Config.LEVEL_MIN, Config.LEVEL_MAX)
+	if ai_levels.is_empty():
+		refresh_ai_levels()
+	var base: int = int(ai_levels.get(card_id, CARD_RARITY.start_level_by_id(int(card_id))))
+	return clampi(base, 1, Config.LEVEL_MAX)
+
+func has_party_deck() -> bool:
+	var n := 0
+	for cid in party_deck:
+		if int(cid) > 0:
+			n += 1
+	return n >= 8
+
 
 func get_active_deck() -> Array:
 	if custom_decks.size() <= active_deck_index:

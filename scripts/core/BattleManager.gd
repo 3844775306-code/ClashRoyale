@@ -4,7 +4,8 @@ extends Node3D
 const UnitModelKit := preload("res://scripts/visuals/UnitModelKit.gd")
 const CardVisualCatalog := preload("res://scripts/visuals/CardVisualCatalog.gd")
 const ProceduralAudio := preload("res://scripts/core/ProceduralAudio.gd")
-#var ai_system: AISystem
+const TOWER_CATALOG := preload("res://scripts/data/TowerCatalog.gd")
+var ai_system: AISystem
 # 容器
 @onready var units = $Units
 @onready var bullets = $Bullets
@@ -20,6 +21,8 @@ var _auto_chest_started: bool = false
 var player_elixir: float = 7.0
 var replay_recorder: Node = null
 var match_replay_recorder: Node = null
+var defense_log: Node = null
+var local_spectator_host_started := false
 var replay_mode: bool = false
 var replay_skip_towers: bool = false
 var network_host_mode: bool = false
@@ -32,6 +35,8 @@ var enemy_trophies: int = 0
 var enemy_avatar_seed: int = 0
 var enemy_avatar_index: int = 0
 var enemy_bio: String = ""
+var enemy_profile: Dictionary = {}
+var enemy_tower_choice: int = 1
 const AI_NAMES := ["铁皮骑士", "蘑菇巫师", "火箭哥布林", "冰霜小丑", "野蛮人阿福", "暗夜女巫", "电击小子", "宝箱怪", "南瓜守卫", "雪球矮人"]
 const AI_BIOS := ["喜欢用火箭解决一切问题。", "坚信蘑菇是版本答案。", "每天研究三套卡组，胜率零。", "最爱冰人溜冰。", "宝箱收藏家，开箱从不眨眼。", "夜晚出没的竞技场幽灵。", "电击法术十级爱好者。", "把奖杯当零食的宝箱怪。"]
 
@@ -54,6 +59,7 @@ var replay_player_deck: Array = []
 var replay_towers: Array = []
 var replay_arena: int = 0
 var suppress_game_over_ui: bool = false
+var showcase_mode: bool = false
 var enemy_elixir: float = 5.0
 var elixir_rate: float = 1.0
 
@@ -103,7 +109,7 @@ var tower_bleed_active: bool = false
 var tower_bleed_acc: float = 0.0
 var overtime_end_ms: float = 0.0
 var match_draw: bool = false
-const SPELL_IDS = [10, 11, 20, 31, 40, 48, 70, 77, 78, 80, 85, 91, 104, 107, 112, 113, 115, 116, 122, 123]   # 万箭齐发,火球,电击法术,大雪球,哥布林飞桶,雷电法术
+const SPELL_IDS = [10, 11, 20, 31, 40, 48, 70, 77, 78, 80, 85, 91, 104, 107, 110, 112, 113, 115, 116, 122, 123]   # 万箭齐发,火球,电击法术,大雪球,哥布林飞桶,雷电法术
 # 塔血量追踪 [左公主, 右公主, 国王] * 2队
 var healths: Array = [0,0,0,0,0,0]
 
@@ -392,7 +398,7 @@ func is_valid_placement(config: CardData, pos: Vector3, team: int) -> bool:
 		if _is_spell_like(config.card_id):
 			return _touchdown_spell_zone_ok(team, pos)
 		return _touchdown_unit_zone_ok(team, pos)
-	if SPELL_IDS.has(config.card_id):
+	if SPELL_IDS.has(config.card_id) and config.card_id != 110:
 		return true
 	if config.card_id == 109:
 		return true
@@ -587,6 +593,7 @@ func end_drag(screen_pos: Vector2):
 			replay_recorder.record_player_action(drag_card.config, deploy_pos)
 		if match_replay_recorder:
 			match_replay_recorder.record_action(Config.Team.PLAYER, drag_card.config.card_id, deploy_pos)
+		if defense_log: defense_log.record_action(Config.Team.PLAYER, drag_card.config.card_id, deploy_pos)
 		var dcost: int = card_cost(drag_card.config)
 		player_elixir -= dcost
 		stats_elixir_spent[Config.Team.PLAYER] += dcost
@@ -1006,6 +1013,56 @@ func _assign_ai_identity() -> void:
 	enemy_avatar_index = idx % 12
 	enemy_trophies = clampi(PlayerData.trophies + randi_range(-120, 120), 0, 99999)
 	enemy_bio = AI_BIOS[idx % AI_BIOS.size()]
+	# 让 AI 主页的数据自洽：场次、胜率、奖杯、竞技场、卡组和近期战绩互相对应
+	var total_games: int = randi_range(18, 160)
+	var win_rate: float = randf_range(0.44, 0.62)
+	var wins: int = int(round(float(total_games) * win_rate))
+	var losses: int = maxi(0, total_games - wins - randi_range(0, 3))
+	var draws: int = maxi(0, total_games - wins - losses)
+	var streak: int = randi_range(0, 5)
+	var arena: int = PlayerData._arena_index_for_trophies(enemy_trophies)
+	var deck: Array = []
+	for cid in mode_enemy_deck:
+		if deck.size() >= 8:
+			break
+		deck.append({"id": int(cid), "level": clampi(11 + randi_range(-2, 3), 1, 16)})
+	if deck.is_empty():
+		var pool: Array = []
+		for cfg in configs:
+			if cfg != null and int(cfg.card_id) >= 4 and float(cfg.cost) > 0:
+				pool.append(int(cfg.card_id))
+		pool.shuffle()
+		for cid in pool.slice(0, 8):
+			deck.append({"id": int(cid), "level": randi_range(9, 13)})
+	var recent: Array = []
+	for i in range(3):
+		var won: bool = randi() % 100 < int(win_rate * 100.0)
+		recent.append({
+			"win": won, "draw": false, "mode": "天梯",
+			"crowns_for": randi_range(1, 3) if won else randi_range(0, 2),
+			"crowns_against": randi_range(0, 2) if won else randi_range(1, 3),
+			"duration": randi_range(90, 240),
+		})
+	enemy_profile = {
+		"player_id": "", "name": enemy_name, "avatar_seed": enemy_avatar_seed,
+		"avatar_index": enemy_avatar_index, "ai": true,
+		"trophies": enemy_trophies,
+		"highest_trophies": enemy_trophies + randi_range(0, 180),
+		"arena": arena, "clan": "", "role": "",
+		"battle_wins": wins, "battle_losses": losses, "battle_draws": draws,
+		"three_crowns": mini(wins, randi_range(0, maxi(1, wins / 4))),
+		"current_streak": streak, "best_streak": streak + randi_range(0, 8),
+		"season_crowns": randi_range(0, 120),
+		"collection_level": clampi(arena + randi_range(-1, 3), 1, 14),
+		"honor_title": "", "bio": enemy_bio,
+		"donations": randi_range(0, 500),
+		"current_deck": deck, "top_cards": deck.slice(0, 3),
+		"recent_battles": recent,
+		"trophy_badges": clampi(arena - 1, 0, 99),
+		"mastery_badges": randi_range(0, 12),
+		"season_badges": randi_range(0, 8),
+		"crowns": 0,
+	}
 
 func get_battle_player_profiles() -> Array:
 	var out: Array = []
@@ -1029,13 +1086,20 @@ func get_battle_player_profiles() -> Array:
 	out.append({"team": 0, "idx": 0, "peer": 1, "name": PlayerData.player_name,
 		"trophies": PlayerData.trophies, "avatar_seed": PlayerData.avatar_seed,
 		"avatar_index": PlayerData.avatar_index, "ai": false, "bio": ""})
-	out.append({"team": 1, "idx": 0, "peer": 0, "name": enemy_name,
-		"trophies": enemy_trophies, "avatar_seed": enemy_avatar_seed,
-		"avatar_index": enemy_avatar_index, "ai": true, "bio": enemy_bio})
+	var ep: Dictionary = enemy_profile.duplicate(true)
+	ep["team"] = 1
+	ep["idx"] = 0
+	ep["peer"] = 0
+	if ep.is_empty():
+		ep = {"team": 1, "idx": 0, "peer": 0, "name": enemy_name,
+			"trophies": enemy_trophies, "avatar_seed": enemy_avatar_seed,
+			"avatar_index": enemy_avatar_index, "ai": true, "bio": enemy_bio}
+	out.append(ep)
 	return out
 
 func _ready():
 	add_to_group("battle_manager")
+	showcase_mode = bool(get_meta("showcase", false)) or OS.get_environment("CR_SHOWCASE") != ""
 	_apply_mobile_safe_rendering()
 	tutorial_battle = PlayerData.tutorial_practice or OS.get_environment("CR_TUTORIAL_BATTLE") != ""
 	PlayerData.tutorial_practice = false
@@ -1044,6 +1108,18 @@ func _ready():
 		_setup_network_team_sizes()
 	load_card_configs()
 	_resolve_battle_mode()
+	# 联机统一 11 级：卡牌、皇家塔、法术全部按 11 级结算
+	if network_host_mode:
+		fixed_level_override = 11
+	if showcase_mode:
+		fixed_level_override = 11
+		spawn_initial_towers()
+		hud.battle = self
+		_setup_showcase()
+		return
+	if not replay_mode:
+		var b_room := NetworkManager.room_code
+		PresenceManager.set_battle_status(true, mode_name, int(Time.get_unix_time_from_system()), b_room, "webrtc" if NetworkManager.webrtc_mode else "lan", NetworkManager.get_local_ip() if not NetworkManager.webrtc_mode else "")
 	spawn_initial_towers()
 	if win_condition == "touchdown":
 		_setup_touchdown_zones()
@@ -1058,12 +1134,13 @@ func _ready():
 	if network_host_mode and hud.has_signal("emote_sent"):
 		hud.emote_sent.connect(func(id, team): NetworkManager.broadcast_emote(id, team))
 	start_time = Time.get_ticks_msec()
+	if not network_host_mode and not network_guest_mode and not replay_mode and not tutorial_battle and not showcase_mode:
+		call_deferred("_start_local_spectator_host")
 	if replay_mode:
 		var bgm_r = load("res://assets/audio/bgm/battle_theme.ogg")
 		if bgm_r:
 			AudioManager.play_bgm(bgm_r)
 		return
-	var ai_system = null
 	if network_host_mode:
 		add_child(preload("res://scripts/net/NetworkHost.gd").new())
 		if PlayerData.record_replays:
@@ -1071,6 +1148,8 @@ func _ready():
 			match_replay_recorder._snap_interval = 0.05
 			add_child(match_replay_recorder)
 		NetworkManager.clients_ready.connect(_on_clients_ready)
+		if not NetworkManager.peer_lost.is_connected(_on_network_peer_lost):
+			NetworkManager.peer_lost.connect(_on_network_peer_lost)
 		network_wait_ready = NetworkManager.guest_count() > 0
 		entry_intro_active = true
 		if NetworkManager.all_clients_ready():
@@ -1080,6 +1159,10 @@ func _ready():
 	elif not tutorial_battle:
 		ai_system = preload("res://scripts/ai/AISystem.gd").new()
 		add_child(ai_system)
+	if OS.get_environment("CR_AI_DEFENSE_LOG") != "":
+		defense_log = preload("res://scripts/ai/DefenseDataset.gd").new()
+		add_child(defense_log)
+		defense_log.bind(self, ai_system)
 	if PlayerData.record_replays and not network_host_mode:
 		replay_recorder = preload("res://scripts/core/MatchRecorder.gd").new()
 		add_child(replay_recorder)
@@ -1093,6 +1176,31 @@ func _ready():
 	if not network_host_mode:
 		entry_intro_active = true
 		call_deferred("play_entry_intro")
+
+func _setup_showcase() -> void:
+	start_time = Time.get_ticks_msec()
+	entry_intro_active = false
+	suppress_game_over_ui = true
+	game_over = false
+	set_process(false)
+	set_process_input(false)
+	set_process_unhandled_input(false)
+	if hud != null:
+		hud.battle = self
+		for c in hud.get_children():
+			c.visible = c == hud.health_bar_container
+		if hud.health_bar_container != null:
+			hud.health_bar_container.visible = true
+		hud.show_names = true
+	var cam := get_node_or_null("Camera3D") as Camera3D
+	if cam != null:
+		cam.projection = Camera3D.PROJECTION_ORTHOGONAL
+		cam.size = 36.5
+		cam.near = 10.0
+		cam.far = 400.0
+		cam.position = Vector3(0.0, 30.0, 18.0)
+		cam.look_at(Vector3(0.0, 0.0, 0.0), Vector3.UP)
+
 
 func _apply_mobile_safe_rendering() -> void:
 	# 手机端稳定性：Compatibility + Android 驱动对 MSAA/SSAO/辉光/阴影较敏感。
@@ -1341,6 +1449,7 @@ func network_remote_deploy_slot(slot: int, card_id: int, x: float, z: float) -> 
 	stats_elixir_spent[team] += card_cost(cfg)
 	if match_replay_recorder and match_replay_recorder.has_method("record_action"):
 		match_replay_recorder.record_action(team, card_id, pos)
+	if defense_log: defense_log.record_action(team, card_id, pos)
 	var h: Array = rp.hand
 	h.erase(card_id)
 	var d: Array = rp.deck
@@ -1373,6 +1482,11 @@ func _network_ready_timeout() -> void:
 		LoadingScreen.hide_loading()
 		await play_entry_intro()
 		_begin_network_countdown()
+
+func _on_network_peer_lost(player_name: String) -> void:
+	if hud and hud.has_method("show_disconnect_dialog"):
+		hud.show_disconnect_dialog(player_name)
+
 
 func _on_clients_ready() -> void:
 	if not network_host_mode or not network_wait_ready:
@@ -1651,7 +1765,6 @@ func get_config(card_id: int) -> CardData:
 # ============ 初始建筑 ============
 func _network_tower_data() -> Array:
 	var out: Array = []
-	var lv: int = PlayerData.get_tower_level()
 	for team in [0, 1]:
 		var seats_t: Array = []
 		for s in NetworkManager.match_info.get("seats", []):
@@ -1660,17 +1773,19 @@ func _network_tower_data() -> Array:
 		seats_t.sort_custom(func(a, b): return int(a.idx) < int(b.idx))
 		var t0: int = int(seats_t[0].get("tower_choice", 1)) if seats_t.size() > 0 else 1
 		var t1: int = int(seats_t[1].get("tower_choice", 1)) if seats_t.size() > 1 else t0
-		if t0 not in [1, 2]: t0 = 1
-		if t1 not in [1, 2]: t1 = 1
+		if not TOWER_CATALOG.has_choice(t0): t0 = 1
+		if not TOWER_CATALOG.has_choice(t1): t1 = 1
 		var left_x: float = Config.ARENA_ORIGIN.x + Config.ARENA_WIDTH * 3.5 / 18.0
 		var right_x: float = Config.ARENA_ORIGIN.x + Config.ARENA_WIDTH * 14.5 / 18.0
 		var mid_x: float = Config.ARENA_ORIGIN.x + Config.ARENA_WIDTH * 9.0 / 18.0
 		var pr_z: float = Config.ARENA_ORIGIN.z + Config.ARENA_HEIGHT * (25.5 / 32.0 if team == 0 else 6.5 / 32.0)
 		var king_z: float = Config.ARENA_ORIGIN.z + Config.ARENA_HEIGHT * (29.0 / 32.0 if team == 0 else 3.0 / 32.0)
-		out.append([0, t0, team, Vector3(left_x, 0, pr_z)])
-		out.append([1, t1, team, Vector3(right_x, 0, pr_z)])
-		out.append([2, 3, team, Vector3(mid_x, 0, king_z)])
+		# 第五项保留实际塔种类，生成时用 tower_config_for_choice 保留厨师/飞刀塔
+		out.append([0, int(TOWER_CATALOG.get_tower(t0).base_id), team, Vector3(left_x, 0, pr_z), t0])
+		out.append([1, int(TOWER_CATALOG.get_tower(t1).base_id), team, Vector3(right_x, 0, pr_z), t1])
+		out.append([2, 3, team, Vector3(mid_x, 0, king_z), 3])
 	return out
+
 
 func _spawn_tutorial_targets() -> void:
 	var archer := get_config(44)
@@ -1689,7 +1804,23 @@ func _record_tutorial_card(card_id: int) -> void:
 	if tutorial_battle and not tutorial_played.has(card_id):
 		tutorial_played.append(card_id)
 
+func tower_config_for_choice(choice: int) -> CardData:
+	var data: Dictionary = TOWER_CATALOG.get_tower(choice)
+	var base = get_config(int(data.get("base_id", 1)))
+	if base == null:
+		return null
+	var cfg = base.duplicate()
+	cfg.card_name = String(data.get("name", cfg.card_name))
+	cfg.max_health = float(data.get("hp", cfg.max_health))
+	cfg.damage = float(data.get("damage", cfg.damage))
+	cfg.attack_speed = int(data.get("attack_speed", cfg.attack_speed))
+	cfg.attack_range = float(data.get("range", cfg.attack_range))
+	return cfg
+
+
 func spawn_initial_towers():
+	if not replay_mode:
+		PlayerData.refresh_ai_levels()
 	if win_condition == "touchdown" or String(battle_mode.get("win_condition", "")) == "touchdown":
 		return
 	if replay_skip_towers:
@@ -1710,11 +1841,20 @@ func spawn_initial_towers():
 				if idx >= Unit._next_id:
 					Unit._next_id = idx + 1
 		return
-	var player_type: int = PlayerData.tower_choice
-	if player_type not in [1, 2]:
-		player_type = 1
-	var enemy_type: int = 1 if randi() % 2 == 0 else 2
-	var king_level: int = 11 if (party_mode or fixed_level_override > 0 or PlayerData.test_mode) else PlayerData.get_tower_level()
+	var player_variant: int = int(PlayerData.tower_choice)
+	if not TOWER_CATALOG.has_choice(player_variant):
+		player_variant = 1
+	if showcase_mode:
+		player_variant = 1
+	elif not replay_mode and not network_guest_mode:
+		PlayerData.record_tower_use(player_variant)
+	var player_type: int = 1 if player_variant in [1, 3] else 2
+	var enemy_variant: int = 1 if showcase_mode else randi_range(1, 4)
+	enemy_tower_choice = enemy_variant
+	var enemy_type: int = 1 if enemy_variant in [1, 3] else 2
+	var king_level: int = 11 if (network_host_mode or party_mode or fixed_level_override > 0 or PlayerData.test_mode) else PlayerData.get_tower_level()
+	var fixed_king: bool = network_host_mode or party_mode or fixed_level_override > 0 or PlayerData.test_mode
+	var enemy_king_level: int = king_level if fixed_king else PlayerData.ai_king_level
 	var tower_data = []
 	if network_host_mode:
 		tower_data = _network_tower_data()
@@ -1739,6 +1879,15 @@ func spawn_initial_towers():
 		var cfg = get_config(type)
 		if cfg == null:
 			continue
+		var data_choice: int = int(data[4]) if data.size() > 4 else 0
+		if data_choice in [3, 4]:
+			cfg = tower_config_for_choice(data_choice)
+		elif team == Config.Team.PLAYER and type != 3 and player_variant in [3, 4]:
+			cfg = tower_config_for_choice(player_variant)
+		elif team == Config.Team.ENEMY and type != 3 and enemy_variant in [3, 4]:
+			cfg = tower_config_for_choice(enemy_variant)
+		if cfg == null:
+			continue
 		if tutorial_battle and team == Config.Team.ENEMY and (type == 1 or type == 2):
 			var tut_cfg = cfg.duplicate()
 			tut_cfg.max_health = float(cfg.max_health) * 0.45
@@ -1749,7 +1898,7 @@ func spawn_initial_towers():
 			cfg2.max_health = float(cfg.max_health) * 1.5
 			cfg2.damage = float(cfg.damage) * 1.5
 			cfg = cfg2
-		var unit = spawn_unit(cfg, team, pos, -1, king_level)
+		var unit = spawn_unit(cfg, team, pos, -1, enemy_king_level if team == Config.Team.ENEMY else king_level)
 		if unit:
 			if type == 3 and team_size(team) >= 2:
 				unit.king_duo = true
@@ -2158,6 +2307,7 @@ func _input(event):
 							replay_recorder.record_player_action(cfg, pos)
 						if match_replay_recorder:
 							match_replay_recorder.record_action(Config.Team.PLAYER, cfg.card_id, pos)
+							if defense_log: defense_log.record_action(Config.Team.PLAYER, cfg.card_id, pos)
 						var ccost: int = card_cost(cfg)
 						player_elixir -= ccost
 						stats_elixir_spent[Config.Team.PLAYER] += ccost
@@ -2179,6 +2329,7 @@ func _input(event):
 								replay_recorder.record_player_action(cfg, pos)
 							if match_replay_recorder:
 								match_replay_recorder.record_action(Config.Team.PLAYER, cfg.card_id, pos)
+							if defense_log: defense_log.record_action(Config.Team.PLAYER, cfg.card_id, pos)
 							var ucost: int = card_cost(cfg)
 							player_elixir -= ucost
 							stats_elixir_spent[Config.Team.PLAYER] += ucost
@@ -2212,7 +2363,21 @@ func deploy_spell(config: CardData, team: int, target_pos: Vector3, level_overri
 				cu.max_health = 1
 				cu.health = 1
 				if cu.visual_root:
-					cu._set_ghost_alpha(cu.visual_root, 0.55)
+					cu._set_ghost_alpha(cu.visual_root, 0.30)
+		return
+	if config.card_id == 10:
+		# 万箭齐发：直接生成箭雨，不要先投掷一个法术球
+		var level10: int = PlayerData.get_card_level(10) if team == Config.Team.PLAYER else PlayerData.ai_level(10)
+		level10 = mode_level(Config.battle_level(level10))
+		var arrow_spell = Spell.create(target_pos, team,
+			int(config.damage * Config.level_mult(level10)), config.damage_range,
+			0, config.attack_type, config.target_type)
+		arrow_spell.card_id = 10
+		arrow_spell.time = 0
+		spells.add_child(arrow_spell)
+		var arrow_sfx = load("res://assets/audio/sfx/deploy_wizard.wav")
+		if arrow_sfx:
+			AudioManager.play_sfx(arrow_sfx, target_pos)
 		return
 	if config.card_id == 123:
 		if last_played_card_id < 0:
@@ -2610,7 +2775,78 @@ func _show_duel_overlay(round_winner: int, res: Dictionary) -> void:
 	vbox.add_child(hint)
 
 
+func _start_local_spectator_host() -> void:
+	var ok: bool = await NetworkManager.host_spectator_room()
+	if not ok or not is_inside_tree():
+		return
+	local_spectator_host_started = true
+	var nh = preload("res://scripts/net/NetworkHost.gd").new()
+	add_child(nh)
+	PresenceManager.set_battle_status(true, mode_name, int(Time.get_unix_time_from_system()),
+		NetworkManager.room_code,
+		"webrtc" if NetworkManager.webrtc_mode else "lan",
+		NetworkManager.get_local_ip() if not NetworkManager.webrtc_mode else "")
+
+
+func _history_deck(deck: Array, is_enemy: bool = false) -> Array:
+	var out: Array = []
+	for item in deck:
+		var cid := 0
+		var lv := 1
+		if item is Dictionary:
+			cid = int(item.get("id", item.get("card_id", 0)))
+			lv = int(item.get("level", 1))
+		else:
+			cid = int(item)
+			lv = PlayerData.ai_level(cid) if is_enemy else PlayerData.get_card_level(cid)
+		if cid <= 0:
+			continue
+		out.append({"id": cid, "level": lv})
+	return out
+
+
+func _history_extra() -> Dictionary:
+	var pdeck: Array = mode_player_deck.duplicate() if not mode_player_deck.is_empty() else PlayerData.get_active_deck().duplicate()
+	var edeck: Array = []
+	var ep: Dictionary = enemy_profile
+	if ep.has("current_deck"):
+		edeck = Array(ep.get("current_deck", [])).duplicate()
+	if edeck.is_empty() and ai_system != null:
+		for cid in ai_system.ai_deck:
+			edeck.append(int(cid))
+		for cid in ai_system.ai_hand:
+			edeck.append(int(cid))
+	var ph := {
+		"name": PlayerData.player_name, "avatar_seed": PlayerData.avatar_seed,
+		"avatar_index": PlayerData.avatar_index, "trophies": PlayerData.trophies,
+		"tower_choice": PlayerData.tower_choice, "crowns": player_crowns,
+		"king_hp": float(healths[2]) if healths.size() > 2 else 0.0,
+		"elixir_spent": float(stats_elixir_spent[0]),
+	}
+	var eh := {
+		"name": enemy_name, "avatar_seed": enemy_avatar_seed,
+		"avatar_index": enemy_avatar_index, "trophies": enemy_trophies,
+		"tower_choice": enemy_tower_choice, "crowns": enemy_crowns,
+		"king_hp": float(healths[5]) if healths.size() > 5 else 0.0,
+		"elixir_spent": float(stats_elixir_spent[1]),
+	}
+	return {
+		"player_deck": _history_deck(pdeck, false),
+		"enemy_deck": _history_deck(edeck, true),
+		"player_hud": ph, "enemy_hud": eh,
+	}
+
+
 func _show_game_over() -> void:
+	var battle_win: bool = winner == Config.Team.PLAYER and not match_draw and winner >= 0
+	if not replay_mode and not tutorial_battle and not PlayerData.test_mode:
+		PlayerData.record_battle_result(battle_win, match_draw, player_crowns, enemy_crowns, mode_name, game_time / 1000.0, enemy_name, _history_extra())
+		if ProfileAPI:
+			ProfileAPI.publish_self()
+	PresenceManager.set_battle_status(false)
+	if local_spectator_host_started:
+		local_spectator_host_started = false
+		NetworkManager.stop_spectator_room()
 	if not replay_mode and not suppress_game_over_ui and not network_host_mode and not network_guest_mode:
 		var CH := preload("res://scripts/core/Challenges.gd")
 		if CH.active_id() != "":
@@ -2656,10 +2892,13 @@ func _show_game_over() -> void:
 		chest_won = true
 	if trophy_change != 0:
 		PlayerData.add_trophies(trophy_change)
-	if trophy_change != 0:
-		LeaderboardAPI.submit_trophies(PlayerData.trophies, PlayerData.player_name)
+		PlayerData.add_weekly_trophies(trophy_change)
+	LeaderboardAPI.submit_trophies(PlayerData.trophies, PlayerData.player_name)
+	# 主题赛季皇冠 = 摧毁敌方皇家塔的皇冠 + 己方仍存活的皇家塔皇冠
+	var season_crowns_gain: int = 0
 	if not replay_mode and not no_rewards:
-		PlayerData.add_season_crowns(player_crowns)
+		season_crowns_gain = maxi(0, player_crowns) + maxi(0, 3 - enemy_crowns)
+		PlayerData.add_season_crowns(season_crowns_gain)
 	var dur: String = "%d:%02d" % [int(game_time / 60000.0), int(game_time / 1000.0) % 60]
 	var data := {
 		"win": win,
@@ -2679,17 +2918,20 @@ func _show_game_over() -> void:
 		"chest_rarity": chest_rarity,
 		"touchdown": win_condition == "touchdown",
 		"touchdown_score": touchdown_score.duplicate(),
-		"reward_text": "测试模式：不结算金币/宝箱/奖杯" if no_rewards else _build_result_reward_text(trophy_change, chest_won, chest_rarity),
+		"season_crowns": season_crowns_gain,
+		"reward_text": "测试模式：不结算金币/宝箱/奖杯" if no_rewards else _build_result_reward_text(trophy_change, chest_won, chest_rarity, season_crowns_gain),
 	}
 	if hud.game_over_screen:
 		hud.game_over_screen.populate(data)
 	hud.hide_battle_hud_for_result()
 	hud.game_over_panel.visible = true
 
-func _build_result_reward_text(trophy_change: int, chest_won: bool, chest_rarity: String) -> String:
+func _build_result_reward_text(trophy_change: int, chest_won: bool, chest_rarity: String, season_crowns: int = 0) -> String:
 	var parts: Array = []
 	if trophy_change != 0:
 		parts.append("%+d 奖杯" % trophy_change)
+	if season_crowns > 0:
+		parts.append("主题皇冠 +%d" % season_crowns)
 	if chest_won:
 		parts.append("宝箱：%s" % ("魔法" if chest_rarity == "magical" else ("黄金" if chest_rarity == "gold" else "银色")))
 	if parts.is_empty():
@@ -3045,3 +3287,17 @@ func _deploy_log_like(cfg: CardData, team: int, pos: Vector3, lvl: int = 0) -> v
 	bb.split_angle = PI / 2 if team == Config.Team.PLAYER else -PI / 2
 	bb.split_penetrate = 1
 	bullets.add_child(bb)
+
+func _exit_tree() -> void:
+	if not replay_mode:
+		PresenceManager.set_battle_status(false)
+	if local_spectator_host_started:
+		local_spectator_host_started = false
+		NetworkManager.stop_spectator_room()
+
+
+func network_snapshot_now() -> void:
+	for c in get_children():
+		if c.has_method("send_now"):
+			c.send_now()
+			return

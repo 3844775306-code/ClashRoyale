@@ -45,7 +45,9 @@ func _build() -> void:
 
 	var scroll := ScrollContainer.new()
 	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
-	scroll.scroll_deadzone = 12
+	scroll.scroll_deadzone = 20
+	scroll.follow_focus = true
+	scroll.vertical_scroll_mode = ScrollContainer.SCROLL_MODE_AUTO
 	margin.add_child(scroll)
 
 	_list = VBoxContainer.new()

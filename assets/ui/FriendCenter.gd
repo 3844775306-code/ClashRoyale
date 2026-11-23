@@ -34,6 +34,7 @@ func _ready() -> void:
 	FriendManager.presence_changed.connect(_refresh_friends)
 	FriendManager.presence_changed.connect(_refresh_nearby)
 	FriendManager.requests_changed.connect(_refresh_all)
+	FriendManager.unread_changed.connect(func(_pid, _n): _refresh_friends())
 	if PresenceManager and not PresenceManager.presence_changed.is_connected(_refresh_online_players):
 		PresenceManager.presence_changed.connect(_refresh_online_players)
 
@@ -134,7 +135,9 @@ func _build() -> void:
 	var scroll := ScrollContainer.new()
 	scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
-	scroll.scroll_deadzone = 10
+	scroll.scroll_deadzone = 20
+	scroll.follow_focus = true
+	scroll.vertical_scroll_mode = ScrollContainer.SCROLL_MODE_AUTO
 	v.add_child(scroll)
 	var content := VBoxContainer.new()
 	content.size_flags_horizontal = Control.SIZE_EXPAND_FILL
@@ -252,6 +255,7 @@ func _result_row(e: Dictionary) -> Control:
 	av.size = Vector2(44, 44)
 	av.setup(name, int(e.get("avatar_seed", absi(hash(name)))), int(e.get("avatar_index", 0)))
 	h.add_child(av)
+	CloudAvatar.apply(av, String(e.get("player_id", e.get("id", ""))), name, int(e.get("avatar_seed", absi(hash(name)))), int(e.get("avatar_index", 0)))
 	av.mouse_filter = Control.MOUSE_FILTER_STOP
 	av.clicked.connect(func(): UiComponents.open_player_profile(self, e))
 	var info := VBoxContainer.new()
@@ -337,6 +341,7 @@ func _refresh_requests() -> void:
 		av.size = Vector2(48, 48)
 		av.setup(name, int(prof.get("avatar_seed", 0)), int(prof.get("avatar_index", 0)))
 		h.add_child(av)
+		CloudAvatar.apply(av, pid, name, int(prof.get("avatar_seed", 0)), int(prof.get("avatar_index", 0)))
 		av.mouse_filter = Control.MOUSE_FILTER_STOP
 		av.clicked.connect(func(): UiComponents.open_player_profile(self, prof))
 		var info := VBoxContainer.new()
@@ -402,6 +407,7 @@ func _refresh_friends() -> void:
 		av.size = Vector2(44, 44)
 		av.setup(name, int(f.get("avatar_seed", 0)), int(f.get("avatar_index", 0)))
 		h.add_child(av)
+		CloudAvatar.apply(av, pid, name, int(f.get("avatar_seed", 0)), int(f.get("avatar_index", 0)))
 		av.mouse_filter = Control.MOUSE_FILTER_STOP
 		av.clicked.connect(func(): UiComponents.open_player_profile(self, f))
 		var info := VBoxContainer.new()
@@ -410,11 +416,39 @@ func _refresh_friends() -> void:
 		h.add_child(info)
 		info.add_child(_label(name, 15, PARCHMENT, true))
 		info.add_child(_label(("● 在线" if is_online else "○ 离线") + ((" · %d 杯" % int(f.get("trophies", 0))) if int(f.get("trophies", 0)) > 0 else ""), 11, GREEN if is_online else MUTED))
-		var invite := UiComponents.make_secondary_button("邀请入房", Callable(), Vector2(104, 36))
+		var chat := UiComponents.make_secondary_button("聊天", Callable(), Vector2(76, 36))
+		chat.pressed.connect(func():
+			var dlg = load("res://scripts/ui/FriendChatDialog.gd").new()
+			dlg.friend = f
+			add_child(dlg))
+		var unread_n: int = FriendManager.get_unread(pid)
+		if unread_n > 0:
+			var badge := Panel.new()
+			badge.position = Vector2(58, -8)
+			badge.size = Vector2(22, 22)
+			var bsb := StyleBoxFlat.new()
+			bsb.bg_color = Color(0.90, 0.12, 0.16)
+			bsb.set_corner_radius_all(11)
+			badge.add_theme_stylebox_override("panel", bsb)
+			var bl := Label.new()
+			bl.text = str(mini(unread_n, 9)) + ("+" if unread_n > 9 else "")
+			bl.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+			bl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+			bl.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+			bl.add_theme_font_size_override("font_size", 11)
+			bl.add_theme_color_override("font_color", Color.WHITE)
+			badge.add_child(bl)
+			chat.add_child(badge)
+		h.add_child(chat)
+		var invite := UiComponents.make_secondary_button("邀请", Callable(), Vector2(76, 36))
 		invite.pressed.connect(func():
 			if NetworkManager.role == NetworkManager.Role.HOST and NetworkManager.room_code != "":
-				var ok := FriendManager.send_room_invite(NetworkManager.room_code, NetworkManager.get_local_ip(), PlayerData.player_name, pid)
-				_status.text = "已向 %s 发出邀请（同一局域网）" % name if ok else "邀请发送失败"
+				var ok := false
+				if NetworkManager.webrtc_mode:
+					ok = FriendManager.send_cloud_room_invite(NetworkManager.room_code, PlayerData.player_name, pid)
+				else:
+					ok = FriendManager.send_room_invite(NetworkManager.room_code, NetworkManager.get_local_ip(), PlayerData.player_name, pid)
+				_status.text = "已向 %s 发出邀请" % name if ok else "邀请发送失败"
 			else:
 				_status.text = "请先创建联机房间")
 		h.add_child(invite)

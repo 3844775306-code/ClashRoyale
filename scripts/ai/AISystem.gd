@@ -36,6 +36,15 @@ var counterpush_active: bool = false
 var committed_lane: int = -1
 var collect_mode: bool = false
 var team: int = Config.Team.ENEMY
+var _demo_cases: Array = []
+var _demo_loaded := false
+var _demo_lane := -1
+var _chip_target_hp := 0.0
+var _chip_target_idx := -1
+var _chip_target_lane := -1
+var _foe_played_at: Dictionary = {}
+var _foe_role_at: Dictionary = {}
+var _foe_seen_spells: Dictionary = {}
 
 func _foe_team() -> int:
 	return Config.Team.PLAYER if team == Config.Team.ENEMY else Config.Team.ENEMY
@@ -76,7 +85,67 @@ var reserved_tank_killer: String = ""   # "minipekka", "inferno"
 func _ready():
 	battle = get_parent() as BattleManager
 	difficulty = GameSettings.difficulty
+	_load_demo_cases()
 	_init_ai_deck()
+
+func _load_demo_cases() -> void:
+	if _demo_loaded:
+		return
+	_demo_loaded = true
+	var f := FileAccess.open("res://data/ai/card_demo_cases.jsonl", FileAccess.READ)
+	if f == null:
+		return
+	while not f.eof_reached():
+		var line := f.get_line().strip_edges()
+		if line == "":
+			continue
+		var d = JSON.parse_string(line)
+		if d is Dictionary and d.get("successful_team", -1) >= 0:
+			_demo_cases.append(d)
+	print("[AI] 卡牌演示案例: ", _demo_cases.size())
+
+
+func _demo_match(card_id: int) -> Dictionary:
+	if _demo_cases.is_empty() or battle == null:
+		return {}
+	var enemy_ids := {}
+	for u in battle.units.get_children():
+		if u is Unit and u.team == _foe_team() and u.health > 0 and u.config != null:
+			enemy_ids[int(u.config.card_id)] = true
+	if enemy_ids.is_empty():
+		return {}
+	var best := {}
+	var best_score := 0.0
+	for c in _demo_cases:
+		if not (c is Dictionary):
+			continue
+		var friends: Array = c.get("friendly_cards", [])
+		if not friends.has(card_id):
+			continue
+		var enemies: Array = c.get("enemy_cards", [])
+		var overlap := 0
+		for eid in enemies:
+			if enemy_ids.has(int(eid)):
+				overlap += 1
+		if overlap <= 0:
+			continue
+		var score := float(overlap) / maxf(1.0, float(enemy_ids.size())) + float(friends.size()) * 0.03
+		if score > best_score:
+			best_score = score
+			best = c
+	if best.is_empty():
+		return {}
+	var success_team := int(best.get("successful_team", -1))
+	var lane := -1
+	for ev in best.get("friendly_events", []):
+		if int(ev.get("card_id", -1)) == card_id:
+			var ex := float(ev.get("x", 0.0))
+			if success_team != team:
+				ex = -ex
+			lane = 0 if ex < 0.0 else 1
+			break
+	return {"bonus": best_score, "lane": lane}
+
 
 func _init_ai_deck():
 	ai_deck.clear()
@@ -189,6 +258,57 @@ func _update_player_elixir(delta: float):
 		_seen_player_units[u.get_instance_id()] = true
 		if u.config and u.config.card_id > 3:
 			player_elixir_est = maxf(0.0, player_elixir_est - float(u.config.cost))
+			_record_foe_card(u.config)
+	for s in battle.spells.get_children():
+		if not (s is Spell) or s.team != _foe_team() or s.card_id <= 3:
+			continue
+		var sid := s.get_instance_id()
+		if _foe_seen_spells.has(sid):
+			continue
+		_foe_seen_spells[sid] = true
+		var scfg = battle.get_config(int(s.card_id))
+		if scfg != null:
+			player_elixir_est = maxf(0.0, player_elixir_est - float(scfg.cost))
+			_record_foe_card(scfg)
+
+func _record_foe_card(cfg) -> void:
+	if cfg == null:
+		return
+	var now := Time.get_ticks_msec()
+	_foe_played_at[int(cfg.card_id)] = now
+	for role in _card_roles(cfg):
+		_foe_role_at[role] = now
+
+
+func _card_roles(cfg) -> Array:
+	var roles: Array = []
+	if cfg.damage_range >= 1.5 or int(cfg.card_id) in [10, 20, 31, 48, 80, 104, 107, 113, 115, 116]:
+		roles.append("aoe")
+	if int(cfg.num) >= 3 or cfg.card_name in ["骷髅军团", "亡灵大军", "哥布林团伙", "蝙蝠", "野蛮人", "绿林团伙"]:
+		roles.append("swarm")
+	if (cfg.damage >= 250.0 and cfg.attack_speed <= 1600) or cfg.card_name in ["迷你皮卡", "皮卡超人", "地狱飞龙", "地狱之塔", "王子", "幻影刺客"]:
+		roles.append("high_dps")
+	if cfg.target_type == Config.TargetType.BUILDING_ONLY:
+		roles.append("siege")
+	if int(cfg.move_type) >= 2 and cfg.type != Config.UnitType.BUILDING and int(cfg.move_type) != 5:
+		roles.append("charge")
+	if cfg.type == Config.UnitType.BUILDING:
+		roles.append("building")
+	return roles
+
+
+func _foe_role_recent(role: String, within_ms: int = 6500) -> bool:
+	if not _foe_role_at.has(role):
+		return false
+	return Time.get_ticks_msec() - int(_foe_role_at[role]) <= within_ms
+
+
+func _foe_has_role(role: String) -> bool:
+	# 不知道对手卡组时保守处理；近期已经交过的防守类型视为暂时没有
+	if player_elixir_est < 3.0:
+		return false
+	return not _foe_role_recent(role)
+
 
 func _draw_ai_card():
 	if ai_deck.is_empty(): return
@@ -214,6 +334,9 @@ func _process(delta):
 		_ai_act()
 
 func _ai_act():
+	_demo_lane = -1
+	_chip_target_idx = -1
+	_chip_target_lane = -1
 	_analyze_battlefield()
 	var elixir = _my_elixir()
 	var usable = _get_usable_cards(elixir)
@@ -246,6 +369,18 @@ func _ai_act():
 		chosen = _handle_emergency(usable)
 		if chosen:
 			play_style = "emergency"
+	if not chosen and defending:
+		chosen = _select_min_cost_defense(usable)
+		if chosen:
+			play_style = "defensive"
+	if not chosen and _should_chip():
+		chosen = _select_chip_card(usable)
+		if chosen:
+			play_style = "chip"
+	if not chosen and _should_pressure():
+		chosen = _select_pressure_card(usable)
+		if chosen:
+			play_style = "pressure"
 	if not chosen:
 		chosen = _select_card(usable)
 		if chosen and defending:
@@ -259,6 +394,8 @@ func _ai_act():
 	# 法术价值不足且无紧急威胁时不浪费
 	if battle.SPELL_IDS.has(chosen.card_id) and difficulty != Difficulty.EASY:
 		if threat_level < 3 and _spell_value(chosen) < float(chosen.cost) * 0.8 and _spell_tower_target(chosen) == Vector3.ZERO:
+			return
+		if play_style == "chip" and _spell_tower_target(chosen) == Vector3.ZERO and _chip_target_idx < 0:
 			return
 
 	# 放置位置
@@ -507,6 +644,235 @@ func _handle_emergency(usable: Array) -> CardData:
 				return c
 	return null
 
+func _should_pressure() -> bool:
+	if threat_level >= 2 or collect_mode:
+		return false
+	var elixir := _my_elixir()
+	if elixir < 5.5:
+		return false
+	var window := float(player_elixir_est) <= 4.0 or elixir >= 8.0 or counterpush_active
+	return window
+
+
+func _pressure_category(cfg) -> String:
+	if cfg == null:
+		return ""
+	if int(cfg.num) >= 3:
+		return "swarm"
+	if cfg.target_type == Config.TargetType.BUILDING_ONLY:
+		return "siege"
+	if int(cfg.move_type) >= 2 and cfg.type != Config.UnitType.BUILDING:
+		return "charge"
+	if cfg.damage >= 220.0 or cfg.card_name in ["迷你皮卡", "皮卡超人", "王子", "幻影刺客", "火枪手", "飞行机器"]:
+		return "high_dps"
+	return ""
+
+
+func _select_pressure_card(usable: Array) -> CardData:
+	var best: CardData = null
+	var best_score := -1.0
+	var elixir := _my_elixir()
+	var tank_ready: bool = count_own_tanks() > 0 or counterpush_active
+	for c in usable:
+		if c == null or battle.SPELL_IDS.has(c.card_id):
+			continue
+		if _is_support_only(c) and not tank_ready:
+			continue
+		var cat := _pressure_category(c)
+		if cat == "":
+			continue
+		var score := 10.0
+		match cat:
+			"swarm":
+				# 人海怕范围伤害
+				if _foe_has_role("aoe"):
+					score -= 80.0
+				else:
+					score += 18.0
+			"high_dps":
+				# 高 DPS 怕人海围杀
+				if _foe_has_role("swarm"):
+					score -= 65.0
+				else:
+					score += 16.0
+			"siege":
+				# 攻城单位怕高 DPS/坦克杀手
+				if _foe_has_role("high_dps"):
+					score -= 55.0
+				else:
+					score += 14.0
+			"charge":
+				# 冲锋单位怕人海和建筑拉扯
+				if _foe_has_role("swarm"):
+					score -= 45.0
+				elif _foe_has_role("building"):
+					score -= 20.0
+				else:
+					score += 12.0
+		# 未知防守卡：不直接否决，但降低信心
+		if not _foe_role_recent("aoe") and not _foe_role_recent("swarm"):
+			score -= 3.0
+		score += float(c.cost) * 0.8
+		if elixir - float(c.cost) < 2.0:
+			score -= 20.0
+		if score > best_score:
+			best_score = score
+			best = c
+	return best
+
+
+func _weakest_foe_tower() -> Dictionary:
+	var best := {"idx": -1, "hp": 1.0e12, "lane": 0}
+	for lane in [0, 1]:
+		var idx := _foe_tower_idx(lane)
+		if idx < battle.healths.size():
+			var hp := float(battle.healths[idx])
+			if hp > 0.0 and hp < float(best.hp):
+				best = {"idx": idx, "hp": hp, "lane": lane}
+	return best
+
+
+func _should_chip() -> bool:
+	if threat_level >= 2 or collect_mode:
+		return false
+	var elixir := _my_elixir()
+	var tower := _weakest_foe_tower()
+	_chip_target_idx = int(tower.idx)
+	_chip_target_lane = int(tower.lane)
+	_chip_target_hp = float(tower.hp)
+	if _chip_target_idx < 0:
+		return false
+	var window := float(player_elixir_est) <= 3.5 or elixir >= 7.0 or _has_counterpush()
+	var low_tower := _chip_target_hp <= 1200.0
+	if not window and not low_tower:
+		return false
+	if archetype == "cycle":
+		return elixir >= 4.5
+	return elixir >= 5.0 or low_tower
+
+
+func _chip_damage(cfg: CardData) -> float:
+	var lv: int = PlayerData.ai_level(cfg.card_id) if team == Config.Team.ENEMY else PlayerData.get_card_level(cfg.card_id)
+	if battle != null:
+		lv = battle.mode_level(lv)
+	return float(cfg.damage) * Config.level_mult(lv)
+
+
+func _chip_tower_pos() -> Vector3:
+	if _chip_target_lane < 0:
+		return Vector3.ZERO
+	var x: float = Config.ARENA_ORIGIN.x + Config.ARENA_WIDTH * (3.5 / 18.0 if _chip_target_lane == 0 else 14.5 / 18.0)
+	var z: float = Config.ARENA_ORIGIN.z + Config.ARENA_HEIGHT * (25.5 / 32.0 if team == Config.Team.ENEMY else 6.5 / 32.0)
+	return Vector3(x, 0.0, z)
+
+
+func _select_chip_card(usable: Array) -> CardData:
+	var best: CardData = null
+	var best_score := -1.0
+	var elixir := _my_elixir()
+	var tower := _weakest_foe_tower()
+	for c in usable:
+		if c == null:
+			continue
+		var score := 0.0
+		var is_spell := battle.SPELL_IDS.has(c.card_id)
+		if is_spell:
+			# 法术只用于磨塔或残血塔处决，不为了空放而空放
+			var target := _spell_tower_target(c)
+			if target == Vector3.ZERO and _chip_target_idx >= 0:
+				target = _chip_tower_pos()
+			if target == Vector3.ZERO:
+				continue
+			var dmg := _chip_damage(c)
+			score = dmg / maxf(1.0, float(c.cost))
+			if float(tower.hp) <= dmg * 1.10:
+				score += 100.0
+			if float(tower.hp) <= 700.0:
+				score += 25.0
+		else:
+			# 消耗核心：低费建筑目标卡、矿工/飞桶/野猪等
+			var building_target: bool = c.target_type == Config.TargetType.BUILDING_ONLY
+			var wincon: bool = _is_win_condition(c)
+			if not building_target and not wincon:
+				continue
+			score = 8.0 + float(c.cost) * 0.5
+			if building_target:
+				score += 5.0
+			if float(cost_elixir_after(c)) >= 3.0:
+				score += 3.0
+			if float(tower.hp) <= 900.0:
+				score += 6.0
+		# 必须保留至少 2 点防守圣水；能直接斩杀时允许 all-in
+		var kill := float(tower.hp) <= _chip_damage(c) * 1.1
+		if not kill and elixir - float(c.cost) < 2.0:
+			continue
+		if c.cost > 6:
+			score -= 8.0
+		if score > best_score:
+			best_score = score
+			best = c
+	return best
+
+
+func cost_elixir_after(c: CardData) -> float:
+	return _my_elixir() - float(c.cost)
+
+
+func _select_min_cost_defense(usable: Array) -> CardData:
+	var best: CardData = null
+	var best_score: float = -INF
+	for c in usable:
+		if c == null:
+			continue
+		var fit: float = 0.0
+		if threat_swarm:
+			if c.damage_range >= 1.5 or c.card_name in ["万箭齐发", "火球", "电击法术", "毒药法术"]:
+				fit += 4.0
+		if threat_air:
+			if c.target_type == Config.TargetType.ALL or c.damage_range >= 2.0:
+				fit += 3.5
+		if threat_tank:
+			if c.damage >= 300.0 or c.card_name in ["迷你皮卡", "地狱飞龙", "地狱之塔", "皮卡超人"]:
+				fit += 4.0
+			if c.type == Config.UnitType.BUILDING and c.max_health >= 1500.0:
+				fit += 2.0
+		if threat_backline:
+			if c.attack_range >= 5.0 and c.damage >= 100.0:
+				fit += 3.0
+			if c.damage_range >= 2.0 and c.damage >= 100.0:
+				fit += 2.0
+		if fit <= 0.0:
+			fit = 0.5 if c.cost <= 3 else 1.0
+		# 高血量单体不值得用法术硬砸；除非能击杀/高效清群
+		if battle.SPELL_IDS.has(c.card_id) and not _spell_is_efficient(c) and _spell_tower_target(c) == Vector3.ZERO:
+			continue
+		# 同等克制效果下优先低费；避免为了小威胁交出高费卡
+		var score: float = fit / maxf(1.0, float(c.cost))
+		score += 0.6 if c.cost <= 3 else 0.0
+		score -= 0.5 if c.cost >= 5 else 0.0
+		var demo := _demo_match(c.card_id)
+		if not demo.is_empty():
+			score += float(demo.get("bonus", 0.0)) * 1.4
+		if score > best_score:
+			best_score = score
+			best = c
+			if not demo.is_empty() and int(demo.get("lane", -1)) >= 0:
+				_demo_lane = int(demo.get("lane", -1))
+	return best
+
+
+func _is_support_only(cfg) -> bool:
+	if cfg == null or cfg.type == Config.UnitType.BUILDING:
+		return false
+	if _is_win_condition(cfg) or cfg.target_type == Config.TargetType.BUILDING_ONLY:
+		return false
+	if int(cfg.num) >= 3 and float(cfg.max_health) <= 550.0:
+		return true
+	if float(cfg.max_health) <= 450.0 and int(cfg.cost) <= 3:
+		return true
+	return cfg.card_name in ["亡灵", "哥布林", "蝙蝠", "骷髅军团", "哥布林团伙", "弓箭手", "吹箭哥布林", "烟花炮手"]
+
+
 func _select_card(usable: Array) -> CardData:
 	match difficulty:
 		Difficulty.EASY:
@@ -556,8 +922,16 @@ func _select_card(usable: Array) -> CardData:
 				var anti = _filter_tank_killer(usable)
 				if anti.size() > 0: return _pick_best(anti)
 
-			# 默认选费用最高的卡（通常价值较高）
-			return _pick_best(usable)
+			# 没有坦克/反打单位时，低血量辅助卡不能单独桥头送
+			var filtered: Array = []
+			var allow_support: bool = has_tank or counterpush_active or count_own_tanks() > 0
+			for c in usable:
+				if _is_support_only(c) and not allow_support:
+					continue
+				filtered.append(c)
+			if filtered.is_empty():
+				return null
+			return _pick_best(filtered)
 
 func count_own_tanks() -> int:
 	var cnt = 0
@@ -643,6 +1017,8 @@ func _get_best_place(cfg: CardData, style: String) -> Vector3:
 	var tower_left_x: float = Config.ARENA_ORIGIN.x + Config.ARENA_WIDTH * 3.5 / 18.0
 	var tower_right_x: float = Config.ARENA_ORIGIN.x + Config.ARENA_WIDTH * 14.5 / 18.0
 	var use_lane: int = defense_lane if (style == "defensive" or style == "emergency") else target_lane
+	if (style == "defensive" or style == "emergency") and _demo_lane >= 0:
+		use_lane = _demo_lane
 	var lane_x: float = tower_left_x if use_lane == 0 else tower_right_x
 	var own_z: float = _own_z(0.15)
 	var bridge_z: float = Config.ARENA_ORIGIN.z + Config.ARENA_HEIGHT * 0.5 - 1.0
@@ -659,6 +1035,24 @@ func _get_best_place(cfg: CardData, style: String) -> Vector3:
 		if is_tank and cfg.type != Config.UnitType.AIR:
 			return Vector3(lane_x, 0.0, _own_z(0.28))
 		return Vector3(lane_x, 0.0, own_z)
+
+	if style == "pressure":
+		# 关键卡进攻：攻城/冲锋压桥，人海在桥后集结，高 DPS 保持距离
+		if cfg.type == Config.UnitType.BUILDING:
+			return Vector3(lane_x, 0.0, _own_z(0.30))
+		if int(cfg.num) >= 3:
+			return Vector3(lane_x, 0.0, _own_z(0.30))
+		if cfg.target_type == Config.TargetType.BUILDING_ONLY:
+			return Vector3(lane_x, 0.0, bridge_z)
+		if cfg.attack_range >= 4.0:
+			return Vector3(lane_x, 0.0, _own_z(0.36))
+		return Vector3(lane_x, 0.0, bridge_z)
+
+	if style == "chip":
+		# 消耗：低费核心直接压桥，别在己方半场空转
+		if cfg.type == Config.UnitType.BUILDING:
+			return Vector3(lane_x, 0.0, _own_z(0.30))
+		return Vector3(lane_x, 0.0, bridge_z)
 
 	if style == "counterpush":
 		# 反打：支援放在己方桥头后方，避免直接送进塔
@@ -716,22 +1110,44 @@ func _has_counterpush() -> bool:
 				n += 1
 	return n >= 1
 
+func _spell_damage(spell_config: CardData) -> float:
+	var lv: int = PlayerData.ai_level(spell_config.card_id) if team == Config.Team.ENEMY else PlayerData.get_card_level(spell_config.card_id)
+	if battle != null:
+		lv = battle.mode_level(lv)
+	return float(spell_config.damage) * Config.level_mult(lv)
+
+
 func _spell_value(spell_config: CardData) -> float:
 	var player_units: Array = []
 	for u in battle.units.get_children():
 		if u is Unit and u.team == _foe_team() and u.health > 0 and u.config.card_id > 3:
 			player_units.append(u)
 	var radius: float = maxf(2.0, spell_config.damage_range * 1.5)
+	var dmg := _spell_damage(spell_config)
 	var best := 0.0
 	for a in player_units:
-		var count := 0
-		var total_cost := 0.0
+		var value := 0.0
 		for b in player_units:
-			if a.global_position.distance_to(b.global_position) <= radius:
-				count += 1
-				total_cost += float(b.config.cost)
-		best = maxf(best, float(count) + total_cost * 0.3)
+			if a.global_position.distance_to(b.global_position) > radius:
+				continue
+			var hp := float(b.health)
+			if hp <= dmg:
+				# 能击杀：按完整费用计入价值
+				value += float(b.config.cost) * 1.15 + 1.0
+			else:
+				# 打不死：只按实际伤害比例计入
+				value += float(b.config.cost) * (dmg / maxf(1.0, hp)) * 0.85
+		best = maxf(best, value)
 	return best
+
+
+func _spell_is_efficient(spell_config: CardData) -> bool:
+	if spell_config == null:
+		return false
+	if _spell_tower_target(spell_config) != Vector3.ZERO:
+		return true
+	return _spell_value(spell_config) >= float(spell_config.cost) * 0.8
+
 
 func _find_spell_target(spell_config: CardData) -> Vector3:
 	var player_units: Array = []
@@ -742,6 +1158,8 @@ func _find_spell_target(spell_config: CardData) -> Vector3:
 		var tt := _spell_tower_target(spell_config)
 		if tt != Vector3.ZERO:
 			return tt
+		if _chip_target_idx >= 0:
+			return _chip_tower_pos()
 		return Vector3(Config.ARENA_ORIGIN.x + Config.ARENA_WIDTH * 0.5, 0.0, _own_z(0.2))
 	var best_pos: Vector3 = player_units[0].global_position
 	var best_score: float = -1.0

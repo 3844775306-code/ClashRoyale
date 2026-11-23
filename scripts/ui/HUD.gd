@@ -59,6 +59,9 @@ var pause_panel: Control
 var _enemy_profile_panel: Panel
 var _ally_profile_panel: Panel
 var _profile_signature: String = ""
+var _spectator_label: Label
+var _spec_chat_panel: Panel
+var _spec_chat_log: RichTextLabel
 var _profile_vertical: bool = false
 
 var _game_over_paused: bool = false   # 结算后是否已暂停整棵树
@@ -314,6 +317,7 @@ func _create_ui_elements():
 	pause_button.text = "II"
 	pause_button.position = Vector2(screen_size.x - 72, 12)
 	pause_button.size = Vector2(56, 56)
+	pause_button.z_index = 100
 	pause_button.pressed.connect(_on_pause_pressed)
 	ThemeHelper.apply_button_style(pause_button)
 	add_child(pause_button)
@@ -322,10 +326,26 @@ func _create_ui_elements():
 	emote_button.text = "表情"
 	emote_button.position = Vector2(screen_size.x - 140, 12)
 	emote_button.size = Vector2(56, 56)
+	emote_button.z_index = 100
 	ThemeHelper.apply_button_style(emote_button)
 	emote_button.pressed.connect(_on_emote_pressed)
 	add_child(emote_button)
 	_build_emote_panel(screen_size)
+	_build_spectator_chat_panel(screen_size)
+	# 右上角暂停/表情放进独立高层 CanvasLayer，彻底绕开资料面板/回放层遮挡
+	var top_layer := CanvasLayer.new()
+	top_layer.layer = 150
+	add_child(top_layer)
+	if pause_button:
+		remove_child(pause_button)
+		top_layer.add_child(pause_button)
+		pause_button.position = Vector2(screen_size.x - 72, 12)
+		pause_button.z_index = 0
+	if emote_button:
+		remove_child(emote_button)
+		top_layer.add_child(emote_button)
+		emote_button.position = Vector2(screen_size.x - 140, 12)
+		emote_button.z_index = 0
 
 	# ========== 暂停面板（初始隐藏） ==========
 	pause_panel = Control.new()
@@ -373,6 +393,70 @@ func _create_ui_elements():
 	pvbox.add_child(quit_btn)
 
 	_setup_match_profiles(screen_size, tray_y)
+	_spectator_label = Label.new()
+	_spectator_label.position = Vector2(screen_size.x * 0.5 - 60, 68)
+	_spectator_label.size = Vector2(120, 18)
+	_spectator_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_spectator_label.add_theme_font_size_override("font_size", 12)
+	_spectator_label.add_theme_color_override("font_color", Color(0.65, 0.88, 1.0))
+	_spectator_label.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.9))
+	_spectator_label.add_theme_constant_override("outline_size", 3)
+	_spectator_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_spectator_label.visible = false
+	add_child(_spectator_label)
+
+func _build_spectator_chat_panel(screen_size: Vector2) -> void:
+	_spec_chat_panel = Panel.new()
+	_spec_chat_panel.position = Vector2(18, 96)
+	_spec_chat_panel.size = Vector2(430, 106)
+	_spec_chat_panel.z_index = 45
+	_spec_chat_panel.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_spec_chat_panel.visible = false
+	var sb := StyleBoxFlat.new()
+	sb.bg_color = Color(0.02, 0.04, 0.08, 0.84)
+	sb.border_color = Color(0.45, 0.75, 1.0, 0.45)
+	sb.set_border_width_all(1)
+	sb.set_corner_radius_all(10)
+	_spec_chat_panel.add_theme_stylebox_override("panel", sb)
+	add_child(_spec_chat_panel)
+	_spec_chat_log = RichTextLabel.new()
+	_spec_chat_log.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	_spec_chat_log.offset_left = 10
+	_spec_chat_log.offset_top = 6
+	_spec_chat_log.offset_right = -10
+	_spec_chat_log.offset_bottom = -6
+	_spec_chat_log.bbcode_enabled = true
+	_spec_chat_log.scroll_following = true
+	_spec_chat_log.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_spec_chat_log.add_theme_font_size_override("normal_font_size", 15)
+	_spec_chat_panel.add_child(_spec_chat_log)
+	if not NetworkManager.spectator_chat.is_connected(_on_spec_chat_received):
+		NetworkManager.spectator_chat.connect(_on_spec_chat_received)
+	if not NetworkManager.spectator_emote.is_connected(_on_spec_emote_received):
+		NetworkManager.spectator_emote.connect(_on_spec_emote_received)
+
+
+func _on_spec_chat_received(from_name: String, text: String) -> void:
+	if _spec_chat_log == null:
+		return
+	_spec_chat_log.append_text("[color=#8fd6ff]观战 %s[/color]：%s\n" % [from_name, text])
+	if _spec_chat_log.get_line_count() > 4:
+		_spec_chat_log.remove_line(0)
+	_spec_chat_panel.visible = true
+	_spec_chat_panel.modulate.a = 1.0
+	var tw := create_tween()
+	tw.tween_interval(5.0)
+	tw.tween_property(_spec_chat_panel, "modulate:a", 0.0, 0.6)
+	tw.tween_callback(func(): _spec_chat_panel.visible = false)
+
+
+func _on_spec_emote_received(from_name: String, id: String) -> void:
+	if _spec_chat_log == null:
+		return
+	var glyph := String(preload("res://scripts/data/EmoteCatalog.gd").glyph(id))
+	_spec_chat_log.append_text("[color=#ffd45a]观战 %s %s[/color]\n" % [from_name, glyph])
+	_spec_chat_panel.visible = true
+
 
 func _build_emote_panel(screen_size: Vector2):
 	emote_panel = Control.new()
@@ -406,6 +490,9 @@ func _build_emote_panel(screen_size: Vector2):
 	var scroll := ScrollContainer.new()
 	scroll.custom_minimum_size = Vector2(0, 420)
 	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	scroll.vertical_scroll_mode = ScrollContainer.SCROLL_MODE_AUTO
+	scroll.scroll_deadzone = 24
+	scroll.follow_focus = true
 	v.add_child(scroll)
 	emote_list = VBoxContainer.new()
 	emote_list.size_flags_horizontal = Control.SIZE_EXPAND_FILL
@@ -575,15 +662,15 @@ func set_match_profiles(profs: Array) -> void:
 
 func _setup_match_profiles(screen_size: Vector2, tray_y: float) -> void:
 	_enemy_profile_panel = Panel.new()
-	_enemy_profile_panel.position = Vector2(screen_size.x - 308, 46)
-	_enemy_profile_panel.size = Vector2(300, 34)
+	_enemy_profile_panel.position = Vector2(screen_size.x - 308, 0)
+	_enemy_profile_panel.size = Vector2(300, 84)
 	_enemy_profile_panel.z_index = 20
 	_enemy_profile_panel.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_enemy_profile_panel.add_theme_stylebox_override("panel", StyleBoxEmpty.new())
 	add_child(_enemy_profile_panel)
 	_ally_profile_panel = Panel.new()
-	_ally_profile_panel.position = Vector2(8, 46)
-	_ally_profile_panel.size = Vector2(300, 34)
+	_ally_profile_panel.position = Vector2(8, 0)
+	_ally_profile_panel.size = Vector2(300, 84)
 	_ally_profile_panel.z_index = 20
 	_ally_profile_panel.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_ally_profile_panel.add_theme_stylebox_override("panel", StyleBoxEmpty.new())
@@ -623,19 +710,23 @@ func _refresh_match_profiles() -> void:
 func _fill_profile_panel(panel: Panel, profiles: Array, side: String) -> void:
 	for c in panel.get_children():
 		c.queue_free()
-	var row: BoxContainer = VBoxContainer.new() if _profile_vertical else HBoxContainer.new()
-	row.position = Vector2(2 if _profile_vertical else 6, 2)
-	row.size = Vector2(panel.size.x - (4 if _profile_vertical else 12), panel.size.y - 4)
-	row.add_theme_constant_override("separation", 2 if _profile_vertical else 4)
+	var vertical: bool = _profile_vertical or profiles.size() > 1
+	var row: BoxContainer = VBoxContainer.new() if vertical else HBoxContainer.new()
+	row.position = Vector2(2 if vertical else 6, 2)
+	row.size = Vector2(panel.size.x - (4 if vertical else 12), panel.size.y - 4)
+	row.add_theme_constant_override("separation", 2 if vertical else 4)
 	panel.add_child(row)
-	if not _profile_vertical:
+	if not vertical:
 		var tag := Label.new()
 		tag.text = side
 		tag.add_theme_font_size_override("font_size", 11)
 		tag.add_theme_color_override("font_color", Color(1.0, 0.78, 0.3) if side == "我方" else Color(1.0, 0.55, 0.52))
 		row.add_child(tag)
 	for p in profiles:
-		row.add_child(_make_profile_chip(p, profiles.size() > 1 or _profile_vertical))
+		var chip := _make_profile_chip(p, profiles.size() > 1 or _profile_vertical)
+		if vertical:
+			chip.custom_minimum_size.x = panel.size.x - 8
+		row.add_child(chip)
 	if profiles.is_empty():
 		var l := Label.new()
 		l.text = "等待玩家…"
@@ -646,7 +737,7 @@ func _fill_profile_panel(panel: Panel, profiles: Array, side: String) -> void:
 func _make_profile_chip(p: Dictionary, compact: bool = false) -> Control:
 	var b := Button.new()
 	b.flat = true
-	b.custom_minimum_size = Vector2(112 if compact else 136, 34)
+	b.custom_minimum_size = Vector2(136 if compact else 138, 38 if compact else 72)
 	b.mouse_filter = Control.MOUSE_FILTER_STOP
 	b.add_theme_stylebox_override("normal", StyleBoxEmpty.new())
 	b.add_theme_stylebox_override("hover", StyleBoxEmpty.new())
@@ -655,8 +746,8 @@ func _make_profile_chip(p: Dictionary, compact: bool = false) -> Control:
 	h.add_theme_constant_override("separation", 2)
 	b.add_child(h)
 	var av = preload("res://scripts/ui/AvatarIcon.gd").new()
-	av.custom_minimum_size = Vector2(28 if compact else 30, 28 if compact else 30)
-	av.size = Vector2(28 if compact else 30, 28 if compact else 30)
+	av.custom_minimum_size = Vector2(32 if compact else 48, 32 if compact else 48)
+	av.size = Vector2(32 if compact else 48, 32 if compact else 48)
 	av.setup(String(p.get("name", "玩家")), int(p.get("avatar_seed", 0)), int(p.get("avatar_index", 0)))
 	h.add_child(av)
 	var vb := VBoxContainer.new()
@@ -664,12 +755,12 @@ func _make_profile_chip(p: Dictionary, compact: bool = false) -> Control:
 	h.add_child(vb)
 	var nm := Label.new()
 	nm.text = String(p.get("name", "玩家"))
-	nm.add_theme_font_size_override("font_size", 11 if compact else 13)
+	nm.add_theme_font_size_override("font_size", 12 if compact else 15)
 	nm.add_theme_color_override("font_color", Color.WHITE)
 	vb.add_child(nm)
 	var tr := Label.new()
 	tr.text = "🏆 %d   👑 %d" % [int(p.get("trophies", 0)), int(p.get("crowns", 0))]
-	tr.add_theme_font_size_override("font_size", 9 if compact else 10)
+	tr.add_theme_font_size_override("font_size", 10 if compact else 11)
 	tr.add_theme_color_override("font_color", Color(0.95, 0.82, 0.45))
 	vb.add_child(tr)
 	b.pressed.connect(func(): _open_match_profile(p))
@@ -681,6 +772,10 @@ func _open_match_profile(p: Dictionary) -> void:
 	add_child(dlg)
 
 func _process(_delta):
+	if _spectator_label:
+		var spec_n: int = int(NetworkManager.spectator_count) if NetworkManager else 0
+		_spectator_label.visible = spec_n > 0
+		_spectator_label.text = "👁 观战 %d" % spec_n
 	if battle != null:
 		_refresh_match_profiles()
 	if battle and battle.network_host_mode and not battle.network_guest_mode:
@@ -859,6 +954,58 @@ func _update_timer():
 	elif battle.tower_bleed_active and not _notice_flags.has("bleed"):
 		_notice_flags["bleed"] = true
 		show_battle_notice("决胜时刻 谁将获胜？", "皇家塔持续损失生命值", 2.6)
+
+func show_disconnect_dialog(player_name: String) -> void:
+	if not is_inside_tree():
+		return
+	if get_node_or_null("NetDisconnectLayer"):
+		return
+	var layer := Control.new()
+	layer.name = "NetDisconnectLayer"
+	layer.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	layer.z_index = 300
+	layer.mouse_filter = Control.MOUSE_FILTER_STOP
+	add_child(layer)
+	var dim := ColorRect.new()
+	dim.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	dim.color = Color(0, 0, 0, 0.62)
+	dim.mouse_filter = Control.MOUSE_FILTER_STOP
+	layer.add_child(dim)
+	var panel := Panel.new()
+	panel.anchor_left = 0.5; panel.anchor_right = 0.5
+	panel.anchor_top = 0.5; panel.anchor_bottom = 0.5
+	panel.offset_left = -280; panel.offset_right = 280
+	panel.offset_top = -160; panel.offset_bottom = 160
+	var sb := StyleBoxFlat.new()
+	sb.bg_color = Color(0.055, 0.075, 0.15, 0.98)
+	sb.border_color = Color(0.95, 0.52, 0.30)
+	sb.set_border_width_all(3)
+	sb.set_corner_radius_all(20)
+	panel.add_theme_stylebox_override("panel", sb)
+	layer.add_child(panel)
+	var v := VBoxContainer.new()
+	v.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	v.offset_left = 24; v.offset_right = -24; v.offset_top = 24; v.offset_bottom = -24
+	v.alignment = BoxContainer.ALIGNMENT_CENTER
+	v.add_theme_constant_override("separation", 14)
+	panel.add_child(v)
+	var title := Label.new()
+	title.text = "玩家断开连接"
+	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	title.add_theme_font_size_override("font_size", 30)
+	title.add_theme_color_override("font_color", Color(1.0, 0.62, 0.45))
+	v.add_child(title)
+	var sub := Label.new()
+	sub.text = "%s 已离开对局，席位由 AI 接管。" % player_name
+	sub.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	sub.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	sub.add_theme_font_size_override("font_size", 17)
+	sub.add_theme_color_override("font_color", Color(0.84, 0.90, 1.0))
+	v.add_child(sub)
+	var ok := ThemeHelper.make_primary_button("知道了", Vector2(0, 52))
+	ok.pressed.connect(func(): layer.queue_free())
+	v.add_child(ok)
+
 
 func show_battle_notice(title: String, sub: String = "", duration: float = 2.0) -> void:
 	if not is_inside_tree():
@@ -1043,9 +1190,26 @@ func add_health_bar(unit: Unit):
 	cooldown_bar.add_theme_stylebox_override("fill", cd_fill)
 	health_bar_container.add_child(cooldown_bar)
 
+	# 皇家塔特殊进度条：厨师塔烹饪 / 飞刀塔飞刀
+	var special_bar := ProgressBar.new()
+	special_bar.custom_minimum_size = Vector2(bar_w, 11)
+	special_bar.size = Vector2(bar_w, 11)
+	special_bar.show_percentage = false
+	special_bar.visible = false
+	special_bar.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	var sp_bg := StyleBoxFlat.new()
+	sp_bg.bg_color = Color(0.02, 0.02, 0.03, 0.82)
+	sp_bg.set_corner_radius_all(3)
+	special_bar.add_theme_stylebox_override("background", sp_bg)
+	var sp_fill := StyleBoxFlat.new()
+	sp_fill.bg_color = Color(1.0, 0.88, 0.28)
+	sp_fill.set_corner_radius_all(3)
+	special_bar.add_theme_stylebox_override("fill", sp_fill)
+	health_bar_container.add_child(special_bar)
+
 	unit_bars[unit] = {
-		"bar": bar, "badge": badge, "name": name_lbl, "hp": hp_lbl,
-		"cooldown_bar": cooldown_bar,
+		"bar": bar, "badge": badge, "badge_label": badge_lbl, "name": name_lbl, "hp": hp_lbl,
+		"cooldown_bar": cooldown_bar, "special_bar": special_bar,
 		"shield": shield_ring,
 		"disp": unit.health / maxf(unit.max_health, 1.0),
 	}
@@ -1056,13 +1220,35 @@ func remove_health_bar(unit: Unit):
 func _drop_health_bar_entry(unit):
 	if unit_bars.has(unit):
 		var data = unit_bars[unit]
-		for k in ["bar", "badge", "name", "hp", "cooldown_bar", "shield"]:
+		for k in ["bar", "badge", "name", "hp", "cooldown_bar", "special_bar", "shield"]:
 			var n = data.get(k)
 			if n and is_instance_valid(n):
 				n.queue_free()
 		unit_bars.erase(unit)
 
 func _input(event: InputEvent) -> void:
+	# 顶部暂停/表情兜底输入：即使按钮被其他 UI 层拦住，也保证能触发
+	var pressed := false
+	var pos := Vector2.ZERO
+	if event is InputEventMouseButton:
+		var mb := event as InputEventMouseButton
+		if mb.button_index == MOUSE_BUTTON_LEFT and mb.pressed:
+			pressed = true
+			pos = mb.position
+	elif event is InputEventScreenTouch:
+		var st := event as InputEventScreenTouch
+		if st.pressed:
+			pressed = true
+			pos = st.position
+	if pressed:
+		if pause_button and pause_button.visible and pause_button.get_global_rect().has_point(pos):
+			_on_pause_pressed()
+			get_viewport().set_input_as_handled()
+			return
+		if emote_button and emote_button.visible and emote_button.get_global_rect().has_point(pos):
+			_on_emote_pressed()
+			get_viewport().set_input_as_handled()
+			return
 	if event is InputEventKey and event.pressed and not event.echo and event.keycode == KEY_L:
 		show_names = not show_names
 		for u in unit_bars:
@@ -1087,6 +1273,7 @@ func _update_health_bars():
 		var data = unit_bars[unit]
 		var bar = data.bar
 		var badge: Control = data.badge
+		var badge_lbl: Label = data.get("badge_label")
 		var name_lbl: Label = data.name
 		var hp_lbl: Label = data.hp
 		var cd_bar: ProgressBar = data.cooldown_bar
@@ -1115,6 +1302,8 @@ func _update_health_bars():
 			var has_shield: bool = unit.config.shield > 0 and not unit.shield_used
 			shield_ui.visible = has_shield
 
+		if badge_lbl:
+			badge_lbl.text = str(unit.level)
 		bar.set_ratio(ratio)
 		bar.set_team(HB_TEAM.get(unit.team, Color.WHITE))
 
@@ -1145,6 +1334,22 @@ func _update_health_bars():
 		badge.position = badge_pos
 		if shield_ui:
 			shield_ui.position = badge_pos + Vector2(-3.3, -4.5)
+		var special_bar: ProgressBar = data.get("special_bar")
+		if special_bar:
+			var show_special: bool = unit.is_chef_tower or unit.is_knife_tower
+			special_bar.visible = show_special
+			if show_special:
+				if unit.is_chef_tower:
+					special_bar.max_value = 1.0
+					special_bar.value = clampf(unit.chef_progress, 0.0, 1.0)
+				else:
+					special_bar.max_value = float(unit.knife_max)
+					special_bar.value = float(unit.knife_count)
+				special_bar.size = Vector2(bar_w, 11)
+				if show_bar:
+					special_bar.position = bar_top + Vector2(0.0, bar_h + 2.0)
+				else:
+					special_bar.position = screen_pos + Vector2(-bar_w * 0.5, 12.0)
 # ============================================================
 # 皇冠动画（3D 塔位置 → 顶部皇冠计数）
 # ============================================================

@@ -17,6 +17,7 @@ var _players3d: Dictionary = {}   # stream_instance_id -> AudioStreamPlayer3D
 var _players2d: Dictionary = {}   # stream_instance_id -> AudioStreamPlayer
 var _order: Array = []            # 创建顺序，用于超出上限时淘汰最旧
 var _last_play_ms: Dictionary = {}  # stream_instance_id -> 上次播放时间
+var sfx_muted: bool = false
 
 func _ready():
 	_ensure_bus_exists("Music")
@@ -59,7 +60,7 @@ func stop_bgm():
 
 # 播放音效；global_pos 为 ZERO 时用 2D（全局）播放器，否则用 3D 定位播放器
 func play_sfx(stream: AudioStream, global_pos: Vector3 = Vector3.ZERO) -> void:
-	if stream == null or not Config.SFX_ENABLED:
+	if sfx_muted or stream == null or not Config.SFX_ENABLED:
 		return
 	var sid: int = stream.get_instance_id()
 	var now: int = Time.get_ticks_msec()

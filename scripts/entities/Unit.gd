@@ -92,6 +92,16 @@ var target: Unit = null
 var _melee_contact_target: Unit = null
 var attack_cooldown: float = 0.0
 var spawn_cooldown: float = 0.0
+var is_chef_tower: bool = false
+var is_knife_tower: bool = false
+var chef_progress: float = 0.0
+var chef_interval: float = 24.0
+var _chef_recent_attack: float = 0.0
+var pancake_done: bool = false
+var knife_count: int = 8
+var knife_max: int = 8
+var _knife_store_timer: float = 0.0
+var _knife_since_attack: float = 0.0
 var last_lose_health_time: float = 0.0  # 建筑扣血计时# 国王塔激活系统
 var king_tower_activated: bool = false
 var king_tower_cooldown: float = 0.0
@@ -176,6 +186,10 @@ func initialize_from_config():
 		health = config.max_health
 	health = int(health*Config.level_mult(level))
 	max_health=int(max_health*Config.level_mult(level))
+	is_chef_tower = config.card_name == "厨师塔"
+	is_knife_tower = config.card_name == "飞刀塔"
+	if is_knife_tower:
+		knife_count = knife_max
 	# 创建视觉模型（记录 body_mesh 引用）
 	# ---------- 程序化模型（单位模型套件） ----------
 	var spec: Dictionary = CardVisualCatalog.spec_for(config.card_name, team, config.attack_range)
@@ -280,6 +294,8 @@ func _activate_king_tower():
 		_king_anim_active = true
 		_king_anim_t = 0.0# ----- 每帧更新 -----
 func _physics_process(delta):
+	if battle == null or not is_instance_valid(battle):
+		return
 	if _spin_remaining > 0.0:
 		_spin_remaining = maxf(0.0, _spin_remaining - delta)
 	if _recoil_remaining > 0.0:
@@ -447,7 +463,9 @@ func _physics_process(delta):
 			else:
 				dist = distance_to(target)
 				if dist > config.attack_range or (config.card_id == 105 and _demolisher_charge_started):
-					if not follow:
+					if _is_charge_windup_locked():
+						pass
+					elif not follow:
 						if config.move_type >=5 :
 							var bridge_only: bool = _needs_bridge_crossing(target)
 							if bridge_only:
@@ -477,7 +495,7 @@ func _physics_process(delta):
 								_move_towards(target.global_position, delta)
 						else:
 							_move_towards(target.global_position, delta)
-					else:
+					elif follow:
 						global_position = follow.global_position
 				else:
 					if config.damage > 0 and attack_cooldown <= 0:
@@ -495,9 +513,14 @@ func _physics_process(delta):
 		attack_cooldown -= delta / slow_factor*(1+quick*0.01)
 	if config.type == Config.UnitType.AIR and not is_entangled():
 		global_position.y = 1.9 + sin(Time.get_ticks_msec() * 0.003) * 0.05
+	_update_tower_special(delta)
 	_rotate_to_direction()
 	if contact_shadow:
-		contact_shadow.global_position = Vector3(global_position.x - 0.30, 0.025, global_position.z + 0.36)
+		var shadow_y := 0.025
+		var bf = battle.get_node_or_null("Battlefield") if battle else null
+		if bf and bool(bf.get("is_workshop")):
+			shadow_y = -0.050 if absf(global_position.z) <= 1.5 else 0.085
+		contact_shadow.global_position = Vector3(global_position.x - 0.30, shadow_y, global_position.z + 0.36)
 	_update_animation(delta)
 	_update_charge_fx(delta)
 	_update_special_fx(delta)
@@ -520,6 +543,12 @@ func _update_turret() -> void:
 func _is_inferno() -> bool:
 	# 光束类：地狱飞龙/地狱之塔(火焰光束) + 闪电法师/雷电飞龙(闪电链)
 	return config != null and (config.card_id in [6, 21, 27, 33, 36, 60, 93])
+func _is_charge_windup_locked() -> bool:
+	if config == null or not (config.card_id in [81, 83, 89]):
+		return false
+	return attack_anim_start > 0.0 or jump > 0 or _hook_rope != null
+
+
 func _is_charge_attacker() -> bool:
 	return config != null and config.move_type == 2
 func _is_beam_unit() -> bool:
@@ -1128,6 +1157,15 @@ func _move_forward(delta):
 				target_pos = Vector3(Config.ARENA_ORIGIN.x + Config.ARENA_WIDTH * 0.5, 0, Config.ARENA_ORIGIN.z + Config.ARENA_HEIGHT * 29.0 / 32.0)
 	_move_towards(target_pos, delta)# ----- 攻击 -----
 func _attack():
+	if is_knife_tower:
+		if knife_count <= 0:
+			attack_cooldown = 0.15
+			return
+		knife_count -= 1
+		_knife_since_attack = 0.0
+		_knife_store_timer = 0.0
+	if is_chef_tower:
+		_chef_recent_attack = 0.6
 	_chain_attack_serial += 1
 	_chain_attack_targets.clear()
 	if config.card_id == 90:
@@ -1223,6 +1261,145 @@ func _weapon_muzzle_local(w: String):
 		"barb_barrel":
 			return Vector3(0.0, 0.0, 0.30)
 	return null
+func _update_tower_special(delta: float) -> void:
+	if health <= 0.0:
+		return
+	if is_knife_tower:
+		_knife_since_attack += delta
+		if _knife_since_attack >= 0.5:
+			_knife_store_timer += delta
+			while _knife_store_timer >= 0.9 and knife_count < knife_max:
+				_knife_store_timer -= 0.9
+				knife_count += 1
+	if is_chef_tower:
+		_chef_recent_attack = maxf(0.0, _chef_recent_attack - delta)
+		var rate: float = 0.7 if _chef_recent_attack > 0.0 else 1.0
+		chef_progress = minf(1.0, chef_progress + delta / chef_interval * rate)
+		if chef_progress >= 1.0:
+			var tgt = _find_pancake_target()
+			if tgt != null:
+				chef_progress = 0.0
+				_throw_pancake(tgt)
+
+
+func _find_pancake_target():
+	if battle == null:
+		return null
+	var best = null
+	var best_hp: float = -1.0
+	for u in battle.units.get_children():
+		if not (u is Unit) or u == self or u.team != team:
+			continue
+		if u.health <= 0 or u.config == null or u.config.type == Config.UnitType.BUILDING:
+			continue
+		if u.pancake_done:
+			continue
+		if u.health > best_hp:
+			best_hp = u.health
+			best = u
+	return best
+
+
+func _throw_pancake(tgt) -> void:
+	var pancake := MeshInstance3D.new()
+	var cyl := CylinderMesh.new()
+	cyl.top_radius = 0.28
+	cyl.bottom_radius = 0.28
+	cyl.height = 0.08
+	pancake.mesh = cyl
+	var mat := StandardMaterial3D.new()
+	mat.albedo_color = Color(0.98, 0.72, 0.26)
+	mat.emission_enabled = true
+	mat.emission = Color(1.0, 0.62, 0.12)
+	mat.emission_energy_multiplier = 0.6
+	pancake.material_override = mat
+	pancake.position = global_position + Vector3(0, 1.45, 0)
+	battle.add_child(pancake)
+	var dest: Vector3 = tgt.global_position + Vector3(0, 0.9, 0)
+	var tw := create_tween()
+	tw.tween_property(pancake, "position", dest, 0.45).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+	tw.tween_callback(func():
+		if is_instance_valid(pancake):
+			pancake.queue_free()
+		if is_instance_valid(tgt) and tgt.health > 0:
+			tgt.pancake_done = true
+			tgt.apply_pancake_level_up()
+			tgt._pancake_sparkle()
+	)
+
+
+func apply_pancake_level_up() -> void:
+	if config == null:
+		return
+	var old_max: float = max_health
+	level = mini(int(level) + 1, 16)
+	var base_health: float = config.max_health
+	if config.shield > 0.0 and not shield_used:
+		base_health = config.shield
+	max_health = int(base_health * Config.level_mult(level))
+	health = minf(max_health, health + maxf(0.0, max_health - old_max))
+	# 等级会改变攻击结算：Bullet 在生成时读取 source_unit.level；
+	# 召唤物同样使用新的 level。
+	if config.type != Config.UnitType.BUILDING:
+		speed = config.move_speed * 0.05
+
+
+func _pancake_sparkle() -> void:
+	# 等级提升自身动画：金色光环 + 弹跳 + +1 Lv
+	if visual_root:
+		var base_scale: Vector3 = visual_root.scale
+		var tw := create_tween()
+		tw.tween_property(visual_root, "scale", base_scale * 1.22, 0.12).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+		tw.tween_property(visual_root, "scale", base_scale, 0.18).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_IN_OUT)
+	if battle:
+		var ring := MeshInstance3D.new()
+		var tor := TorusMesh.new()
+		tor.inner_radius = 0.35
+		tor.outer_radius = 0.48
+		ring.mesh = tor
+		var rm := StandardMaterial3D.new()
+		rm.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+		rm.albedo_color = Color(1.0, 0.84, 0.32, 0.9)
+		rm.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+		ring.material_override = rm
+		ring.position = global_position + Vector3(0, 0.08, 0)
+		battle.add_child(ring)
+		var rtw := create_tween()
+		rtw.set_parallel(true)
+		rtw.tween_property(ring, "scale", Vector3(2.2, 2.2, 2.2), 0.45)
+		rtw.tween_property(rm, "albedo_color:a", 0.0, 0.45)
+		var lv := Label3D.new()
+		lv.text = "+1 Lv"
+		lv.font_size = 34
+		lv.modulate = Color(1.0, 0.86, 0.34)
+		lv.outline_size = 6
+		lv.outline_modulate = Color(0, 0, 0, 0.85)
+		lv.billboard = BaseMaterial3D.BILLBOARD_ENABLED
+		lv.position = global_position + Vector3(0, 1.65, 0)
+		battle.add_child(lv)
+		var ltw := create_tween()
+		ltw.set_parallel(true)
+		ltw.tween_property(lv, "position:y", lv.position.y + 0.8, 0.7)
+		ltw.tween_property(lv, "modulate:a", 0.0, 0.7)
+	for i in range(8):
+		var mi := MeshInstance3D.new()
+		var sm := SphereMesh.new()
+		sm.radius = 0.06
+		sm.height = 0.12
+		mi.mesh = sm
+		var m := StandardMaterial3D.new()
+		m.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+		m.albedo_color = Color(1.0, 0.86, 0.36)
+		mi.material_override = m
+		mi.position = global_position + Vector3(0, 0.9, 0)
+		battle.add_child(mi)
+		var tw := create_tween()
+		tw.set_parallel(true)
+		tw.tween_property(mi, "position", mi.position + Vector3(randf_range(-0.8, 0.8), randf_range(0.2, 1.0), randf_range(-0.8, 0.8)), 0.5)
+		tw.tween_property(mi, "scale", Vector3(0.1, 0.1, 0.1), 0.5)
+		tw.chain().tween_callback(mi.queue_free)
+
+
 func _create_single_bullet():
 	if config.card_id == 67:
 		# 公主：一次 3 支箭，在目标点周围均布

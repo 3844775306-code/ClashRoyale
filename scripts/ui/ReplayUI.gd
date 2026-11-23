@@ -977,6 +977,10 @@ func _apply_snapshot_at(t: float) -> void:
 			var h0: float = float(a.get("hp", 1.0)); var h1: float = float(b.get("hp", h0))
 			u.health = lerpf(h0, h1, alpha)
 			u.max_health = maxf(1.0, float(b.get("max_hp", u.max_health)))
+			# 厨师塔煎饼升级会改变单位等级，观战必须同步等级徽标
+			u.level = int(b.get("level", u.level))
+			u.chef_progress = float(b.get("chef_progress", u.chef_progress))
+			u.knife_count = int(b.get("knife_count", u.knife_count))
 			_apply_visual_state(u, a, b, alpha)
 	for id in _visual_units.keys():
 		if not ids.has(id):
@@ -1414,6 +1418,12 @@ func _spawn_snapshot_unit(d: Dictionary):
 	var cfg = _battle.get_config(int(d.get("card_id", -1))) if _battle else null
 	if cfg == null:
 		return null
+	if int(d.get("card_id", 99)) <= 3:
+		var nm := String(d.get("name", ""))
+		if nm == "厨师塔" and _battle.has_method("tower_config_for_choice"):
+			cfg = _battle.tower_config_for_choice(3)
+		elif nm == "飞刀塔" and _battle.has_method("tower_config_for_choice"):
+			cfg = _battle.tower_config_for_choice(4)
 	var team: int = int(d.get("team", 0))
 	var lv: int = int(d.get("level", 0))
 	var pos := Vector3(float(d.get("x", 0.0)), float(d.get("y", 0.0)), float(d.get("z", 0.0)))
@@ -1426,6 +1436,9 @@ func _spawn_snapshot_unit(d: Dictionary):
 		u.max_deploy_cooldown = 0.0
 		u.health = float(d.get("hp", u.health))
 		u.max_health = maxf(1.0, float(d.get("max_hp", u.max_health)))
+		u.level = int(d.get("level", u.level))
+		u.chef_progress = float(d.get("chef_progress", u.chef_progress))
+		u.knife_count = int(d.get("knife_count", u.knife_count))
 		if bool(d.get("king_duo", false)):
 			u.king_duo = true
 			u.apply_king_duo_visual()

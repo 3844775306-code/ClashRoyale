@@ -185,8 +185,10 @@ func _claim_all():
 	var got: Array = PlayerData.claim_all_collection_rewards()
 	if got.is_empty():
 		return
-	var spec := _collection_spec(got[0]) if not got.is_empty() else {"kind": "gold", "amount": 0}
-	CLAIM_ANIM.play(self, "领取成功", "收藏等级奖励 ×%d" % got.size(), spec)
+	var specs: Array = []
+	for r in got:
+		specs.append(_collection_spec(r))
+	CLAIM_ANIM.play_many(self, "领取成功", "收藏等级奖励 ×%d" % got.size(), specs)
 	await get_tree().create_timer(1.1).timeout
 	get_tree().reload_current_scene()
 

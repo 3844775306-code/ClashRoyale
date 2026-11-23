@@ -194,6 +194,7 @@ func _on_confirm() -> void:
 	if name.length() > 12:
 		_hint.text = "名字最多 12 个字符"
 		return
+	var was_new_account: bool = not PlayerData.name_chosen
 	var old_name := PlayerData.player_name
 	PlayerData.player_name = name
 	PlayerData.name_chosen = true
@@ -202,4 +203,7 @@ func _on_confirm() -> void:
 		LeaderboardAPI.submit_trophies(PlayerData.trophies, PlayerData.player_name)
 		ClanManager.sync_my_profile()
 	UiComponents.refresh_topbar()
+	var scene := get_tree().current_scene
 	queue_free()
+	if was_new_account and scene != null:
+		UiComponents.prompt_avatar(scene)
