@@ -61,7 +61,7 @@ var _js_close: JavaScriptObject
 var _active: LineEdit
 var _scan_acc := 0.0
 var _last_open_ms := 0
-var _is_ios := false
+var _touch_device := false
 
 
 func _ready() -> void:
@@ -77,7 +77,8 @@ func _ready() -> void:
 	win.set("_crWebKeyboardClose", _js_close)
 	JavaScriptBridge.eval(JS)
 	var ua := String(JavaScriptBridge.eval("navigator.userAgent"))
-	_is_ios = ua.contains("iPad") or ua.contains("iPhone") or ua.contains("iPod")
+	var touch_points := int(JavaScriptBridge.eval("navigator.maxTouchPoints || 0"))
+	_touch_device = ua.contains("iPad") or ua.contains("iPhone") or ua.contains("iPod") or touch_points > 0
 	call_deferred("_scan_tree")
 
 
@@ -107,7 +108,7 @@ func _attach(field: LineEdit) -> void:
 	field.gui_input.connect(func(event):
 		if event is InputEventScreenTouch and event.pressed:
 			_open(field)
-		elif _is_ios and event is InputEventMouseButton and event.pressed and event.button_index == MOUSE_BUTTON_LEFT:
+		elif _touch_device and event is InputEventMouseButton and event.pressed and event.button_index == MOUSE_BUTTON_LEFT:
 			_open(field)
 	)
 
