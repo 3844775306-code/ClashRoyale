@@ -142,5 +142,9 @@
   {
     "version": "1.3.6",
     "summary": "修复Web软键盘只能弹出一次：每次输入创建新的隐藏HTML input，避免复用元素焦点失效"
+  },
+  {
+    "version": "1.3.7",
+    "summary": "参考honor-king改为Web触摸输入框时直接window.prompt，彻底修复iPad键盘重复/不弹出"
   }
 ]

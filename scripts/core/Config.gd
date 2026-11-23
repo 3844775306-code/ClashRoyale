@@ -1,11 +1,11 @@
 extends Node
-const BUILD_TAG := "2026-11-24 01:20"
-const VERSION := "1.3.6"
-const UPDATE_COUNT := 36
+const BUILD_TAG := "2026-11-24 01:50"
+const VERSION := "1.3.7"
+const UPDATE_COUNT := 37
 const WEB_URL := "https://3844775306-code.github.io/ClashRoyale/"
-const RELEASE_URL := "https://github.com/3844775306-code/ClashRoyale/releases/tag/v1.3.6"
-const WIN_URL := "https://github.com/3844775306-code/ClashRoyale/releases/download/v1.3.6/ClashRoyale-Net11-WebRTC-Windows.zip"
-const APK_URL := "https://github.com/3844775306-code/ClashRoyale/releases/download/v1.3.6/ClashRoyale-Net.apk"
+const RELEASE_URL := "https://github.com/3844775306-code/ClashRoyale/releases/tag/v1.3.7"
+const WIN_URL := "https://github.com/3844775306-code/ClashRoyale/releases/download/v1.3.7/ClashRoyale-Net11-WebRTC-Windows.zip"
+const APK_URL := "https://github.com/3844775306-code/ClashRoyale/releases/download/v1.3.7/ClashRoyale-Net.apk"
 
 # 网格尺寸 (米)
 const GRID_SIZE: float = 1.0
