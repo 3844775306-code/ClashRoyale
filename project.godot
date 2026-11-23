@@ -45,6 +45,7 @@ FriendManager="*res://scripts/core/FriendManager.gd"
 LoadingScreen="*res://scripts/core/LoadingScreen.gd"
 TutorialTour="*res://scripts/core/TutorialTour.gd"
 WebTextCompat="*res://scripts/core/WebTextCompat.gd"
+WebKeyboard="*res://scripts/core/WebKeyboard.gd"
 PhoneNotification="*res://scripts/core/PhoneNotification.gd"
 
 [display]
